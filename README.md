@@ -1,179 +1,81 @@
-# Databricks Lakebase Demo
+# DATABRICKS LAKEBASE ACCELERATOR
 
-A demonstration project showcasing how to connect to Databricks PostgreSQL instances and work with stored procedures for candy product analytics.
 
-## Overview
+## Getting started
 
-This project demonstrates:
-- Connecting to Databricks PostgreSQL instances using Python SDK
-- Creating and executing stored procedures with multiple result sets
-- Managing database connections with connection pooling
-- Analyzing candy product data across divisions and factories
+1. Install the Databricks CLI from <https://docs.databricks.com/dev-tools/cli/databricks-cli.html>
 
-## Project Structure
+2. Authenticate to your Databricks workspace, if you have not done so already:
 
-```
-databricks-lakebase-demo/
-├── README.md                        # This file
-├── lakebase-demo.ipynb              # Main Jupyter notebook with demo code
-├── candy_analytics_procedure.sql    # Standalone SQL stored procedure
-├── databricks.yml                   # Databricks bundle configuration
-├── requirements.txt                 # Python dependencies
-└── .venv/                          # Virtual environment (created locally)
-```
+   #### Option A: Personal Access Token (PAT)
 
-## Features
+   **Generate Personal Access Token:**
+      - Log into your Databricks workspace
+      - Click on your username in the top-right corner
+      - SELECT **User Settings** → **Developer** → **Access tokens**
+      - Click **Generate new token**
+      - Give it a name (e.g., "Local Development") and set expiration
+      - Copy the generated token
 
-### 📊 Analytics Capabilities
-- **Overall Statistics**: Total products, divisions, factories, pricing, and profit analysis
-- **Division Breakdown**: Analysis by product division (Chocolate, Sugar, Other)
-- **Factory Breakdown**: Performance metrics by manufacturing factory
-- **Profit Analysis**: Cost, pricing, and profit margin calculations
+   **Configure CLI with PAT:**
 
-### 🔧 Technical Features
-- PostgreSQL stored procedures with multiple result sets using `refcursor`
-- Connection pooling for efficient database access
-- Error handling and transaction management
-- Databricks SDK integration for credential management
-
-## Prerequisites
-
-1. **Databricks Workspace Access**
-   - Access to a Databricks workspace with PostgreSQL instance
-   - Databricks identity (user) is added as role in Postgres instance
-   - Service Principal with appropriate permissions
-
-2. **Python Environment**
-   - Python 3.10+
-   - Virtual environment capability
-
-## Setup Instructions
-
-### 1. Environment Setup
-
-```bash
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On macOS/Linux
-# or
-.venv\Scripts\activate     # On Windows
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 2. Databricks Configuration
-
-1. **Create a Service Principal**:
-   - Go to Databricks Workspace → Settings
-   - Navigate to Identity and access → Service Principals → Manage
-   - Add service principal
-
-2. **Generate Client Secrets**:
-   - Select your Service Principal → Secrets
-   - Generate Secrets with appropriate TTL (max 730 days)
-   - Save the Client ID and Secret
-
-3. **Environment Variables**:
-   Create a `.env` file in the project root:
-   ```env
-   CLIENT_ID=your_client_id_here
-   CLIENT_SECRET=your_client_secret_here
-   ```
-
-### 3. Database Configuration
-
-Update the configuration variables in the notebook:
-```python
-workspace_url = 'https://your-workspace.cloud.databricks.com/'
-instance_name = 'your_instance_name'
-database = "databricks_postgres"
-user = "your.email@company.com"
-```
-
-## Usage
-
-### Running the Demo
-
-1. **Start Jupyter Notebook**:
    ```bash
-   jupyter notebook lakebase-demo.ipynb
+   databricks configure --token --profile DEFAULT
    ```
 
-2. **Execute Cells Sequentially**:
-   - Install required packages
-   - Connect to Databricks PostgreSQL
-   - Create stored procedures
-   - Run analytics queries
+   You'll be prompted for:
+   - **Databricks Host**: `https://your-workspace.cloud.databricks.com`
+   - **Token**: Paste your generated token
 
+   This will update DEFAULT profile in `~/.databrickscfg`
 
-## Database Schema
+   #### Option B: OAuth Authentication
 
-The demo works with a `syncedcandy` table containing:
-- **Division**: Product category (Chocolate, Sugar, Other)
-- **Product**: Product name
-- **Factory**: Manufacturing location
-- **SKU**: Stock keeping unit identifier
-- **Unit Price**: Selling price per unit
-- **Unit Cost**: Manufacturing cost per unit
+   Configure OAuth:
 
-## Stored Procedure Details
+   ```bash
+   databricks auth login --host https://your-workspace.cloud.databricks.com --profile DEFAULT
+   ```
 
-The `get_candy_analytics_multiple_results` procedure returns three result sets:
+   This will:
 
-1. **Overall Statistics**: Aggregate metrics across all products
-2. **Division Breakdown**: Metrics grouped by product division
-3. **Factory Breakdown**: Metrics grouped by manufacturing factory
+   - Open your browser for authentication
+   - Create a profile in `~/.databrickscfg`
+   - Store OAuth credentials securely
 
-Each result set includes:
-- Product counts
-- Average/min/max pricing
-- Profit calculations
-- Cost analysis
+   #### Verify Databricks Auth
 
-## Dependencies
+   ```
+   databricks auth profiles
+   ```
 
-- `databricks-sdk`: For Databricks workspace integration
-- `psycopg2-binary`: PostgreSQL adapter for Python
-- `python-dotenv`: Environment variable management
-- `pandas`: Data manipulation and analysis
+3. To deploy a development copy of this project, type:
 
-## Troubleshooting
+    ```
+    databricks bundle deploy --target dev
+    ```
 
-### Common Issues
+    (Note that "dev" is the default target, so the `--target` parameter
+    is optional here.)
 
-1. **Connection Errors**:
-   - Verify Service Principal credentials
-   - Check network connectivity to Databricks workspace
-   - Ensure PostgreSQL instance is running
+    This deploys everything that's defined for this project.
+    For example, the default template would deploy a job called
+    `[dev yourname] lakebase_accelerator_job` to your workspace.
+    You can find that job by opening your workpace and clicking on **Workflows**.
 
-2. **Permission Errors**:
-   - Verify Service Principal has database access
-   - Check procedure execution permissions
+4. Similarly, to deploy a production copy, type:
 
-3. **Environment Issues**:
-   - Ensure virtual environment is activated
-   - Verify all dependencies are installed
-   - Check Python version compatibility
+   ```
+   databricks bundle deploy --target prod
+   ```
 
-### Debug Tips
+   Note that the default job from the template has a schedule that runs every day
+   (defined in resources/lakebase_accelerator.job.yml). The schedule
+   is paused when deploying in development mode (see
+   <https://docs.databricks.com/dev-tools/bundles/deployment-modes.html>).
 
-- Enable verbose logging in the Databricks SDK
-- Check connection pool status
-- Verify environment variables are loaded correctly
+5. To run a job or pipeline, use the "run" command:
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-This project is for demonstration purposes. Please check with your organization's policies before using in production environments.
-
----
-
-**Note**: This is a demo project. Ensure proper security practices and error handling before using in production environments.
+   ```
+   databricks bundle run
+   ```
