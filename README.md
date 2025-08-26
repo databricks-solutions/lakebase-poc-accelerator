@@ -1,5 +1,6 @@
 # DATABRICKS LAKEBASE ACCELERATOR
 
+This project is designed to streamline the testing and migration of customer OLTP workloads to Lakebase, Databricks' managed Postgres solution. It is particularly focused on supporting reverse ETL use cases. The accelerator provides an easy way for users to evaluate Lakebase and quickly get started with their migration or testing needs.
 
 ## Getting started
 
