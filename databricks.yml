@@ -24,17 +24,17 @@ resources:
 # Define synced table: https://docs.databricks.com/aws/en/dev-tools/bundles/resources#synced_database_tables
   synced_database_tables:
     my_synced_table:
-      name: ${resources.database_catalogs.my_catalog.name}.public.my_table
+      name: ${resources.database_catalogs.my_catalog.name}.public.destination_table
       database_instance_name: ${resources.database_catalogs.my_catalog.database_instance_name}
       logical_database_name: ${resources.database_catalogs.my_catalog.database_name}
       spec:
-        source_table_full_name: 'testing.default.review'
+        source_table_full_name: 'source_catalog.source_schema.source_table'
         scheduling_policy: TRIGGERED
         primary_key_columns:
-          - new_id
+          - pk_id
         new_pipeline_spec:
-          storage_catalog: 'testing'
-          storage_schema: 'default'
+          storage_catalog: 'source_catalog'
+          storage_schema: 'source_schema'
 
 
 targets:
@@ -46,9 +46,9 @@ targets:
     mode: development
     default: true
     workspace:
-      host: https://adb-3584713185358710.10.azuredatabricks.net/
+      host: https://myworkspace.cloud.databricks.com
 
   prod:
     mode: production
     workspace:
-      host: https://adb-3584713185358710.10.azuredatabricks.net/
+      host: https://myworkspace.cloud.databricks.com
