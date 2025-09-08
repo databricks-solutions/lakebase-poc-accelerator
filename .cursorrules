@@ -1,0 +1,30 @@
+# Cursor Rules for Databricks Lakebase Accelerator Project
+
+## File Creation Rules
+1. **DO NOT create README files, documentation, or instruction files unless explicitly requested by the user**
+2. **DO NOT create setup guides or getting started documentation unless specifically asked**
+3. **Focus on code implementation and technical solutions when not explicitly asked for documentation**
+4. **Always run Python code in virtual environment such as .venv or venv**
+
+## Project Focus
+- This is a Databricks Lakebase Accelerator project
+- Focus on data engineering, analytics, and lakehouse solutions
+- Prioritize functional code over documentation unless specifically requested
+
+## Code Standards
+- Write clean, well-commented code
+- Follow best practices for the specific technology being used
+- Include inline comments explaining complex logic
+- Use meaningful variable and function names
+
+## When Documentation IS Requested
+- Only create README files when the user explicitly asks for them
+- Only create setup instructions when specifically requested
+- Only create getting started guides when prompted
+- Focus on technical content rather than verbose explanations
+
+## Response Style
+- Be concise and technical
+- Provide code solutions directly
+- Ask clarifying questions when needed
+- Don't assume documentation is needed

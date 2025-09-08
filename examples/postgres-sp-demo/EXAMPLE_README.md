@@ -109,7 +109,7 @@ user = "your.email@company.com"
 
 ## Database Schema
 
-The demo works with a `syncedcandy` table containing:
+The demo works with a `syncedcandy` Postgres table containing:
 - **Division**: Product category (Chocolate, Sugar, Other)
 - **Product**: Product name
 - **Factory**: Manufacturing location
