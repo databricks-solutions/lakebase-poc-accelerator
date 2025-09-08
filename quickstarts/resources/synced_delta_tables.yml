@@ -1,0 +1,17 @@
+resources:
+# Define synced table: https://docs.databricks.com/aws/en/dev-tools/bundles/resources#synced_database_tables
+  synced_database_tables:
+    customer:
+      name: ${resources.database_catalogs.my_catalog.name}.public.customer # lakebase_accelerator_catalog.public.customer
+      database_instance_name: ${resources.database_catalogs.my_catalog.database_instance_name} # lakebase_accelerator_instance
+      logical_database_name: ${resources.database_catalogs.my_catalog.database_name} # lakebase_accelerator_database
+      spec:
+        source_table_full_name: 'samples.tpcds_sf1.customer'
+        scheduling_policy: TRIGGERED
+        primary_key_columns:
+        # Primary key columns must uniquely identify each row in the source table
+          - c_customer_sk
+        new_pipeline_spec: 
+          # Storage location to store pipeline metadata such as checkpoints, metadata. Use a Unity Catalog location with appropriate permissions
+          storage_catalog: 'main'
+          storage_schema: 'default'

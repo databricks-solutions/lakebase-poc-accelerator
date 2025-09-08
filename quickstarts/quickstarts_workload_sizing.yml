@@ -16,7 +16,7 @@ database_instance:
   number_of_readable_secondaries: 2
   readable_secondary_size_cu: 2
 
-  # Promotion percentage
+  # Lakebase Promotion percentage
   promotion_percentage: 50.0
 
 # Database Storage Configuration

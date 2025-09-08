@@ -1,0 +1,15 @@
+resources:
+#  Provision Lakebase database instance
+#  https://docs.databricks.com/aws/en/dev-tools/bundles/resources#database_instances
+  database_instances:
+    my_instance:
+      name: lakebase_accelerator_instance
+      capacity: CU_1
+
+  # Register Lakebase database as a read-only UC catalog to enable federated queries + data governance
+  database_catalogs:
+    my_catalog:
+      database_instance_name: ${resources.database_instances.my_instance.name} # lakebase_accelerator_instance
+      name: lakebase_accelerator_catalog
+      database_name: lakebase_accelerator_database
+      create_database_if_not_exists: true

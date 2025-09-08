@@ -6,6 +6,3 @@ __pycache__/
 .venv/
 scratch/**
 !scratch/README.md
-.vscode/*
-.env
-.DS_Store

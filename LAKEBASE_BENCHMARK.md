@@ -1,4 +1,4 @@
-# Lakebase Performance Benchmarks
+# Lakebase Performance Benchmarks and Qualifications
 
 This document summarizes Lakebase Postgres performance benchmarks for sizing and capacity planning decisions.
 

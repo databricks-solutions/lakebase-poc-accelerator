@@ -6,36 +6,7 @@ bundle:
 
 include:
   - resources/*.yml
-
-resources:
-#  Provision Lakebase database instance
-#  https://docs.databricks.com/aws/en/dev-tools/bundles/resources#database_instances
-  database_instances:
-    my_instance:
-      name: lakebase-instance
-      capacity: CU_1
-# Register Lakebase database as a read-only UC catalog to enable federated queries + data governance
-  database_catalogs:
-    my_catalog:
-      database_instance_name: ${resources.database_instances.my_instance.name}
-      name: lakebase_catalog
-      database_name: my_database
-      create_database_if_not_exists: true
-# Define synced table: https://docs.databricks.com/aws/en/dev-tools/bundles/resources#synced_database_tables
-  synced_database_tables:
-    my_synced_table:
-      name: ${resources.database_catalogs.my_catalog.name}.public.destination_table
-      database_instance_name: ${resources.database_catalogs.my_catalog.database_instance_name}
-      logical_database_name: ${resources.database_catalogs.my_catalog.database_name}
-      spec:
-        source_table_full_name: 'source_catalog.source_schema.source_table'
-        scheduling_policy: TRIGGERED
-        primary_key_columns:
-          - pk_id
-        new_pipeline_spec:
-          storage_catalog: 'source_catalog'
-          storage_schema: 'source_schema'
-
+  - resources/*/*.yml
 
 targets:
   dev:
@@ -46,9 +17,15 @@ targets:
     mode: development
     default: true
     workspace:
-      host: https://myworkspace.cloud.databricks.com
+      host: https://e2-demo-field-eng.cloud.databricks.com
 
   prod:
     mode: production
     workspace:
-      host: https://myworkspace.cloud.databricks.com
+      host: https://e2-demo-field-eng.cloud.databricks.com
+      # We explicitly deploy to /Workspace/Users/anhhoang.chu@databricks.com to make sure we only have a single copy.
+      root_path: /Workspace/Users/anhhoang.chu@databricks.com/.bundle/${bundle.name}/${bundle.target}
+    permissions:
+      - user_name: anhhoang.chu@databricks.com
+        level: CAN_MANAGE
+

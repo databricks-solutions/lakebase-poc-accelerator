@@ -27,6 +27,14 @@ from typing import List, Dict, Any, Optional, Tuple
 import json
 from datetime import datetime
 
+# Load environment variables from .env if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    # dotenv is optional at runtime; requirements include it.
+    pass
+
 # Required imports
 try:
     from openai import OpenAI
@@ -514,22 +522,9 @@ def main():
         help='Output file for single file conversion'
     )
     
-    # LLM Configuration
-    parser.add_argument(
-        '--databricks-token',
-        default=os.environ.get('DATABRICKS_TOKEN'),
-        help='Databricks API token (default: DATABRICKS_TOKEN env var)'
-    )
-    parser.add_argument(
-        '--databricks-endpoint',
-        default="https://e2-demo-field-eng.cloud.databricks.com/serving-endpoints",
-        help='Databricks LLM endpoint URL'
-    )
-    parser.add_argument(
-        '--model',
-        default="databricks-meta-llama-3-1-70b-instruct",
-        help='LLM model name'
-    )
+    # LLM Configuration (from environment variables only)
+    # Required: DATABRICKS_TOKEN, DATABRICKS_ENDPOINT
+    # Optional: MODEL_NAME (defaults set below)
     
     # Processing options
     parser.add_argument(
@@ -567,9 +562,17 @@ def main():
     if args.config:
         config = load_config(args.config)
     
+    # Read credentials from environment
+    databricks_token = os.environ.get('DATABRICKS_TOKEN')
+    databricks_endpoint = os.environ.get('DATABRICKS_ENDPOINT')
+    model_name = os.environ.get('MODEL_NAME', "databricks-meta-llama-3-1-70b-instruct")
+
     # Validate required parameters
-    if not args.databricks_token:
-        logger.error("Databricks token required. Set DATABRICKS_TOKEN environment variable or use --databricks-token")
+    if not databricks_token:
+        logger.error("Databricks token required. Set DATABRICKS_TOKEN in your environment or .env file")
+        sys.exit(1)
+    if not databricks_endpoint:
+        logger.error("Databricks endpoint required. Set DATABRICKS_ENDPOINT in your environment or .env file")
         sys.exit(1)
     
     if not OPENAI_AVAILABLE:
@@ -589,8 +592,8 @@ def main():
     
     if args.dry_run:
         logger.info("Dry run mode - validating setup...")
-        logger.info(f"Databricks endpoint: {args.databricks_endpoint}")
-        logger.info(f"Model: {args.model}")
+        logger.info(f"Databricks endpoint: {databricks_endpoint}")
+        logger.info(f"Model: {model_name}")
         logger.info(f"SQL validation: {'enabled' if SQLPARSE_AVAILABLE else 'disabled'}")
         logger.info("Setup validation completed successfully")
         return
@@ -598,9 +601,9 @@ def main():
     # Initialize converter
     try:
         converter = QueryConverter(
-            databricks_token=args.databricks_token,
-            databricks_endpoint=args.databricks_endpoint,
-            model_name=args.model
+            databricks_token=databricks_token,
+            databricks_endpoint=databricks_endpoint,
+            model_name=model_name
         )
     except Exception as e:
         logger.error(f"Failed to initialize converter: {e}")
