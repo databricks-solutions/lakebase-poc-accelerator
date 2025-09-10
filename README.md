@@ -151,26 +151,13 @@ The project includes a comprehensive cost estimator (`src/lakebase_cost_estimato
 
 ```bash
 # Basic cost estimation using workload configuration
-python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml
+python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output quickstarts/cost_report.json
 
 # With JSON output
 python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output cost_report.json
 ```
 
 #### Cost Estimation with Table Size Calculation
-
-To get accurate cost estimates based on actual table sizes from your Databricks workspace:
-
-```bash
-# Calculate actual table sizes and estimate costs
-python src/lakebase_cost_estimator.py \
-  --config quickstarts/quickstarts_workload_config.yml \
-  --calculate-table-sizes \
-  --databricks-hostname "adb-1234567890123456.7.azuredatabricks.net" \
-  --databricks-http-path "/sql/1.0/warehouses/abc123def456" \
-  --databricks-token "dapi1234567890abcdef" \
-  --output cost_report_with_sizes.json
-```
 
 **Table Size Calculation Features:**
 - Connects to your Databricks workspace using SQL warehouse
@@ -179,33 +166,14 @@ python src/lakebase_cost_estimator.py \
 - Provides per-table size breakdown
 - Uses actual data sizes for more accurate cost estimates
 
-**Required Parameters for Table Size Calculation:**
-- `--databricks-hostname`: Your Databricks workspace hostname
-- `--databricks-http-path`: SQL warehouse HTTP path (found in SQL warehouse settings)
-- `--databricks-token`: Your Databricks Personal Access Token (same as `DATABRICKS_ACCESS_TOKEN`)
-- `--calculate-table-sizes`: Flag to enable table size calculation
-
-**Finding Your SQL Warehouse HTTP Path:**
-1. Go to your Databricks workspace
-2. Navigate to **SQL Warehouses** in the left sidebar
-3. Click on your warehouse
-4. Go to **Connection details** tab
-5. Copy the **HTTP path** (e.g., `/sql/1.0/warehouses/abc123def456`)
-
-#### Environment Variables for Table Size Calculation
-
-You can also use environment variables instead of command line arguments:
 
 ```bash
-# Set environment variables
-export DATABRICKS_SERVER_HOSTNAME="adb-1234567890123456.7.azuredatabricks.net"
-export DATABRICKS_HTTP_PATH="/sql/1.0/warehouses/abc123def456"
-export DATABRICKS_ACCESS_TOKEN="dapi1234567890abcdef"
-
-# Run with environment variables
+# The cost estimator will automatically load these variables from the .env file.
+# Run the cost estimator
 python src/lakebase_cost_estimator.py \
   --config quickstarts/quickstarts_workload_config.yml \
   --calculate-table-sizes
+  --output cost_report.json 
 ```
 
 #### Cost Estimation Output
