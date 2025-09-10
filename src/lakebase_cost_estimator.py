@@ -6,24 +6,42 @@ This script calculates the cost of running Lakebase Postgres instances based on
 workload characteristics and usage patterns.
 
 Usage:
-    python lakebase_cost_estimator.py --config workload_sizing.yml
-    python lakebase_cost_estimator.py --interactive
-    python lakebase_cost_estimator.py --config workload_sizing.yml --output cost_report.json
+    # From base directory:
+    python src/lakebase_cost_estimator.py --config workload_config.yml --output cost_report.json
+    python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output quickstarts/cost_report.json
+    
+    # With table size calculation (requires .env file with Databricks connection):
+    python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output cost_report.json --calculate-table-sizes
+    
+    # Required environment variables in .env file:
+    # DATABRICKS_SERVER_HOSTNAME=your-databricks-hostname
+    # DATABRICKS_HTTP_PATH=your-sql-warehouse-http-path
+    # DATABRICKS_ACCESS_TOKEN=your-databricks-access-token
+    
 """
 
 import argparse
 import json
 import logging
 import math
+import os
 import sys
 from dataclasses import dataclass, asdict
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 import yaml
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+try:
+    from databricks import sql
+    DATABRICKS_SQL_AVAILABLE = True
+except ImportError:
+    DATABRICKS_SQL_AVAILABLE = False
+    logger.warning("databricks-sql-connector not available. Table size calculation will be skipped.")
 
 
 @dataclass
@@ -103,8 +121,8 @@ class LakebaseCostEstimator:
         
         # Sync throughput rates (GB per hour)
         self.sync_throughput = {
-            "Snapshot": {1: 54, 2: 108, 4: 216},
-            "Triggered": {1: 4.5, 2: 9, 4: 18}
+            "SNAPSHOT": {1: 54, 2: 108, 4: 216},
+            "TRIGGERED": {1: 4.5, 2: 9, 4: 18}
         }
         
         # Frequency multipliers
@@ -153,7 +171,7 @@ class LakebaseCostEstimator:
         Parameters:
             expected_data_gb (float): Expected data to be written (GB).
             cus (int): Capacity Units (1, 2, or 4).
-            sync_mode (str): "Snapshot" or "Triggered".
+            sync_mode (str): "SNAPSHOT" or "TRIGGERED" (case-insensitive).
         
         Returns:
             float: Estimated time in hours.
@@ -161,12 +179,14 @@ class LakebaseCostEstimator:
         # Fixed overhead: 10 minutes
         overhead_hours = 10 / 60
         
-        if sync_mode not in self.sync_throughput:
-            raise ValueError("Invalid sync mode. Use 'Snapshot' or 'Triggered'.")
-        if cus not in self.sync_throughput[sync_mode]:
+        # Normalize sync mode to uppercase
+        sync_mode_upper = sync_mode.upper()
+        if sync_mode_upper not in self.sync_throughput:
+            raise ValueError("Invalid sync mode. Use 'SNAPSHOT' or 'TRIGGERED'.")
+        if cus not in self.sync_throughput[sync_mode_upper]:
             raise ValueError("Invalid CU. Use 1, 2, or 4.")
         
-        transfer_rate = self.sync_throughput[sync_mode][cus]
+        transfer_rate = self.sync_throughput[sync_mode_upper][cus]
         
         # Formula: overhead + (data ÷ rate)
         return overhead_hours + (expected_data_gb / transfer_rate)
@@ -305,7 +325,7 @@ class LakebaseCostEstimator:
         )
 
 
-def load_workload_config(config_file: str) -> WorkloadConfig:
+def load_workload_config(config_file: str) -> tuple[WorkloadConfig, List[Dict[str, Any]]]:
     """Load workload configuration from YAML file."""
     with open(config_file, 'r') as f:
         config_data = yaml.safe_load(f)
@@ -319,7 +339,10 @@ def load_workload_config(config_file: str) -> WorkloadConfig:
     # Extract sync config
     sync = config_data.get('delta_synchronization', {})
     
-    return WorkloadConfig(
+    # Extract tables to sync
+    tables_to_sync = sync.get('tables_to_sync', [])
+    
+    config = WorkloadConfig(
         bulk_writes_per_second=db_instance.get('bulk_writes_per_second', 0),
         continuous_writes_per_second=db_instance.get('continuous_writes_per_second', 0),
         reads_per_second=db_instance.get('reads_per_second', 0),
@@ -334,9 +357,124 @@ def load_workload_config(config_file: str) -> WorkloadConfig:
         sync_frequency=sync.get('sync_frequency', 'Per day'),
         promotion_percentage=db_instance.get('promotion_percentage', config_data.get('promotion_percentage', 0.0))
     )
+    
+    return config, tables_to_sync
+
+
+def get_delta_table_sizes(tables_config: List[Dict[str, Any]], 
+                         server_hostname: str,
+                         http_path: str,
+                         access_token: str) -> Dict[str, Any]:
+    """
+    Calculate total uncompressed size of Delta tables using Databricks SQL connector.
+    
+    Args:
+        tables_config: List of table configurations from YAML
+        server_hostname: Databricks workspace hostname
+        http_path: SQL warehouse HTTP path
+        access_token: Databricks access token
+        
+    Returns:
+        Dictionary with total size and per-table details
+    """
+    if not DATABRICKS_SQL_AVAILABLE:
+        return {"error": "databricks-sql-connector not available"}
+    
+    try:
+        # Connect to Databricks
+        with sql.connect(
+            server_hostname=server_hostname,
+            http_path=http_path,
+            access_token=access_token
+        ) as connection:
+            with connection.cursor() as cursor:
+                # Build query to get uncompressed bytes for all tables
+                table_queries = []
+                table_details = []
+                
+                for table_config in tables_config:
+                    table_name = table_config.get('name', '')
+                    if not table_name:
+                        continue
+                    
+                    # Extract just the table name (without schema/catalog)
+                    table_name_only = table_name.split('.')[-1]
+                    
+                    # Create query for this table
+                    table_query = f"select sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM {table_name}"
+                    table_queries.append(table_query)
+                    
+                    # Store table info for details
+                    table_details.append({
+                        'table_name': table_name,
+                        'table_name_only': table_name_only
+                    })
+                
+                if not table_queries:
+                    return {"error": "No valid tables found in configuration"}
+                
+                # Combine all table queries with UNION
+                combined_query = "with cte as\n(" + "\nunion\n".join(table_queries) + ")\nselect sum(uncompressed_bytes) as uncompressed_bytes from cte;"
+                
+                logger.info(f"Executing query to calculate table sizes...")
+                logger.debug(f"Query: {combined_query}")
+                
+                # Execute the query
+                cursor.execute(combined_query)
+                result = cursor.fetchone()
+                
+                if result and result[0] is not None:
+                    total_uncompressed_bytes = result[0]
+                    total_size_gb = total_uncompressed_bytes / (1024**3)  # Convert to GB
+                    
+                    # Get individual table sizes for details
+                    individual_sizes = []
+                    for i, table_config in enumerate(tables_config):
+                        table_name = table_config.get('name', '')
+                        if not table_name:
+                            continue
+                        
+                        try:
+                            # Query individual table size
+                            individual_query = f"select sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM {table_name}"
+                            cursor.execute(individual_query)
+                            individual_result = cursor.fetchone()
+                            
+                            if individual_result and individual_result[0] is not None:
+                                table_bytes = individual_result[0]
+                                table_size_gb = table_bytes / (1024**3)
+                                individual_sizes.append({
+                                    'table_name': table_name,
+                                    'uncompressed_bytes': table_bytes,
+                                    'size_gb': table_size_gb
+                                })
+                        except Exception as e:
+                            logger.warning(f"Could not get size for table {table_name}: {e}")
+                            individual_sizes.append({
+                                'table_name': table_name,
+                                'uncompressed_bytes': 0,
+                                'size_gb': 0.0,
+                                'error': str(e)
+                            })
+                    
+                    return {
+                        'total_uncompressed_bytes': total_uncompressed_bytes,
+                        'total_size_gb': total_size_gb,
+                        'table_details': individual_sizes,
+                        'query_used': combined_query
+                    }
+                else:
+                    return {"error": "No data returned from query"}
+                    
+    except Exception as e:
+        logger.error(f"Error calculating table sizes: {e}")
+        return {"error": str(e)}
 
 
 def main():
+    # Load environment variables from .env file
+    load_dotenv()
+    
     parser = argparse.ArgumentParser(
         description='Lakebase Postgres Cost Estimator - Load configuration from YAML file'
     )
@@ -358,6 +496,13 @@ def main():
         help='Enable verbose logging'
     )
     
+    
+    parser.add_argument(
+        '--calculate-table-sizes',
+        action='store_true',
+        help='Calculate actual table sizes from Databricks (requires DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_ACCESS_TOKEN in .env file)'
+    )
+    
     args = parser.parse_args()
     
     if args.verbose:
@@ -367,8 +512,32 @@ def main():
     
     # Load from configuration file
     try:
-        config = load_workload_config(args.config)
+        config, tables_to_sync = load_workload_config(args.config)
         cost_breakdown = estimator.calculate_total_cost(config)
+        
+        # Calculate table sizes if requested
+        table_sizes = None
+        if args.calculate_table_sizes:
+            # Get connection parameters from environment variables (loaded from .env file)
+            hostname = os.getenv('DATABRICKS_SERVER_HOSTNAME')
+            http_path = os.getenv('DATABRICKS_HTTP_PATH')
+            access_token = os.getenv('DATABRICKS_ACCESS_TOKEN')
+            
+            if not all([hostname, http_path, access_token]):
+                logger.error("Databricks connection parameters required for table size calculation")
+                logger.error("Please set the following environment variables in .env file:")
+                logger.error("  DATABRICKS_SERVER_HOSTNAME=your-databricks-hostname")
+                logger.error("  DATABRICKS_HTTP_PATH=your-sql-warehouse-http-path")
+                logger.error("  DATABRICKS_ACCESS_TOKEN=your-databricks-access-token")
+                sys.exit(1)
+            
+            logger.info("Calculating actual table sizes from Databricks...")
+            table_sizes = get_delta_table_sizes(
+                tables_to_sync,
+                hostname,
+                http_path,
+                access_token
+            )
         
         # Display results
         print("\n" + "="*60)
@@ -400,6 +569,23 @@ def main():
         print(f"  Cost per QPS: ${cost_breakdown.cost_per_qps:.4f}")
         print(f"  Cost per CU: ${cost_breakdown.cost_per_cu:.2f}")
         
+        # Display table size information if calculated
+        if table_sizes and 'error' not in table_sizes:
+            print(f"\nTable Size Analysis:")
+            print(f"  Total uncompressed size: {table_sizes['total_size_gb']:.2f} GB")
+            print(f"  Total uncompressed bytes: {table_sizes['total_uncompressed_bytes']:,}")
+            print(f"  Number of tables: {len(table_sizes['table_details'])}")
+            
+            if table_sizes['table_details']:
+                print(f"\nPer-table details:")
+                for table_detail in table_sizes['table_details']:
+                    if 'error' in table_detail:
+                        print(f"    {table_detail['table_name']}: Error - {table_detail['error']}")
+                    else:
+                        print(f"    {table_detail['table_name']}: {table_detail['size_gb']:.2f} GB ({table_detail['uncompressed_bytes']:,} bytes)")
+        elif table_sizes and 'error' in table_sizes:
+            print(f"\nTable Size Analysis: Error - {table_sizes['error']}")
+        
         # Save results if requested
         if args.output:
             results = {
@@ -407,6 +593,9 @@ def main():
                 "workload_config": asdict(config),
                 "cost_breakdown": asdict(cost_breakdown)
             }
+            
+            if table_sizes:
+                results["table_sizes"] = table_sizes
             with open(args.output, 'w') as f:
                 json.dump(results, f, indent=2, default=str)
             print(f"\nResults saved to: {args.output}")

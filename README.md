@@ -102,14 +102,26 @@ $ brew update && brew upgrade databricks && databricks --version | cat
 
 3. Environment Variables (.env)
 
-Create a `.env` file in the project root with the following variables (used by `src/convert_queries.py`):
+Create a `.env` file in the project root with the following variables:
 
 ````bash
-DATABRICKS_TOKEN=your_databricks_pat
+# Required for query conversion (src/convert_queries.py)
+DATABRICKS_ACCESS_TOKEN=your_databricks_pat
 DATABRICKS_ENDPOINT=https://your-workspace.cloud.databricks.com/serving-endpoints
 # LLM Model name for Query Conversion, defaults to databricks-meta-llama-3-1-70b-instruct
 MODEL_NAME=databricks-meta-llama-3-1-70b-instruct
+
+# Required for table size calculation (src/lakebase_cost_estimator.py)
+DATABRICKS_SERVER_HOSTNAME=your-workspace.cloud.databricks.com
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/your-warehouse-id
 ````
+
+**Environment Variable Details:**
+- `DATABRICKS_ACCESS_TOKEN`: Your Databricks Personal Access Token (used for both query conversion and table size calculation)
+- `DATABRICKS_SERVER_HOSTNAME`: Your Databricks workspace hostname (e.g., `adb-1234567890123456.7.azuredatabricks.net`)
+- `DATABRICKS_HTTP_PATH`: SQL warehouse HTTP path (e.g., `/sql/1.0/warehouses/abc123def456`)
+
+**Note:** The same `DATABRICKS_ACCESS_TOKEN` is used for both query conversion (`src/convert_queries.py`) and table size calculation (`src/lakebase_cost_estimator.py`). This simplifies configuration by using a single token for all Databricks API operations.
 
 
 ## 🚀 Quickstarts (optional)
@@ -128,6 +140,107 @@ databricks bundle deploy
 
 For detailed information about the quickstarts features, see the [quickstarts/README.md](quickstarts/README.md) file.
 
+
+## Usage
+
+### Cost Estimation with Table Size Calculation
+
+The project includes a comprehensive cost estimator (`src/lakebase_cost_estimator.py`) that can calculate Lakebase Postgres costs based on workload characteristics. It also supports calculating actual table sizes from Databricks Delta tables.
+
+#### Basic Cost Estimation
+
+```bash
+# Basic cost estimation using workload configuration
+python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml
+
+# With JSON output
+python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output cost_report.json
+```
+
+#### Cost Estimation with Table Size Calculation
+
+To get accurate cost estimates based on actual table sizes from your Databricks workspace:
+
+```bash
+# Calculate actual table sizes and estimate costs
+python src/lakebase_cost_estimator.py \
+  --config quickstarts/quickstarts_workload_config.yml \
+  --calculate-table-sizes \
+  --databricks-hostname "adb-1234567890123456.7.azuredatabricks.net" \
+  --databricks-http-path "/sql/1.0/warehouses/abc123def456" \
+  --databricks-token "dapi1234567890abcdef" \
+  --output cost_report_with_sizes.json
+```
+
+**Table Size Calculation Features:**
+- Connects to your Databricks workspace using SQL warehouse
+- Runs `DESCRIBE DETAIL` queries on all tables in the configuration
+- Calculates total compressed size across all Delta tables
+- Provides per-table size breakdown
+- Uses actual data sizes for more accurate cost estimates
+
+**Required Parameters for Table Size Calculation:**
+- `--databricks-hostname`: Your Databricks workspace hostname
+- `--databricks-http-path`: SQL warehouse HTTP path (found in SQL warehouse settings)
+- `--databricks-token`: Your Databricks Personal Access Token (same as `DATABRICKS_ACCESS_TOKEN`)
+- `--calculate-table-sizes`: Flag to enable table size calculation
+
+**Finding Your SQL Warehouse HTTP Path:**
+1. Go to your Databricks workspace
+2. Navigate to **SQL Warehouses** in the left sidebar
+3. Click on your warehouse
+4. Go to **Connection details** tab
+5. Copy the **HTTP path** (e.g., `/sql/1.0/warehouses/abc123def456`)
+
+#### Environment Variables for Table Size Calculation
+
+You can also use environment variables instead of command line arguments:
+
+```bash
+# Set environment variables
+export DATABRICKS_SERVER_HOSTNAME="adb-1234567890123456.7.azuredatabricks.net"
+export DATABRICKS_HTTP_PATH="/sql/1.0/warehouses/abc123def456"
+export DATABRICKS_ACCESS_TOKEN="dapi1234567890abcdef"
+
+# Run with environment variables
+python src/lakebase_cost_estimator.py \
+  --config quickstarts/quickstarts_workload_config.yml \
+  --calculate-table-sizes
+```
+
+#### Cost Estimation Output
+
+The cost estimator provides detailed breakdown including:
+- **Compute costs**: Main instance and readable secondaries
+- **Storage costs**: Based on data size and retention policies
+- **Sync costs**: Delta synchronization costs
+- **Table size analysis**: Total compressed size and per-table details
+- **Cost efficiency metrics**: Cost per GB, QPS, and Capacity Unit
+
+### Table Configuration Generator
+
+The project includes a table configuration generator (`src/generate_synced_tables.py`) that creates Databricks bundle configuration files from workload definitions.
+
+#### Basic Usage
+
+```bash
+# Generate synced tables from workload config (auto-detects output path)
+python src/generate_synced_tables.py --config quickstarts/quickstarts_workload_config.yml
+
+# Specify custom output path
+python src/generate_synced_tables.py --config workload_config.yml --output synced_tables.yml
+
+# Enable verbose output for debugging
+python src/generate_synced_tables.py --config workload_config.yml --verbose
+```
+
+#### Features
+
+- **Flexible input**: Accepts any workload configuration file with `tables_to_sync` section
+- **Auto-generated output**: Automatically determines output path based on input file location
+- **Custom output**: Allows specifying custom output file paths
+- **Verbose mode**: Provides detailed error information for debugging
+- **YAML validation**: Ensures proper formatting of generated configuration files
 
 ## Usage
 

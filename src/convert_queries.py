@@ -523,7 +523,7 @@ def main():
     )
     
     # LLM Configuration (from environment variables only)
-    # Required: DATABRICKS_TOKEN, DATABRICKS_ENDPOINT
+    # Required: DATABRICKS_ACCESS_TOKEN, DATABRICKS_ENDPOINT
     # Optional: MODEL_NAME (defaults set below)
     
     # Processing options
@@ -563,13 +563,13 @@ def main():
         config = load_config(args.config)
     
     # Read credentials from environment
-    databricks_token = os.environ.get('DATABRICKS_TOKEN')
+    databricks_token = os.environ.get('DATABRICKS_ACCESS_TOKEN')
     databricks_endpoint = os.environ.get('DATABRICKS_ENDPOINT')
     model_name = os.environ.get('MODEL_NAME', "databricks-meta-llama-3-1-70b-instruct")
 
     # Validate required parameters
     if not databricks_token:
-        logger.error("Databricks token required. Set DATABRICKS_TOKEN in your environment or .env file")
+        logger.error("Databricks token required. Set DATABRICKS_ACCESS_TOKEN in your environment or .env file")
         sys.exit(1)
     if not databricks_endpoint:
         logger.error("Databricks endpoint required. Set DATABRICKS_ENDPOINT in your environment or .env file")

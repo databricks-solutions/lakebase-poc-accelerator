@@ -1,10 +1,14 @@
-# Cursor Rules for Databricks Lakebase Accelerator Project
+# # Project Instructions
 
 ## File Creation Rules
 1. **DO NOT create README files, documentation, or instruction files unless explicitly requested by the user**
 2. **DO NOT create setup guides or getting started documentation unless specifically asked**
 3. **Focus on code implementation and technical solutions when not explicitly asked for documentation**
 4. **Always run Python code in virtual environment such as .venv or venv**
+
+## File Access Rules
+1. **DO NOT read or access .env files** - These contain sensitive credentials and should not be included in context
+2. **DO NOT reference or show contents of .env files** - Use placeholder values when discussing environment variables
 
 ## Project Focus
 - This is a Databricks Lakebase Accelerator project

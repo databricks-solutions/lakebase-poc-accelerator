@@ -1,5 +1,6 @@
 # This is a Databricks asset bundle definition for lakebase_accelerator.
 # See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+# Do not change the bundle name or uuid.
 bundle:
   name: lakebase_accelerator
   uuid: 5fec423c-234a-4869-a92b-766f76f6f70f

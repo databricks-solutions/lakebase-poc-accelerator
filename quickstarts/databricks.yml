@@ -1,5 +1,7 @@
 # This is a Databricks asset bundle definition for quickstarts.
 # See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+# Do not change the bundle name or uuid.
+
 bundle:
   name: quickstarts_lakebase_accelerator
   uuid: 4e0f8edc-9a87-4380-a9f4-0d5df3dae837

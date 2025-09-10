@@ -1,0 +1,28 @@
+---
+description: Documentation and README creation guidelines
+---
+
+# Documentation Guidelines
+
+## When to Create Documentation
+- **DO NOT create README files, documentation, or instruction files unless explicitly requested by the user**
+- **DO NOT create setup guides or getting started documentation unless specifically asked**
+- **Focus on code implementation and technical solutions when not explicitly asked for documentation**
+
+## When Documentation IS Requested
+- Only create README files when the user explicitly asks for them
+- Only create setup instructions when specifically requested
+- Only create getting started guides when prompted
+- Focus on technical content rather than verbose explanations
+
+## Response Style
+- Be concise and technical
+- Provide code solutions directly
+- Ask clarifying questions when needed
+- Don't assume documentation is needed
+
+## Code Comments
+- Include inline comments explaining complex logic
+- Use meaningful variable and function names
+- Document function parameters and return values
+- Explain business logic and technical decisions

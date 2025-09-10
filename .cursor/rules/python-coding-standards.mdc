@@ -1,0 +1,25 @@
+---
+globs: *.py
+---
+
+# Python Coding Standards
+
+## Code Style
+- Use meaningful variable and function names
+- Include inline comments explaining complex logic
+- Follow PEP 8 style guidelines
+- Use type hints where appropriate
+
+## Virtual Environment
+- Always run Python code in virtual environment (.venv or venv)
+- Use `source .venv/bin/activate` before running Python scripts
+
+## Error Handling
+- Include proper error handling with try-catch blocks
+- Use logging for informative error messages
+- Validate required parameters before processing
+
+## Databricks Integration
+- Use environment variables for sensitive credentials
+- Implement graceful fallbacks when Databricks connector is not available
+- Include proper connection error handling
