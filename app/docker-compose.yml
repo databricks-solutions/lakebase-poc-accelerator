@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  lakebase-accelerator:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABRICKS_ACCESS_TOKEN=${DATABRICKS_ACCESS_TOKEN}
+      - DATABRICKS_ENDPOINT=${DATABRICKS_ENDPOINT}
+      - DATABRICKS_SERVER_HOSTNAME=${DATABRICKS_SERVER_HOSTNAME}
+      - DATABRICKS_HTTP_PATH=${DATABRICKS_HTTP_PATH}
+      - MODEL_NAME=${MODEL_NAME:-databricks-meta-llama-3-1-70b-instruct}
+    volumes:
+      - ./.env:/app/.env:ro
+    networks:
+      - lakebase-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  lakebase-network:
+    driver: bridge
