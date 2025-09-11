@@ -3,9 +3,11 @@
 This project is designed to streamline the testing and migration of customer OLTP workloads to Lakebase, Databricks' managed Postgres solution. It is particularly focused on supporting reverse ETL use cases. The accelerator provides an easy way for users to evaluate Lakebase and quickly get started with their migration or testing needs.
 
 ## Qualifications
-- Supported dataset size: up to 2TB in Postgres. **Be aware that Delta tables are highly compressed on cloud storage, when migrated to Lakebase, the physical table size may increase by 10x to 20x.**
+- Supported dataset size: up to 2TB in Postgres. **Be aware that Delta tables are highly compressed on cloud storage, when migrated to Lakebase, the physical table size may increase by 5x-10x.** 
+Use [Cost Estimation with Table Size Calculation](#cost-estimation-with-table-size-calculation) to estimate table size
 - Throughput: supports up to 100k queries per second (QPS)
 - Reverse ETL is supported: data can be synchronized from Delta tables to Postgres in Lakebase to enable low-latency application serving.
+- Column with UTF8 encoding is not supported
 
 ### Lakebase performance
 
@@ -59,15 +61,6 @@ $ brew update && brew upgrade databricks && databricks --version | cat
 2. Authenticate to your Databricks workspace, if you have not done so already:
 
    #### Option A: Personal Access Token (PAT)
-
-   **Generate Personal Access Token:**
-      - Log into your Databricks workspace
-      - Click on your username in the top-right corner
-      - SELECT **User Settings** → **Developer** → **Access tokens**
-      - Click **Generate new token**
-      - Give it a name (e.g., "Local Development") and set expiration
-      - Copy the generated token
-
    **Configure CLI with PAT:**
 
    ```bash
@@ -123,29 +116,11 @@ DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/your-warehouse-id
 
 **Note:** The same `DATABRICKS_ACCESS_TOKEN` is used for both query conversion (`src/convert_queries.py`) and table size calculation (`src/lakebase_cost_estimator.py`). This simplifies configuration by using a single token for all Databricks API operations.
 
-
-## 🚀 Quickstarts (optional)
-
-This project includes a separate Databricks bundle configuration in the `quickstarts/` folder that contains starter resources and examples for testing the solution
-
-### Deploying Quickstarts Resources
-
-To deploy the quickstarts bundle instead of the main project bundle, change to quickstarts directory and run below
-```bash
-cd quickstarts
-databricks bundle deploy
-```
-
-### Quickstarts Bundle Contents
-
-For detailed information about the quickstarts features, see the [quickstarts/README.md](quickstarts/README.md) file.
-
-
 ## Usage
 
-### Cost Estimation with Table Size Calculation
+### Cost Estimation
 
-The project includes a comprehensive cost estimator (`src/lakebase_cost_estimator.py`) that can calculate Lakebase Postgres costs based on workload characteristics. It also supports calculating actual table sizes from Databricks Delta tables.
+The project includes a comprehensive cost estimator (`src/lakebase_cost_estimator.py`) that can calculate Lakebase Postgres costs based on workload characteristics. It also supports calculating actual uncompressed table sizes from Databricks Delta tables. 
 
 #### Basic Cost Estimation
 
@@ -161,10 +136,9 @@ python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_
 
 **Table Size Calculation Features:**
 - Connects to your Databricks workspace using SQL warehouse
-- Runs `DESCRIBE DETAIL` queries on all tables in the configuration
-- Calculates total compressed size across all Delta tables
+- Calculates total uncompressed size across all Delta tables
 - Provides per-table size breakdown
-- Uses actual data sizes for more accurate cost estimates
+- This uncompressed size is very close to the size of the table size in Postgres excluding primary key.
 
 
 ```bash
@@ -192,7 +166,7 @@ The project includes a table configuration generator (`src/generate_synced_table
 #### Basic Usage
 
 ```bash
-# Generate synced tables from workload config (auto-detects output path)
+# Generate synced tables from workload config (quickstarts)
 python src/generate_synced_tables.py --config quickstarts/quickstarts_workload_config.yml
 
 # Specify custom output path
@@ -209,9 +183,6 @@ python src/generate_synced_tables.py --config workload_config.yml --verbose
 - **Custom output**: Allows specifying custom output file paths
 - **Verbose mode**: Provides detailed error information for debugging
 - **YAML validation**: Ensures proper formatting of generated configuration files
-
-## Usage
-
 
 
 ## Deployment

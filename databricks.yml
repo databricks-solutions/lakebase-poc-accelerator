@@ -20,13 +20,13 @@ targets:
     workspace:
       host: https://e2-demo-field-eng.cloud.databricks.com
 
-  prod:
-    mode: production
-    workspace:
-      host: https://e2-demo-field-eng.cloud.databricks.com
-      # We explicitly deploy to /Workspace/Users/anhhoang.chu@databricks.com to make sure we only have a single copy.
-      root_path: /Workspace/Users/anhhoang.chu@databricks.com/.bundle/${bundle.name}/${bundle.target}
-    permissions:
-      - user_name: anhhoang.chu@databricks.com
-        level: CAN_MANAGE
+  # prod:
+  #   mode: production
+  #   workspace:
+  #     host: https://e2-demo-field-eng.cloud.databricks.com
+  #     # We explicitly deploy to /Workspace/Users/anhhoang.chu@databricks.com to make sure we only have a single copy.
+  #     root_path: /Workspace/Users/anhhoang.chu@databricks.com/.bundle/${bundle.name}/${bundle.target}
+  #   permissions:
+  #     - user_name: anhhoang.chu@databricks.com
+  #       level: CAN_MANAGE
 

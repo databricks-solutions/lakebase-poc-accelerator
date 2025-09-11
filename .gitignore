@@ -9,3 +9,5 @@ scratch/**
 .vscode/*
 .env
 .DS_Store
+instructions/*
+.cursor/*
