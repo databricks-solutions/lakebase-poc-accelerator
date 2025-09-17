@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-09-16T17:18:06.290451",
+  "timestamp": "2025-09-16T23:54:38.953159",
   "workload_config": {
     "bulk_writes_per_second": 0,
     "continuous_writes_per_second": 0,
@@ -36,59 +36,59 @@
   },
   "table_sizes": {
     "total_uncompressed_bytes": 1251121008,
-    "total_size_gb": 1.1651972383260727,
+    "total_size_mb": 1193.1619720458984,
     "table_details": [
       {
         "table_name": "samples.tpcds_sf1.customer",
         "uncompressed_bytes": 17286876,
-        "size_gb": 0.016099657863378525
+        "size_mb": 16.48604965209961
       },
       {
         "table_name": "samples.tpcds_sf1.customer_address",
         "uncompressed_bytes": 7157414,
-        "size_gb": 0.0066658612340688705
+        "size_mb": 6.825841903686523
       },
       {
         "table_name": "samples.tpcds_sf1.customer_demographics",
         "uncompressed_bytes": 138284096,
-        "size_gb": 0.128787100315094
+        "size_mb": 131.87799072265625
       },
       {
         "table_name": "samples.tpcds_sf1.store_sales",
         "uncompressed_bytes": 480256916,
-        "size_gb": 0.4472741074860096
+        "size_mb": 458.0086860656738
       },
       {
         "table_name": "samples.tpcds_sf1.item",
         "uncompressed_bytes": 5630732,
-        "size_gb": 0.005244027823209763
+        "size_mb": 5.369884490966797
       },
       {
         "table_name": "samples.tpcds_sf1.date_dim",
         "uncompressed_bytes": 12508908,
-        "size_gb": 0.011649828404188156
+        "size_mb": 11.929424285888672
       },
       {
         "table_name": "samples.tpcds_sf1.store",
         "uncompressed_bytes": 3567,
-        "size_gb": 3.322027623653412e-06
+        "size_mb": 0.0034017562866210938
       },
       {
         "table_name": "samples.tpcds_sf1.inventory",
         "uncompressed_bytes": 589944876,
-        "size_gb": 0.5494289807975292
+        "size_mb": 562.6152763366699
       },
       {
         "table_name": "samples.tpcds_sf1.warehouse",
         "uncompressed_bytes": 768,
-        "size_gb": 7.152557373046875e-07
+        "size_mb": 0.000732421875
       },
       {
         "table_name": "samples.tpcds_sf1.promotion",
         "uncompressed_bytes": 46855,
-        "size_gb": 4.3637119233608246e-05
+        "size_mb": 0.044684410095214844
       }
     ],
-    "query_used": "with cte as\n(select sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.customer\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.customer_address\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.customer_demographics\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.store_sales\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.item\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.date_dim\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.store\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.inventory\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.warehouse\nunion\nselect sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM samples.tpcds_sf1.promotion)\nselect sum(uncompressed_bytes) as uncompressed_bytes from cte;"
+    "query_used": "Individual queries for 10 tables"
   }
 }

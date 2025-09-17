@@ -159,21 +159,21 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       onFinish={handleSubmit}
       className="databricks-form"
       initialValues={{
-        bulk_writes_per_second: 5000,
-        continuous_writes_per_second: 2000,
-        reads_per_second: 8000,
-        number_of_readable_secondaries: 2,
-        readable_secondary_size_cu: 2,
+        bulk_writes_per_second: 1000,
+        continuous_writes_per_second: 0,
+        reads_per_second: 1000,
+        number_of_readable_secondaries: 1,
+        readable_secondary_size_cu: 1,
         promotion_percentage: 50,
-        data_stored_gb: 250,
-        estimated_data_deleted_daily_gb: 5,
-        restore_windows_days: 7,
-        number_of_continuous_pipelines: 2,
+        data_stored_gb: 100,
+        estimated_data_deleted_daily_gb: 0,
+        restore_windows_days: 0,
+        number_of_continuous_pipelines: 0,
         expected_data_per_sync_gb: 20,
-        sync_mode: 'SNAPSHOT',
+        sync_mode: 'TRIGGERED',
         sync_frequency: 'Per day',
         lakebase_instance_name: 'lakebase-accelerator-instance',
-        uc_catalog_name: 'lakebase-accelerator-catalog',
+        uc_catalog_name: 'lakebase_accelerator_catalog',
         database_name: 'databricks_postgres'
       }}
     >
@@ -445,7 +445,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               label="UC Catalog Name"
               name="uc_catalog_name"
             >
-              <Input placeholder="lakebase-accelerator-catalog" />
+              <Input placeholder="lakebase_accelerator_catalog" />
             </Form.Item>
           </Col>
           <Col span={12}>

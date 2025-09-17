@@ -14,4 +14,8 @@ instructions/*
 .claude/*
 AGENTS.md 
 CLAUDE.md
+.env_prod
+.env_dev
+
+
 

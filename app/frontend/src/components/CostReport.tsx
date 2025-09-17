@@ -42,7 +42,17 @@ const CostReport: React.FC<Props> = ({ data }) => {
     <div style={{ display: 'grid', gap: '24px' }}>
       {/* Cost Summary Cards */}
       <Row gutter={16}>
-        <Col span={6}>
+        <Col span={4.5}>
+          <Card>
+            <Statistic
+              title="Recommended CU"
+              value={cost_breakdown.recommended_cu}
+              prefix={<ThunderboltOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col span={4.5}>
           <Card>
             <Statistic
               title="Total Monthly Cost"
@@ -54,17 +64,21 @@ const CostReport: React.FC<Props> = ({ data }) => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={4.5}>
           <Card>
             <Statistic
-              title="Recommended CU"
-              value={cost_breakdown.recommended_cu}
-              prefix={<ThunderboltOutlined />}
-              valueStyle={{ color: '#52c41a' }}
+              title="Total Compute Cost"
+              value={cost_breakdown.total_compute_cost}
+              precision={2}
+              prefix={<DollarOutlined />}
+              suffix="USD"
+              valueStyle={{ color: '#E60073' }}
             />
           </Card>
         </Col>
-        <Col span={6}>
+        
+        
+        <Col span={4.5}>
           <Card>
             <Statistic
               title="Storage Cost"
@@ -76,7 +90,7 @@ const CostReport: React.FC<Props> = ({ data }) => {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={4.5}>
           <Card>
             <Statistic
               title="Sync Cost"

@@ -384,83 +384,63 @@ def get_delta_table_sizes(tables_config: List[Dict[str, Any]],
             access_token=access_token
         ) as connection:
             with connection.cursor() as cursor:
-                # Build query to get uncompressed bytes for all tables
-                table_queries = []
-                table_details = []
+                # Validate tables configuration
+                if not tables_config:
+                    return {"error": "No valid tables found in configuration"}
                 
-                for table_config in tables_config:
+                logger.info(f"Executing individual queries to calculate table sizes...")
+                
+                # Get individual table sizes and sum them up
+                individual_sizes = []
+                total_uncompressed_bytes = 0
+                
+                for i, table_config in enumerate(tables_config):
                     table_name = table_config.get('name', '')
                     if not table_name:
                         continue
                     
-                    # Extract just the table name (without schema/catalog)
-                    table_name_only = table_name.split('.')[-1]
-                    
-                    # Create query for this table
-                    table_query = f"select sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM {table_name}"
-                    table_queries.append(table_query)
-                    
-                    # Store table info for details
-                    table_details.append({
-                        'table_name': table_name,
-                        'table_name_only': table_name_only
-                    })
-                
-                if not table_queries:
-                    return {"error": "No valid tables found in configuration"}
-                
-                # Combine all table queries with UNION
-                combined_query = "with cte as\n(" + "\nunion\n".join(table_queries) + ")\nselect sum(uncompressed_bytes) as uncompressed_bytes from cte;"
-                
-                logger.info(f"Executing query to calculate table sizes...")
-                logger.debug(f"Query: {combined_query}")
-                
-                # Execute the query
-                cursor.execute(combined_query)
-                result = cursor.fetchone()
-                
-                if result and result[0] is not None:
-                    total_uncompressed_bytes = result[0]
-                    total_size_mb = total_uncompressed_bytes / (1024**2)  # Convert to MB
-                    
-                    # Get individual table sizes for details
-                    individual_sizes = []
-                    for i, table_config in enumerate(tables_config):
-                        table_name = table_config.get('name', '')
-                        if not table_name:
-                            continue
+                    try:
+                        # Query individual table size
+                        individual_query = f"select sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM {table_name}"
+                        logger.debug(f"Executing query for {table_name}: {individual_query}")
+                        cursor.execute(individual_query)
+                        individual_result = cursor.fetchone()
                         
-                        try:
-                            # Query individual table size
-                            individual_query = f"select sum(len(to_csv(struct(*))) + 32) as uncompressed_bytes FROM {table_name}"
-                            cursor.execute(individual_query)
-                            individual_result = cursor.fetchone()
+                        if individual_result and individual_result[0] is not None:
+                            table_bytes = individual_result[0]
+                            table_size_mb = table_bytes / (1024**2)
+                            total_uncompressed_bytes += table_bytes
                             
-                            if individual_result and individual_result[0] is not None:
-                                table_bytes = individual_result[0]
-                                table_size_mb = table_bytes / (1024**2)
-                                individual_sizes.append({
-                                    'table_name': table_name,
-                                    'uncompressed_bytes': table_bytes,
-                                    'size_mb': table_size_mb
-                                })
-                        except Exception as e:
-                            logger.warning(f"Could not get size for table {table_name}: {e}")
+                            individual_sizes.append({
+                                'table_name': table_name,
+                                'uncompressed_bytes': table_bytes,
+                                'size_mb': table_size_mb
+                            })
+                        else:
+                            logger.warning(f"No data returned for table {table_name}")
                             individual_sizes.append({
                                 'table_name': table_name,
                                 'uncompressed_bytes': 0,
                                 'size_mb': 0.0,
-                                'error': str(e)
+                                'error': 'No data returned'
                             })
-                    
-                    return {
-                        'total_uncompressed_bytes': total_uncompressed_bytes,
-                        'total_size_mb': total_size_mb,
-                        'table_details': individual_sizes,
-                        'query_used': combined_query
-                    }
-                else:
-                    return {"error": "No data returned from query"}
+                    except Exception as e:
+                        logger.warning(f"Could not get size for table {table_name}: {e}")
+                        individual_sizes.append({
+                            'table_name': table_name,
+                            'uncompressed_bytes': 0,
+                            'size_mb': 0.0,
+                            'error': str(e)
+                        })
+                
+                total_size_mb = total_uncompressed_bytes / (1024**2)  # Convert to MB
+                
+                return {
+                    'total_uncompressed_bytes': total_uncompressed_bytes,
+                    'total_size_mb': total_size_mb,
+                    'table_details': individual_sizes,
+                    'query_used': f"Individual queries for {len(individual_sizes)} tables"
+                }
                     
     except Exception as e:
         logger.error(f"Error calculating table sizes: {e}")

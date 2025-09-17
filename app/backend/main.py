@@ -222,12 +222,12 @@ async def generate_lakebase_instance(request: WorkloadConfigRequest):
   database_instances:
     my_instance:
       name: {request.lakebase_instance_name}
-      capacity: capacity_{request.recommended_cu}
+      capacity: CU_{request.recommended_cu}
 
   # Register Lakebase database as a read-only UC catalog to enable federated queries + data governance
   database_catalogs:
     my_catalog:
-      database_instance_name: ${{resources.database_instances.my_instance.name}} # {request.lakebase_instance_name}
+      database_instance_name: ${{resources.database_instances.my_instance.name}} 
       name: {request.uc_catalog_name}
       database_name: {request.database_name}
       create_database_if_not_exists: true"""
@@ -240,6 +240,122 @@ async def generate_lakebase_instance(request: WorkloadConfigRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating lakebase instance config: {str(e)}")
+
+@app.post("/api/deploy")
+async def deploy_to_databricks(request: dict | None = None):
+  """
+  Save provided YAMLs to the repo and run `databricks bundle deploy`.
+  Reads credentials from environment variables.
+  """
+  try:
+    import subprocess
+    import os
+    import yaml
+    import shutil
+    from dotenv import load_dotenv
+
+    # Load environment variables from project root (if present)
+    load_dotenv()
+
+    access_token = os.getenv('DATABRICKS_ACCESS_TOKEN')
+    workspace = os.getenv('DATABRICKS_WORKSPACE_URL') or os.getenv('DATABRICKS_SERVER_HOSTNAME')
+
+    if not access_token:
+      raise HTTPException(status_code=400, detail='DATABRICKS_ACCESS_TOKEN not found in environment variables')
+    if not workspace:
+      raise HTTPException(status_code=400, detail='DATABRICKS_WORKSPACE_URL or DATABRICKS_SERVER_HOSTNAME not found in environment variables')
+
+    # Normalize workspace host
+    workspace_host = workspace.rstrip('/')
+    if not workspace_host.startswith('http://') and not workspace_host.startswith('https://'):
+      workspace_host = f'https://{workspace_host}'
+
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # Validate request payload
+    if not request or 'generatedConfigs' not in request:
+      raise HTTPException(status_code=400, detail='Generated configurations not provided')
+
+    generated_configs = request['generatedConfigs']
+
+    saved_files: list[str] = []
+
+    # Save databricks.yml at repo root
+    if 'databricks_config' in generated_configs:
+      databricks_yml_path = os.path.join(project_dir, 'databricks.yml')
+      with open(databricks_yml_path, 'w') as f:
+        cfg = generated_configs['databricks_config']
+        if isinstance(cfg, str):
+          f.write(cfg)
+        else:
+          yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+      saved_files.append('databricks.yml')
+
+    # Ensure resources directory
+    resources_dir = os.path.join(project_dir, 'resources')
+    os.makedirs(resources_dir, exist_ok=True)
+
+    # Save synced_delta_tables.yml
+    if 'synced_tables' in generated_configs:
+      synced_path = os.path.join(resources_dir, 'synced_delta_tables.yml')
+      with open(synced_path, 'w') as f:
+        tables_cfg = generated_configs['synced_tables']
+        if isinstance(tables_cfg, str):
+          f.write(tables_cfg)
+        else:
+          yaml.dump(tables_cfg, f, default_flow_style=False, sort_keys=False)
+      saved_files.append('resources/synced_delta_tables.yml')
+
+    # Save lakebase_instance.yml
+    if 'lakebase_instance' in generated_configs:
+      instance_cfg = generated_configs['lakebase_instance']
+      instance_path = os.path.join(resources_dir, 'lakebase_instance.yml')
+      with open(instance_path, 'w') as f:
+        if isinstance(instance_cfg, dict) and 'yaml_content' in instance_cfg:
+          f.write(instance_cfg['yaml_content'])
+        elif isinstance(instance_cfg, str):
+          f.write(instance_cfg)
+        else:
+          yaml.dump(instance_cfg, f, default_flow_style=False, sort_keys=False)
+      saved_files.append('resources/lakebase_instance.yml')
+
+    # Prepare environment for CLI
+    env = os.environ.copy()
+    env.update({
+      'DATABRICKS_TOKEN': access_token,
+      'DATABRICKS_HOST': workspace_host,
+    })
+
+    cli_path = shutil.which('databricks')
+    if not cli_path:
+      raise HTTPException(status_code=500, detail='Databricks CLI not found in PATH. Please install and ensure it is accessible to the backend process.')
+
+    # Run deploy
+    result = subprocess.run(
+      [cli_path, 'bundle', 'deploy', '--force', '--auto-approve'],
+      cwd=project_dir,
+      capture_output=True,
+      text=True,
+      timeout=300,
+      env=env
+    )
+
+    success = result.returncode == 0
+    return {
+      'success': success,
+      'message': 'Deployment completed successfully!' if success else f'Deployment failed with return code {result.returncode}',
+      'output': result.stdout,
+      'stderr': result.stderr,
+      'workspace_url': workspace_host,
+      'saved_files': saved_files,
+    }
+
+  except subprocess.TimeoutExpired:
+    raise HTTPException(status_code=408, detail='Deployment timed out after 5 minutes')
+  except FileNotFoundError as e:
+    raise HTTPException(status_code=500, detail=f'Databricks CLI invocation failed: {str(e)}')
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=f'Deployment failed: {str(e)}')
 
 if __name__ == "__main__":
     import uvicorn

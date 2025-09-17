@@ -12,7 +12,8 @@ import {
   Tag,
   Tooltip,
   Modal,
-  Input
+  Input,
+  Spin
 } from 'antd';
 import { 
   RocketOutlined, 
@@ -48,6 +49,18 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [editedContent, setEditedContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [savedEdits, setSavedEdits] = useState<Record<string, string>>({});
+  const [deploymentProgress, setDeploymentProgress] = useState<string>('');
+  const [deploymentOutput, setDeploymentOutput] = useState<string>('');
+  const [deploymentModalVisible, setDeploymentModalVisible] = useState(false);
+  
+  // Helper to build workspace monitor URL
+  const getWorkspaceMonitorUrl = (fallback?: string): string | null => {
+    const cfg = (generatedConfigs as any)?.workload_config;
+    const raw = (cfg && cfg.databricks_workspace_url) || fallback;
+    if (!raw) return null;
+    const base = String(raw).replace(/\/$/, '');
+    return `${base}/compute/database-instances`;
+  };
 
   // Helper function to get file content
   const getFileContent = (filename: string): string => {
@@ -101,13 +114,62 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
   const handleDeploy = async () => {
     setDeploying(true);
+    setDeploymentProgress('Deploying via Databricks CLI...');
+    setDeploymentOutput('Running: databricks bundle deploy --force --auto-approve\n\n');
+    setDeploymentModalVisible(true);
+    
     try {
-      // Simulate deployment process
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Keep progress focused on CLI deployment; files are saved server-side
+      setDeploymentProgress('Deploying via Databricks CLI...');
       
-      message.success('Deployment initiated successfully! Lakebase instance will take 3-5 minutes to spin up.');
+      // Call the real deployment API with generated configurations
+      const response = await fetch('http://localhost:8000/api/deploy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          generatedConfigs: generatedConfigs
+        })
+      });
+
+      setDeploymentProgress('Processing deployment response...');
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setDeploymentProgress('Deployment completed successfully!');
+        let output = result.output || 'No output available';
+        
+        // Add saved files information to output
+        if (result.saved_files && result.saved_files.length > 0) {
+          output = `Files saved:\n${result.saved_files.map((f: string) => `- ${f}`).join('\n')}\n\n` + output;
+        }
+        
+        setDeploymentOutput(output);
+        message.success(`Deployment completed successfully! Lakebase instance is now available at ${result.workspace_url}`);
+        
+        if (result.stderr) {
+          setDeploymentOutput(prev => prev + '\n\nWarnings:\n' + result.stderr);
+          console.warn('Deployment warnings:', result.stderr);
+        }
+      } else {
+        setDeploymentProgress('Deployment failed!');
+        let errorOutput = result.stderr || result.message || 'Unknown error';
+        
+        // Add saved files information even if deployment failed
+        if (result.saved_files && result.saved_files.length > 0) {
+          errorOutput = `Files saved before deployment:\n${result.saved_files.map((f: string) => `- ${f}`).join('\n')}\n\n` + errorOutput;
+        }
+        
+        setDeploymentOutput(errorOutput);
+        message.error(`Deployment failed: ${result.message || 'Unknown error'}`);
+        console.error('Deployment error:', result);
+      }
     } catch (error) {
+      setDeploymentProgress('Deployment failed!');
+      setDeploymentOutput(`Network error: ${error}`);
       message.error(`Deployment failed: ${error}`);
+      console.error('Deployment error:', error);
     } finally {
       setDeploying(false);
     }
@@ -433,6 +495,76 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             {getFileContent(selectedFile)}
           </pre>
         )}
+      </Modal>
+
+      {/* Deployment Progress Modal */}
+      <Modal
+        title="Deployment Progress"
+        open={deploymentModalVisible}
+        onCancel={() => setDeploymentModalVisible(false)}
+        width={800}
+        footer={[
+          <Button 
+            key="close" 
+            onClick={() => setDeploymentModalVisible(false)}
+            disabled={deploying}
+          >
+            {deploying ? 'Deploying...' : 'Close'}
+          </Button>
+        ]}
+      >
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            marginBottom: '16px',
+            padding: '12px',
+            backgroundColor: '#f0f0f0',
+            borderRadius: '4px'
+          }}>
+            {deploying ? (
+              <Spin size="small" style={{ marginRight: '8px' }} />
+            ) : (
+              <div style={{ 
+                width: '16px', 
+                height: '16px', 
+                borderRadius: '50%', 
+                backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' : 
+                                deploymentProgress.includes('failed') ? '#ff4d4f' : '#1890ff',
+                marginRight: '8px'
+              }} />
+            )}
+            <span style={{ fontWeight: 'bold' }}>{deploymentProgress}</span>
+          </div>
+          
+          {/* Monitor link */}
+          {(() => {
+            const url = getWorkspaceMonitorUrl();
+            return url ? (
+              <div style={{ marginBottom: '12px' }}>
+                <span>Monitor instance status in your workspace: </span>
+                <a href={url} target="_blank" rel="noreferrer">{url}</a>
+              </div>
+            ) : null;
+          })()}
+
+          {deploymentOutput && (
+            <div>
+              <h4>Deployment Output:</h4>
+              <pre style={{ 
+                backgroundColor: '#f5f5f5', 
+                padding: '12px', 
+                borderRadius: '4px',
+                maxHeight: '300px',
+                overflow: 'auto',
+                fontSize: '11px',
+                whiteSpace: 'pre-wrap'
+              }}>
+                {deploymentOutput}
+              </pre>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

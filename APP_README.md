@@ -105,21 +105,6 @@ You can learn more in the [Create React App documentation](https://facebook.gith
 
 To learn React, check out the [React documentation](https://reactjs.org/).
 
-### Full Stack Development
-
-Run both backend and frontend simultaneously:
-
-```bash
-# Terminal 1 - Backend
-cd app/backend
-source .venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# Terminal 2 - Frontend  
-cd app/frontend
-npm start
-```
-
 ## Environment Variables
 
 Create a `.env` file in the project root:
@@ -135,30 +120,6 @@ DATABRICKS_ENDPOINT=https://your-workspace.cloud.databricks.com/serving-endpoint
 
 # Optional - LLM model for query conversion
 MODEL_NAME=databricks-meta-llama-3-1-70b-instruct
-```
-
-## Production Deployment
-
-### Backend Deployment
-
-```bash
-# Install production dependencies
-cd app/backend
-pip install -r requirements.txt
-
-# Run with production server
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-### Frontend Deployment
-
-```bash
-# Build for production
-cd app/frontend
-npm run build
-
-# Serve static files (using nginx, Apache, or similar)
-# The build/ directory contains the production-ready files
 ```
 
 ## API Endpoints
@@ -197,22 +158,3 @@ app/
 4. **Download Files**: Get YAML configuration files for deployment
 5. **Deploy**: Use Databricks CLI to deploy your Lakebase instance
 
-## Troubleshooting
-
-### Backend Issues
-
-- Check Python path includes both `backend/` and `src/` directories
-- Verify environment variables are set correctly
-- Ensure Databricks credentials have appropriate permissions
-
-### Frontend Issues
-
-- Clear npm cache: `npm cache clean --force`
-- Delete node_modules and reinstall: `rm -rf node_modules && npm install`
-- Check browser console for API connection errors
-
-### Production Issues
-
-- Check server logs for backend errors
-- Verify environment variables are set correctly
-- Ensure all dependencies are installed
