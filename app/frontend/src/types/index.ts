@@ -33,6 +33,8 @@ export interface WorkloadConfig {
   delta_synchronization: DeltaSynchronizationConfig;
   databricks_workspace_url: string;
   lakebase_instance_name: string;
+  uc_catalog_name: string;
+  database_name: string;
 }
 
 export interface CostBreakdown {
@@ -54,8 +56,7 @@ export interface CostBreakdown {
 
 export interface TableSizeInfo {
   table_name: string;
-  uncompressed_size_gb: number;
-  compressed_size_gb: number;
+  uncompressed_size_mb: number;
   row_count: number;
 }
 
@@ -63,8 +64,7 @@ export interface CostEstimationResult {
   config: WorkloadConfig;
   cost_breakdown: CostBreakdown;
   table_sizes?: {
-    total_uncompressed_size_gb: number;
-    total_compressed_size_gb: number;
+    total_uncompressed_size_mb: number;
     table_details: TableSizeInfo[];
   };
   cost_efficiency_metrics: {

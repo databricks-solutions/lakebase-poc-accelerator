@@ -6,7 +6,7 @@ A full-stack web application for configuring OLTP workload parameters, estimatin
 
 - **Backend**: FastAPI with Python integration to existing scripts
 - **Frontend**: React + TypeScript + Ant Design
-- **Deployment**: Docker container for Databricks Apps
+- **Development**: Local development environment with hot reload
 
 ## Features
 
@@ -21,13 +21,10 @@ A full-stack web application for configuring OLTP workload parameters, estimatin
 
 - Node.js 18+
 - Python 3.11+
-- Docker (for deployment)
 
 ### Backend Development
 
 ```bash
-# Navigate to backend directory
-cd app/backend
 
 # Create virtual environment
 python -m venv .venv
@@ -40,8 +37,11 @@ pip install -r requirements.txt
 cp ../../.env.example .env
 # Edit .env with your Databricks credentials
 
+# Navigate to backend directory
+cd app/backend
+
 # Run development server
-python main.py
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Backend will be available at: http://localhost:8000
@@ -62,6 +62,49 @@ npm start
 
 Frontend will be available at: http://localhost:3000
 
+### React Development Scripts
+
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+
+#### Available Scripts
+
+In the `app/frontend` directory, you can run:
+
+##### `npm start`
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+
+The page will reload if you make edits.\
+You will also see any lint errors in the console.
+
+##### `npm test`
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+
+##### `npm run build`
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
+
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
+
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+
+##### `npm run eject`
+**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+
+If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+
+You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+
+#### Learn More
+
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+
+To learn React, check out the [React documentation](https://reactjs.org/).
+
 ### Full Stack Development
 
 Run both backend and frontend simultaneously:
@@ -70,7 +113,7 @@ Run both backend and frontend simultaneously:
 # Terminal 1 - Backend
 cd app/backend
 source .venv/bin/activate
-python main.py
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 2 - Frontend  
 cd app/frontend
@@ -94,69 +137,29 @@ DATABRICKS_ENDPOINT=https://your-workspace.cloud.databricks.com/serving-endpoint
 MODEL_NAME=databricks-meta-llama-3-1-70b-instruct
 ```
 
-## Docker Deployment
+## Production Deployment
 
-### Local Testing
-
-```bash
-# Build and run with Docker Compose
-cd app
-docker-compose up --build
-
-# Access application
-open http://localhost:8000
-```
-
-### Production Build
+### Backend Deployment
 
 ```bash
-# Build Docker image
-cd app
-docker build -t lakebase-accelerator .
+# Install production dependencies
+cd app/backend
+pip install -r requirements.txt
 
-# Run container
-docker run -p 8000:8000 --env-file ../.env lakebase-accelerator
+# Run with production server
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-## Databricks Apps Deployment
-
-Follow the [Databricks Apps FastAPI guide](https://apps-cookbook.dev/docs/fastapi/getting_started/create):
-
-### 1. Prepare Application
+### Frontend Deployment
 
 ```bash
-# Ensure all files are in place
-cd app/
-ls -la  # Should show: backend/, frontend/, Dockerfile, databricks-app.yml
+# Build for production
+cd app/frontend
+npm run build
+
+# Serve static files (using nginx, Apache, or similar)
+# The build/ directory contains the production-ready files
 ```
-
-### 2. Create Databricks Secrets
-
-```bash
-# Create secret scope for credentials
-databricks secrets create-scope lakebase-credentials
-
-# Add secrets
-databricks secrets put-secret lakebase-credentials access_token
-databricks secrets put-secret lakebase-credentials server_hostname  
-databricks secrets put-secret lakebase-credentials http_path
-databricks secrets put-secret lakebase-credentials endpoint
-```
-
-### 3. Deploy to Databricks Apps
-
-```bash
-# Deploy using Databricks CLI
-databricks apps create --manifest databricks-app.yml
-
-# Check deployment status
-databricks apps list
-databricks apps get lakebase-accelerator
-```
-
-### 4. Connect from Local (Development)
-
-Follow the [local connection guide](https://apps-cookbook.dev/docs/fastapi/getting_started/connections/connect_from_local) for development access.
 
 ## API Endpoints
 
@@ -182,9 +185,7 @@ app/
 │   │   └── App.tsx         # Main application
 │   ├── package.json        # Node.js dependencies
 │   └── public/             # Static assets
-├── Dockerfile              # Container configuration
-├── docker-compose.yml      # Local development setup
-├── databricks-app.yml      # Databricks Apps configuration
+├── test_integration.py     # Integration tests
 └── README.md              # This file
 ```
 
@@ -210,8 +211,8 @@ app/
 - Delete node_modules and reinstall: `rm -rf node_modules && npm install`
 - Check browser console for API connection errors
 
-### Docker Issues
+### Production Issues
 
-- Build with no cache: `docker build --no-cache -t lakebase-accelerator .`
-- Check container logs: `docker logs <container_id>`
-- Verify environment variables are passed correctly
+- Check server logs for backend errors
+- Verify environment variables are set correctly
+- Ensure all dependencies are installed

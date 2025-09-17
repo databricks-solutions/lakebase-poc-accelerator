@@ -126,29 +126,9 @@ The project includes a comprehensive cost estimator (`src/lakebase_cost_estimato
 
 ```bash
 # Basic cost estimation using workload configuration
-python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output quickstarts/cost_report.json
-
-# With JSON output
-python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output cost_report.json
+python src/lakebase_cost_estimator.py --config workload_config.yml --output cost_report.json
 ```
 
-#### Cost Estimation with Table Size Calculation
-
-**Table Size Calculation Features:**
-- Connects to your Databricks workspace using SQL warehouse
-- Calculates total uncompressed size across all Delta tables
-- Provides per-table size breakdown
-- This uncompressed size is very close to the size of the table size in Postgres excluding primary key.
-
-
-```bash
-# The cost estimator will automatically load these variables from the .env file.
-# Run the cost estimator
-python src/lakebase_cost_estimator.py \
-  --config quickstarts/quickstarts_workload_config.yml \
-  --calculate-table-sizes
-  --output cost_report.json 
-```
 
 #### Cost Estimation Output
 
@@ -166,8 +146,8 @@ The project includes a table configuration generator (`src/generate_synced_table
 #### Basic Usage
 
 ```bash
-# Generate synced tables from workload config (quickstarts)
-python src/generate_synced_tables.py --config quickstarts/quickstarts_workload_config.yml
+# Generate synced tables from workload config
+python src/generate_synced_tables.py --config workload_config.yml
 
 # Specify custom output path
 python src/generate_synced_tables.py --config workload_config.yml --output synced_tables.yml
@@ -203,3 +183,52 @@ Similarly, to deploy a production copy, use below command:
 ```bash
 $ databricks bundle deploy --target prod
 ```
+
+## Starting the Web Application
+
+The project includes a full-stack web application for interactive workload configuration, cost estimation, and configuration file generation.
+
+### Development Setup
+
+#### Option 1: Full Stack Development (Recommended)
+
+```bash
+# Terminal 1 - Start Backend
+cd app/backend
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp ../../.env.example .env  # Edit with your Databricks credentials
+python main.py
+
+# Terminal 2 - Start Frontend
+cd app/frontend
+npm install
+npm start
+```
+
+- Backend API: http://localhost:8000
+- Frontend App: http://localhost:3000
+- API Docs: http://localhost:8000/docs
+
+#### Option 2: Backend Only (API Service)
+
+```bash
+cd app/backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp ../../.env.example .env  # Edit with your credentials
+python main.py
+```
+
+Access API documentation at: http://localhost:8000/docs
+
+### Application Features
+
+- **Interactive Configuration**: Web form for workload parameters
+- **Real-time Cost Estimation**: Calculate Lakebase costs with table size analysis
+- **Configuration Generation**: Download YAML files for Databricks bundle deployment
+- **Professional UI**: Enterprise-grade interface with Ant Design components
+
+For detailed deployment options including Databricks Apps, see [app/README.md](app/README.md).

@@ -48,4 +48,31 @@ delta_synchronization:
     - name: samples.tpcds_sf1.customer
       primary_keys: [c_customer_sk]
       scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.customer_address
+      primary_keys: [ca_address_sk]
+      scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.customer_demographics
+      primary_keys: [cd_demo_sk]
+      scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.store_sales
+      primary_keys: [ss_item_sk, ss_ticket_number]
+      scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.item
+      primary_keys: [i_item_sk]
+      scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.date_dim
+      primary_keys: [d_date_sk]
+      scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.store
+      primary_keys: [s_store_sk]
+      scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.inventory
+      primary_keys: [inv_date_sk, inv_item_sk, inv_warehouse_sk]
+      scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.warehouse
+      primary_keys: [w_warehouse_sk]
+      scheduling_policy: SNAPSHOT
+    - name: samples.tpcds_sf1.promotion
+      primary_keys: [p_promo_sk]
+      scheduling_policy: SNAPSHOT
 

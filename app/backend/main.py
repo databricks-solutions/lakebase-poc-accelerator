@@ -6,8 +6,6 @@ Provides API endpoints for cost estimation, table generation, and configuration 
 
 import os
 import sys
-import tempfile
-import subprocess
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -21,8 +19,18 @@ from dotenv import load_dotenv
 # Add the src directory to the Python path to import existing modules
 sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
 
-# Load environment variables
-load_dotenv()
+# Import the cost estimator and table generator functions
+from lakebase_cost_estimator import estimate_cost_from_config
+from generate_synced_tables import generate_synced_tables_from_config
+
+# Load environment variables from project root
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"Loaded environment variables from: {env_path}")
+else:
+    print(f"Warning: .env file not found at {env_path}")
+    print("Please create a .env file with your Databricks credentials")
 
 app = FastAPI(
     title="Databricks Lakebase Accelerator API",
@@ -70,7 +78,10 @@ class WorkloadConfigRequest(BaseModel):
     database_storage: DatabaseStorageConfig
     delta_synchronization: DeltaSynchronizationConfig
     databricks_workspace_url: str = Field(..., description="Databricks workspace URL")
-    lakebase_instance_name: str = Field("lakebase-instance", description="Name for the Lakebase instance")
+    lakebase_instance_name: str = Field("lakebase-accelerator-instance", description="Name for the Lakebase instance")
+    uc_catalog_name: str = Field("lakebase-accelerator-catalog", description="Name for the UC catalog")
+    database_name: str = Field("databricks_postgres", description="Name for the database")
+    recommended_cu: int = Field(1, description="Recommended CU from cost estimation")
 
 class CostEstimationRequest(BaseModel):
     workload_config: WorkloadConfigRequest
@@ -91,54 +102,53 @@ async def estimate_cost(request: CostEstimationRequest):
     Optionally calculate actual table sizes from Databricks.
     """
     try:
-        # Create temporary workload config file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as tmp_file:
-            workload_data = {
-                'database_instance': request.workload_config.database_instance.dict(),
-                'database_storage': request.workload_config.database_storage.dict(),
-                'delta_synchronization': request.workload_config.delta_synchronization.dict()
+        # Prepare workload data for the cost estimator
+        workload_data = {
+            'database_instance': request.workload_config.database_instance.dict(),
+            'database_storage': request.workload_config.database_storage.dict(),
+            'delta_synchronization': request.workload_config.delta_synchronization.dict()
+        }
+        
+        # Call the cost estimator directly
+        cost_report = estimate_cost_from_config(
+            workload_data, 
+            calculate_table_sizes=request.calculate_table_sizes
+        )
+        
+        # Transform the response to match frontend expectations
+        transformed_response = {
+            "timestamp": cost_report.get("timestamp"),
+            "cost_breakdown": cost_report.get("cost_breakdown"),
+            "cost_efficiency_metrics": {
+                "cost_per_gb_monthly": cost_report.get("cost_breakdown", {}).get("cost_per_gb", 0),
+                "cost_per_qps_monthly": cost_report.get("cost_breakdown", {}).get("cost_per_qps", 0),
+                "cost_per_cu_monthly": cost_report.get("cost_breakdown", {}).get("cost_per_cu", 0)
+            },
+            "recommendations": []  # Add recommendations if needed
+        }
+        
+        # Transform table sizes data to match frontend expectations
+        if "table_sizes" in cost_report and "error" not in cost_report["table_sizes"]:
+            table_sizes_data = cost_report["table_sizes"]
+            transformed_response["table_sizes"] = {
+                "total_uncompressed_size_mb": table_sizes_data.get("total_size_mb", 0),
+                "table_details": []
             }
-            yaml.dump(workload_data, tmp_file)
-            tmp_config_path = tmp_file.name
-
-        # Create temporary output file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_output:
-            tmp_output_path = tmp_output.name
-
-        try:
-            # Build command to run cost estimator
-            cmd = [
-                sys.executable, 
-                str(Path(__file__).parent.parent.parent / "src" / "lakebase_cost_estimator.py"),
-                "--config", tmp_config_path,
-                "--output", tmp_output_path
-            ]
             
-            if request.calculate_table_sizes:
-                cmd.append("--calculate-table-sizes")
-
-            # Run the cost estimation script
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent.parent)
-            
-            if result.returncode != 0:
-                raise HTTPException(
-                    status_code=500, 
-                    detail=f"Cost estimation failed: {result.stderr}"
-                )
-
-            # Read the generated cost report
-            with open(tmp_output_path, 'r') as f:
-                cost_report = json.load(f)
-
-            return JSONResponse(content=cost_report)
-
-        finally:
-            # Cleanup temporary files
-            os.unlink(tmp_config_path)
-            if os.path.exists(tmp_output_path):
-                os.unlink(tmp_output_path)
+            # Transform table details
+            if "table_details" in table_sizes_data:
+                for table_detail in table_sizes_data["table_details"]:
+                    transformed_table = {
+                        "table_name": table_detail.get("table_name", ""),
+                        "uncompressed_size_mb": table_detail.get("size_mb", 0),
+                        "row_count": table_detail.get("row_count", 0)
+                    }
+                    transformed_response["table_sizes"]["table_details"].append(transformed_table)
+        
+        return JSONResponse(content=transformed_response)
 
     except Exception as e:
+        print(f"Error during cost estimation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error during cost estimation: {str(e)}")
 
 @app.post("/api/generate-synced-tables")
@@ -147,50 +157,20 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
     Generate synced tables configuration from workload config.
     """
     try:
-        # Create temporary workload config file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as tmp_file:
-            workload_data = {
-                'database_instance': request.database_instance.dict(),
-                'database_storage': request.database_storage.dict(),
-                'delta_synchronization': request.delta_synchronization.dict()
-            }
-            yaml.dump(workload_data, tmp_file)
-            tmp_config_path = tmp_file.name
-
-        # Create temporary output file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as tmp_output:
-            tmp_output_path = tmp_output.name
-
-        try:
-            # Run the table generation script
-            cmd = [
-                sys.executable,
-                str(Path(__file__).parent.parent.parent / "src" / "generate_synced_tables.py"),
-                "--config", tmp_config_path,
-                "--output", tmp_output_path
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent.parent)
-            
-            if result.returncode != 0:
-                raise HTTPException(
-                    status_code=500, 
-                    detail=f"Table generation failed: {result.stderr}"
-                )
-
-            # Read the generated synced tables config
-            with open(tmp_output_path, 'r') as f:
-                synced_tables_config = yaml.safe_load(f)
-
-            return JSONResponse(content=synced_tables_config)
-
-        finally:
-            # Cleanup temporary files
-            os.unlink(tmp_config_path)
-            if os.path.exists(tmp_output_path):
-                os.unlink(tmp_output_path)
+        # Prepare workload data for the table generator
+        workload_data = {
+            'database_instance': request.database_instance.dict(),
+            'database_storage': request.database_storage.dict(),
+            'delta_synchronization': request.delta_synchronization.dict()
+        }
+        
+        # Call the table generator directly
+        synced_tables_config = generate_synced_tables_from_config(workload_data)
+        
+        return JSONResponse(content=synced_tables_config)
 
     except Exception as e:
+        print(f"Error generating synced tables: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating synced tables: {str(e)}")
 
 @app.post("/api/generate-databricks-config")
@@ -235,26 +215,28 @@ async def generate_lakebase_instance(request: WorkloadConfigRequest):
     Generate lakebase instance configuration file.
     """
     try:
-        lakebase_config = {
-            'resources': {
-                'online_tables': {
-                    request.lakebase_instance_name: {
-                        'name': request.lakebase_instance_name,
-                        'spec': {
-                            'primary_key_columns': [],  # Will be populated based on tables
-                            'timeseries_key': None,
-                            'source_table_full_name': '',  # Will be set based on main table
-                            'perform_full_copy': True,
-                            'run_triggered': {
-                                'enabled': True
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        # Generate YAML content that matches the existing lakebase_instance.yml structure
+        yaml_content = f"""resources:
+#  Provision Lakebase database instance
+#  https://docs.databricks.com/aws/en/dev-tools/bundles/resources#database_instances
+  database_instances:
+    my_instance:
+      name: {request.lakebase_instance_name}
+      capacity: capacity_{request.recommended_cu}
 
-        return JSONResponse(content=lakebase_config)
+  # Register Lakebase database as a read-only UC catalog to enable federated queries + data governance
+  database_catalogs:
+    my_catalog:
+      database_instance_name: ${{resources.database_instances.my_instance.name}} # {request.lakebase_instance_name}
+      name: {request.uc_catalog_name}
+      database_name: {request.database_name}
+      create_database_if_not_exists: true"""
+
+        return JSONResponse(content={
+            'yaml_content': yaml_content,
+            'filename': 'lakebase_instance.yml',
+            'description': 'Lakebase instance definition'
+        })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating lakebase instance config: {str(e)}")

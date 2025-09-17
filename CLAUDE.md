@@ -12,7 +12,6 @@ The project follows a Databricks Asset Bundle structure with:
 
 - **Core Scripts** (`src/`): Python utilities for cost estimation, table generation, and query conversion
 - **Resources** (`resources/`): Databricks bundle YAML configurations for Lakebase instances and synced tables
-- **Quickstarts** (`quickstarts/`): Example configurations and templates
 - **Configuration Management**: YAML-based workload configurations and Databricks bundle definitions
 
 ### Key Components
@@ -39,17 +38,17 @@ cp .env.example .env  # Edit with your credentials
 
 ### Cost Estimation
 ```bash
-# Basic cost estimation
-python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output cost_report.json
+# Cost estimation with automatic table size calculation
+python src/lakebase_cost_estimator.py --config workload_config.yml --output cost_report.json
 
-# With table size calculation (requires .env with Databricks credentials)
-python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --calculate-table-sizes --output cost_report.json
+# Table size calculation happens automatically when .env contains Databricks credentials:
+# DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_ACCESS_TOKEN
 ```
 
 ### Table Configuration Generation
 ```bash
 # Generate synced tables configuration
-python src/generate_synced_tables.py --config quickstarts/quickstarts_workload_config.yml
+python src/generate_synced_tables.py --config workload_config.yml
 
 # With custom output path
 python src/generate_synced_tables.py --config workload_config.yml --output synced_tables.yml
@@ -95,6 +94,7 @@ python src/run_concurrency_test.py
 - Include proper error handling with try-catch blocks
 - Use environment variables for sensitive credentials (.env file)
 - Follow PEP 8 style guidelines
+- Ignore the `scratch/` folder - it's for temporary work and testing
 
 ### Environment Variables Required
 ```bash
@@ -131,9 +131,7 @@ When implementing database connections, use singleton pattern with:
 ├── resources/                    # Databricks bundle resources
 │   ├── lakebase_instance.yml         # Lakebase instance definition
 │   └── synced_delta_tables.yml       # Table sync configurations
-├── quickstarts/                  # Example configurations
-│   ├── quickstarts_workload_config.yml  # Sample workload config
-│   └── databricks.yml               # Alternative bundle config
+├── scratch/                      # Temporary work folder (ignore)
 ├── databricks.yml               # Main bundle configuration
 ├── requirements.txt             # Python dependencies
 └── .env                        # Environment variables (create from template)

@@ -7,11 +7,7 @@ workload characteristics and usage patterns.
 
 Usage:
     # From base directory:
-    python src/lakebase_cost_estimator.py --config workload_config.yml --output cost_report.json
-    python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output quickstarts/cost_report.json
-    
-    # With table size calculation (requires .env file with Databricks connection):
-    python src/lakebase_cost_estimator.py --config quickstarts/quickstarts_workload_config.yml --output cost_report.json --calculate-table-sizes
+    python src/lakebase_cost_estimator.py --config sample_workload_config.yml --output cost_report.json
     
     # Required environment variables in .env file:
     # DATABRICKS_SERVER_HOSTNAME=your-databricks-hostname
@@ -425,7 +421,7 @@ def get_delta_table_sizes(tables_config: List[Dict[str, Any]],
                 
                 if result and result[0] is not None:
                     total_uncompressed_bytes = result[0]
-                    total_size_gb = total_uncompressed_bytes / (1024**3)  # Convert to GB
+                    total_size_mb = total_uncompressed_bytes / (1024**2)  # Convert to MB
                     
                     # Get individual table sizes for details
                     individual_sizes = []
@@ -442,24 +438,24 @@ def get_delta_table_sizes(tables_config: List[Dict[str, Any]],
                             
                             if individual_result and individual_result[0] is not None:
                                 table_bytes = individual_result[0]
-                                table_size_gb = table_bytes / (1024**3)
+                                table_size_mb = table_bytes / (1024**2)
                                 individual_sizes.append({
                                     'table_name': table_name,
                                     'uncompressed_bytes': table_bytes,
-                                    'size_gb': table_size_gb
+                                    'size_mb': table_size_mb
                                 })
                         except Exception as e:
                             logger.warning(f"Could not get size for table {table_name}: {e}")
                             individual_sizes.append({
                                 'table_name': table_name,
                                 'uncompressed_bytes': 0,
-                                'size_gb': 0.0,
+                                'size_mb': 0.0,
                                 'error': str(e)
                             })
                     
                     return {
                         'total_uncompressed_bytes': total_uncompressed_bytes,
-                        'total_size_gb': total_size_gb,
+                        'total_size_mb': total_size_mb,
                         'table_details': individual_sizes,
                         'query_used': combined_query
                     }
@@ -469,6 +465,86 @@ def get_delta_table_sizes(tables_config: List[Dict[str, Any]],
     except Exception as e:
         logger.error(f"Error calculating table sizes: {e}")
         return {"error": str(e)}
+
+
+def estimate_cost_from_config(config_data: Dict[str, Any], calculate_table_sizes: bool = False) -> Dict[str, Any]:
+    """
+    Estimate cost from configuration data and return JSON structure for the app.
+    
+    Args:
+        config_data: Dictionary containing workload configuration
+        calculate_table_sizes: Whether to calculate actual table sizes from Databricks
+        
+    Returns:
+        Dictionary with cost estimation results
+    """
+    try:
+        estimator = LakebaseCostEstimator()
+        
+        # Create WorkloadConfig from the data
+        db_instance = config_data.get('database_instance', {})
+        storage = config_data.get('database_storage', {})
+        sync = config_data.get('delta_synchronization', {})
+        
+        config = WorkloadConfig(
+            bulk_writes_per_second=db_instance.get('bulk_writes_per_second', 0),
+            continuous_writes_per_second=db_instance.get('continuous_writes_per_second', 0),
+            reads_per_second=db_instance.get('reads_per_second', 0),
+            number_of_readable_secondaries=db_instance.get('number_of_readable_secondaries', 0),
+            readable_secondary_size_cu=db_instance.get('readable_secondary_size_cu', 1),
+            data_stored_gb=storage.get('data_stored_gb', 0),
+            estimated_data_deleted_daily_gb=storage.get('estimated_data_deleted_daily_gb', 0),
+            restore_windows_days=storage.get('restore_windows_days', 0),
+            number_of_continuous_pipelines=sync.get('number_of_continuous_pipelines', 0),
+            expected_data_per_sync_gb=sync.get('expected_data_per_sync_gb', 0),
+            sync_mode=sync.get('sync_mode', 'SNAPSHOT'),
+            sync_frequency=sync.get('sync_frequency', 'Per day'),
+            promotion_percentage=db_instance.get('promotion_percentage', 0.0)
+        )
+        
+        # Calculate cost breakdown
+        cost_breakdown = estimator.calculate_total_cost(config)
+        
+        # Calculate table sizes if requested and credentials are available
+        table_sizes = None
+        tables_to_sync = sync.get('tables_to_sync', [])
+        
+        # Check if we should calculate table sizes
+        hostname = os.getenv('DATABRICKS_SERVER_HOSTNAME')
+        http_path = os.getenv('DATABRICKS_HTTP_PATH')
+        access_token = os.getenv('DATABRICKS_ACCESS_TOKEN')
+        
+        # Auto-calculate if credentials are available and tables exist, or if explicitly requested
+        should_calculate = (all([hostname, http_path, access_token]) and tables_to_sync) or calculate_table_sizes
+        
+        if should_calculate and tables_to_sync:
+            if all([hostname, http_path, access_token]):
+                logger.info("Databricks credentials found - calculating actual table sizes...")
+                table_sizes = get_delta_table_sizes(
+                    tables_to_sync,
+                    hostname,
+                    http_path,
+                    access_token
+                )
+            else:
+                logger.info("Databricks credentials not found - skipping table size calculation")
+                table_sizes = {"error": "Databricks credentials not configured"}
+        
+        # Build results dictionary
+        results = {
+            "timestamp": datetime.now().isoformat(),
+            "workload_config": asdict(config),
+            "cost_breakdown": asdict(cost_breakdown)
+        }
+        
+        if table_sizes:
+            results["table_sizes"] = table_sizes
+            
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error processing configuration: {e}")
+        raise e
 
 
 def main():
@@ -496,11 +572,10 @@ def main():
         help='Enable verbose logging'
     )
     
-    
     parser.add_argument(
         '--calculate-table-sizes',
         action='store_true',
-        help='Calculate actual table sizes from Databricks (requires DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_ACCESS_TOKEN in .env file)'
+        help='Force table size calculation (normally automatic when credentials are available)'
     )
     
     args = parser.parse_args()
@@ -508,36 +583,45 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    estimator = LakebaseCostEstimator()
-    
     # Load from configuration file
     try:
         config, tables_to_sync = load_workload_config(args.config)
-        cost_breakdown = estimator.calculate_total_cost(config)
         
-        # Calculate table sizes if requested
-        table_sizes = None
-        if args.calculate_table_sizes:
-            # Get connection parameters from environment variables (loaded from .env file)
-            hostname = os.getenv('DATABRICKS_SERVER_HOSTNAME')
-            http_path = os.getenv('DATABRICKS_HTTP_PATH')
-            access_token = os.getenv('DATABRICKS_ACCESS_TOKEN')
-            
-            if not all([hostname, http_path, access_token]):
-                logger.error("Databricks connection parameters required for table size calculation")
-                logger.error("Please set the following environment variables in .env file:")
-                logger.error("  DATABRICKS_SERVER_HOSTNAME=your-databricks-hostname")
-                logger.error("  DATABRICKS_HTTP_PATH=your-sql-warehouse-http-path")
-                logger.error("  DATABRICKS_ACCESS_TOKEN=your-databricks-access-token")
-                sys.exit(1)
-            
-            logger.info("Calculating actual table sizes from Databricks...")
-            table_sizes = get_delta_table_sizes(
-                tables_to_sync,
-                hostname,
-                http_path,
-                access_token
-            )
+        # Convert to dictionary format for the new function
+        config_data = {
+            'database_instance': {
+                'bulk_writes_per_second': config.bulk_writes_per_second,
+                'continuous_writes_per_second': config.continuous_writes_per_second,
+                'reads_per_second': config.reads_per_second,
+                'number_of_readable_secondaries': config.number_of_readable_secondaries,
+                'readable_secondary_size_cu': config.readable_secondary_size_cu,
+                'promotion_percentage': config.promotion_percentage
+            },
+            'database_storage': {
+                'data_stored_gb': config.data_stored_gb,
+                'estimated_data_deleted_daily_gb': config.estimated_data_deleted_daily_gb,
+                'restore_windows_days': config.restore_windows_days
+            },
+            'delta_synchronization': {
+                'number_of_continuous_pipelines': config.number_of_continuous_pipelines,
+                'expected_data_per_sync_gb': config.expected_data_per_sync_gb,
+                'sync_mode': config.sync_mode,
+                'sync_frequency': config.sync_frequency,
+                'tables_to_sync': tables_to_sync
+            }
+        }
+        
+        # Use the new function - automatically calculate table sizes if credentials are available
+        # Check if Databricks credentials are available
+        hostname = os.getenv('DATABRICKS_SERVER_HOSTNAME')
+        http_path = os.getenv('DATABRICKS_HTTP_PATH')
+        access_token = os.getenv('DATABRICKS_ACCESS_TOKEN')
+        auto_calculate_table_sizes = all([hostname, http_path, access_token]) and tables_to_sync
+        
+        # Use command line flag if provided, otherwise auto-calculate
+        calculate_table_sizes = args.calculate_table_sizes or auto_calculate_table_sizes
+        
+        results = estimate_cost_from_config(config_data, calculate_table_sizes)
         
         # Display results
         print("\n" + "="*60)
@@ -554,48 +638,45 @@ def main():
         print(f"  Restore windows: {config.restore_windows_days} days")
         print(f"  Promotion: {config.promotion_percentage}%")
         
+        cost_breakdown = results['cost_breakdown']
         print(f"\nCalculated Results:")
-        print(f"  Recommended CU: {cost_breakdown.recommended_cu}")
-        print(f"  Main instance cost: ${cost_breakdown.main_instance_cost:.2f}")
-        print(f"  Readable secondaries cost: ${cost_breakdown.readable_secondaries_cost:.2f}")
-        print(f"  Total compute cost: ${cost_breakdown.total_compute_cost:.2f}")
-        print(f"  Storage cost: ${cost_breakdown.storage_cost:.2f}")
-        print(f"  Sync cost: ${cost_breakdown.total_sync_cost:.2f}")
-        print(f"  Estimated sync time: {cost_breakdown.estimated_sync_time_hours:.2f} hours")
-        print(f"  Total monthly cost: ${cost_breakdown.total_monthly_cost:.2f}")
+        print(f"  Recommended CU: {cost_breakdown['recommended_cu']}")
+        print(f"  Main instance cost: ${cost_breakdown['main_instance_cost']:.2f}")
+        print(f"  Readable secondaries cost: ${cost_breakdown['readable_secondaries_cost']:.2f}")
+        print(f"  Total compute cost: ${cost_breakdown['total_compute_cost']:.2f}")
+        print(f"  Storage cost: ${cost_breakdown['storage_cost']:.2f}")
+        print(f"  Sync cost: ${cost_breakdown['total_sync_cost']:.2f}")
+        print(f"  Estimated sync time: {cost_breakdown['estimated_sync_time_hours']:.2f} hours")
+        print(f"  Total monthly cost: ${cost_breakdown['total_monthly_cost']:.2f}")
         
         print(f"\nCost Efficiency Metrics:")
-        print(f"  Cost per GB: ${cost_breakdown.cost_per_gb:.4f}")
-        print(f"  Cost per QPS: ${cost_breakdown.cost_per_qps:.4f}")
-        print(f"  Cost per CU: ${cost_breakdown.cost_per_cu:.2f}")
+        print(f"  Cost per GB: ${cost_breakdown['cost_per_gb']:.4f}")
+        print(f"  Cost per QPS: ${cost_breakdown['cost_per_qps']:.4f}")
+        print(f"  Cost per CU: ${cost_breakdown['cost_per_cu']:.2f}")
         
         # Display table size information if calculated
-        if table_sizes and 'error' not in table_sizes:
-            print(f"\nTable Size Analysis:")
-            print(f"  Total uncompressed size: {table_sizes['total_size_gb']:.2f} GB")
-            print(f"  Total uncompressed bytes: {table_sizes['total_uncompressed_bytes']:,}")
-            print(f"  Number of tables: {len(table_sizes['table_details'])}")
-            
-            if table_sizes['table_details']:
-                print(f"\nPer-table details:")
-                for table_detail in table_sizes['table_details']:
-                    if 'error' in table_detail:
-                        print(f"    {table_detail['table_name']}: Error - {table_detail['error']}")
-                    else:
-                        print(f"    {table_detail['table_name']}: {table_detail['size_gb']:.2f} GB ({table_detail['uncompressed_bytes']:,} bytes)")
-        elif table_sizes and 'error' in table_sizes:
-            print(f"\nTable Size Analysis: Error - {table_sizes['error']}")
+        if 'table_sizes' in results:
+            table_sizes = results['table_sizes']
+            if 'error' not in table_sizes:
+                print(f"\nTable Size Analysis:")
+                print(f"  Total uncompressed size: {table_sizes['total_size_mb']:.2f} MB")
+                print(f"  Total uncompressed bytes: {table_sizes['total_uncompressed_bytes']:,}")
+                print(f"  Number of tables: {len(table_sizes['table_details'])}")
+                
+                if table_sizes['table_details']:
+                    print(f"\nPer-table details:")
+                    for table_detail in table_sizes['table_details']:
+                        if 'error' in table_detail:
+                            print(f"    {table_detail['table_name']}: Error - {table_detail['error']}")
+                        else:
+                            print(f"    {table_detail['table_name']}: {table_detail['size_mb']:.2f} MB ({table_detail['uncompressed_bytes']:,} bytes)")
+            elif 'error' in table_sizes:
+                print(f"\nTable Size Analysis: Error - {table_sizes['error']}")
+        elif tables_to_sync and not calculate_table_sizes:
+            print(f"\nTable Size Analysis: Skipped (Databricks credentials not configured)")
         
         # Save results if requested
         if args.output:
-            results = {
-                "timestamp": datetime.now().isoformat(),
-                "workload_config": asdict(config),
-                "cost_breakdown": asdict(cost_breakdown)
-            }
-            
-            if table_sizes:
-                results["table_sizes"] = table_sizes
             with open(args.output, 'w') as f:
                 json.dump(results, f, indent=2, default=str)
             print(f"\nResults saved to: {args.output}")

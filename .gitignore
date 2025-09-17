@@ -11,3 +11,6 @@ scratch/**
 .DS_Store
 instructions/*
 .cursor/*
+.claude/*
+AGENTS.md 
+CLAUDE.md

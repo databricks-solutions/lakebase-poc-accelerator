@@ -19,24 +19,20 @@ const CostReport: React.FC<Props> = ({ data }) => {
     },
     {
       title: 'Uncompressed Size (GB)',
-      dataIndex: 'uncompressed_size_gb',
+      dataIndex: 'uncompressed_size_mb',
       key: 'uncompressed_size_gb',
-      render: (value: number) => (typeof value === 'number' ? value.toFixed(2) : '0.00'),
-      sorter: (a: any, b: any) => (a.uncompressed_size_gb || 0) - (b.uncompressed_size_gb || 0),
+      render: (value: number) => {
+        const gbValue = typeof value === 'number' ? value / 1024 : 0;
+        return gbValue.toFixed(3);
+      },
+      sorter: (a: any, b: any) => (a.uncompressed_size_mb || 0) - (b.uncompressed_size_mb || 0),
     },
     {
-      title: 'Compressed Size (GB)',
-      dataIndex: 'compressed_size_gb',
-      key: 'compressed_size_gb',
+      title: 'Uncompressed Size (MB)',
+      dataIndex: 'uncompressed_size_mb',
+      key: 'uncompressed_size_mb',
       render: (value: number) => (typeof value === 'number' ? value.toFixed(2) : '0.00'),
-      sorter: (a: any, b: any) => (a.compressed_size_gb || 0) - (b.compressed_size_gb || 0),
-    },
-    {
-      title: 'Row Count',
-      dataIndex: 'row_count',
-      key: 'row_count',
-      render: (value: number) => (typeof value === 'number' ? value.toLocaleString() : '0'),
-      sorter: (a: any, b: any) => (a.row_count || 0) - (b.row_count || 0),
+      sorter: (a: any, b: any) => (a.uncompressed_size_mb || 0) - (b.uncompressed_size_mb || 0),
     },
   ];
 
@@ -161,19 +157,19 @@ const CostReport: React.FC<Props> = ({ data }) => {
           <Row gutter={16} style={{ marginBottom: '16px' }}>
             <Col span={12}>
               <Statistic
-                title="Total Uncompressed Size"
-                value={table_sizes.total_uncompressed_size_gb}
-                precision={2}
+                title="Total Uncompressed Size (GB)"
+                value={table_sizes.total_uncompressed_size_mb / 1024}
+                precision={3}
                 suffix="GB"
                 valueStyle={{ color: '#1890ff' }}
               />
             </Col>
             <Col span={12}>
               <Statistic
-                title="Total Compressed Size"
-                value={table_sizes.total_compressed_size_gb}
+                title="Total Uncompressed Size (MB)"
+                value={table_sizes.total_uncompressed_size_mb}
                 precision={2}
-                suffix="GB"
+                suffix="MB"
                 valueStyle={{ color: '#52c41a' }}
               />
             </Col>

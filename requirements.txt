@@ -4,3 +4,10 @@ python-dotenv
 pyyaml
 # Databricks connector for table size calculation
 databricks-sql-connector
+
+fastapi
+uvicorn[standard]
+pydantic
+pyyaml
+python-multipart
+psycopg2-binary

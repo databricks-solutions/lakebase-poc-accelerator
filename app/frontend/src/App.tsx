@@ -1,134 +1,105 @@
 import React, { useState } from 'react';
-import { Layout, Typography, Steps, Card, message } from 'antd';
+import { Layout, Typography, Tabs, message } from 'antd';
 import 'antd/dist/reset.css';
 import './App.css';
 
-import ConfigurationForm from './components/ConfigurationForm';
-import CostReport from './components/CostReport';
-import FileDownloads from './components/FileDownloads';
+import LakebaseOverview from './components/LakebaseOverview';
+import LakebaseCalculator from './components/LakebaseCalculator';
+import LakebaseDeployment from './components/LakebaseDeployment';
+import TBDTab from './components/TBDTab';
+import DatabricksLogo from './components/DatabricksLogo';
 import { WorkloadConfig, CostEstimationResult } from './types';
 
 const { Header, Content } = Layout;
-const { Title, Text } = Typography;
-const { Step } = Steps;
+const { Title } = Typography;
 
 function App() {
-  const [currentStep, setCurrentStep] = useState(0);
   const [workloadConfig, setWorkloadConfig] = useState<WorkloadConfig | null>(null);
   const [costReport, setCostReport] = useState<CostEstimationResult | null>(null);
   const [generatedConfigs, setGeneratedConfigs] = useState<any>({});
-  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
 
-  const handleConfigurationSubmit = async (config: WorkloadConfig) => {
-    setLoading(true);
-    try {
-      setWorkloadConfig(config);
-      
-      // Call cost estimation API
-      const response = await fetch('http://localhost:8000/api/estimate-cost', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          workload_config: config,
-          calculate_table_sizes: true
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+  // Load saved configs from localStorage on component mount
+  React.useEffect(() => {
+    const savedConfigs = localStorage.getItem('generatedConfigs');
+    if (savedConfigs) {
+      try {
+        const configs = JSON.parse(savedConfigs);
+        setGeneratedConfigs(configs);
+        setWorkloadConfig(configs.workload_config);
+        setCostReport(configs.cost_report);
+      } catch (error) {
+        console.error('Error loading saved configs:', error);
       }
-
-      const costData = await response.json();
-      setCostReport(costData);
-
-      // Generate configuration files
-      const [syncedTablesResponse, databricksConfigResponse, lakebaseInstanceResponse] = await Promise.all([
-        fetch('http://localhost:8000/api/generate-synced-tables', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(config)
-        }),
-        fetch('http://localhost:8000/api/generate-databricks-config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(config)
-        }),
-        fetch('http://localhost:8000/api/generate-lakebase-instance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(config)
-        })
-      ]);
-
-      const [syncedTables, databricksConfig, lakebaseInstance] = await Promise.all([
-        syncedTablesResponse.json(),
-        databricksConfigResponse.json(),
-        lakebaseInstanceResponse.json()
-      ]);
-
-      setGeneratedConfigs({
-        workload_config: config,
-        synced_tables: syncedTables,
-        databricks_config: databricksConfig,
-        lakebase_instance: lakebaseInstance
-      });
-
-      setCurrentStep(1);
-      message.success('Configuration processed successfully!');
-    } catch (error) {
-      message.error(`Error processing configuration: ${error}`);
-    } finally {
-      setLoading(false);
     }
+  }, []);
+
+  // Save configs to localStorage whenever they change
+  React.useEffect(() => {
+    if (Object.keys(generatedConfigs).length > 0) {
+      localStorage.setItem('generatedConfigs', JSON.stringify(generatedConfigs));
+    }
+  }, [generatedConfigs]);
+
+  const handleConfigGenerated = (configs: any) => {
+    setGeneratedConfigs(configs);
+    setWorkloadConfig(configs.workload_config);
+    setCostReport(configs.cost_report);
+    // Stay on calculator tab and scroll to results
+    setActiveTab('calculator');
+    // Scroll to results section after a brief delay to allow rendering
+    setTimeout(() => {
+      const resultsElement = document.getElementById('cost-results-section');
+      if (resultsElement) {
+        resultsElement.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        });
+      }
+    }, 100);
   };
-
-  const steps = [
-    {
-      title: 'Configuration',
-      description: 'Enter workload parameters'
-    },
-    {
-      title: 'Results',
-      description: 'View cost estimation and download configs'
-    }
-  ];
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ background: '#fff', padding: '0 24px', borderBottom: '1px solid #f0f0f0' }}>
+      <Header className="databricks-header" style={{ padding: '0 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', height: '64px' }}>
-          <Title level={3} style={{ margin: 0, color: '#1890ff' }}>
+          <DatabricksLogo height={32} width={32} className="databricks-logo" />
+          <Title level={3} className="databricks-title">
             Databricks Lakebase Accelerator
           </Title>
         </div>
       </Header>
       
-      <Content style={{ padding: '24px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          <Card style={{ marginBottom: '24px' }}>
-            <Text type="secondary">
-              Configure your OLTP workload parameters to estimate Lakebase costs and generate deployment configurations.
-            </Text>
-          </Card>
-
-          <Steps current={currentStep} items={steps} style={{ marginBottom: '32px' }} />
-
-          {currentStep === 0 && (
-            <ConfigurationForm
-              onSubmit={handleConfigurationSubmit}
-              loading={loading}
-            />
-          )}
-
-          {currentStep === 1 && costReport && (
-            <div style={{ display: 'grid', gap: '24px' }}>
-              <CostReport data={costReport} />
-              <FileDownloads configs={generatedConfigs} />
-            </div>
-          )}
-        </div>
+      <Content style={{ padding: '0', background: '#fafafa' }}>
+        <Tabs 
+          activeKey={activeTab} 
+          onChange={setActiveTab}
+          className="databricks-tabs"
+          items={[
+            {
+              key: 'overview',
+              label: 'Lakebase Overview',
+              children: <LakebaseOverview />
+            },
+            {
+              key: 'calculator',
+              label: 'Lakebase Calculator',
+              children: <LakebaseCalculator onConfigGenerated={handleConfigGenerated} />
+            },
+            {
+              key: 'deployment',
+              label: 'Lakebase Deployment',
+              children: <LakebaseDeployment generatedConfigs={generatedConfigs} />
+            },
+            {
+              key: 'tbd',
+              label: 'TBD',
+              children: <TBDTab />
+            }
+          ]}
+          style={{ padding: '0 24px', background: 'white', margin: '24px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+          size="large"
+        />
       </Content>
     </Layout>
   );

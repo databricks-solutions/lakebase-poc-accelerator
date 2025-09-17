@@ -161,5 +161,62 @@ def main():
         return 1
 
 
+def generate_synced_tables_from_config(config_data: dict) -> dict:
+    """
+    Generate synced tables configuration from config data and return dictionary.
+    
+    Args:
+        config_data: Dictionary containing workload configuration
+        
+    Returns:
+        Dictionary with synced tables configuration
+    """
+    # Extract tables to sync from delta_synchronization section
+    tables_to_sync = config_data.get('delta_synchronization', {}).get('tables_to_sync', [])
+    
+    if not tables_to_sync:
+        return {
+            'resources': {
+                'synced_database_tables': {}
+            }
+        }
+    
+    # Base template for synced database tables
+    synced_tables_config = {
+        'resources': {
+            'synced_database_tables': {}
+        }
+    }
+    
+    for table_config in tables_to_sync:
+        table_name = table_config['name']
+        primary_keys = table_config['primary_keys']
+        table_short_name = generate_table_name(table_name)
+        
+        # Get scheduling_policy from table config or use TRIGGERED as default
+        # Normalize to uppercase for consistency
+        scheduling_policy = table_config.get('scheduling_policy', 'TRIGGERED').upper()
+        
+        # Generate the synced table configuration
+        synced_table = {
+            'name': f'${{resources.database_catalogs.my_catalog.name}}.public.{table_short_name}',
+            'database_instance_name': '${resources.database_catalogs.my_catalog.database_instance_name}',
+            'logical_database_name': '${resources.database_catalogs.my_catalog.database_name}',
+            'spec': {
+                'source_table_full_name': table_name,
+                'scheduling_policy': scheduling_policy,
+                'primary_key_columns': primary_keys,
+                'new_pipeline_spec': {
+                    'storage_catalog': 'main',
+                    'storage_schema': 'default'
+                }
+            }
+        }
+        
+        synced_tables_config['resources']['synced_database_tables'][table_short_name] = synced_table
+    
+    return synced_tables_config
+
+
 if __name__ == "__main__":
     exit(main())

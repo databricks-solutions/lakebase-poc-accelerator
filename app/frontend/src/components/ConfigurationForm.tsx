@@ -88,7 +88,9 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         tables_to_sync: tables
       },
       databricks_workspace_url: values.databricks_workspace_url,
-      lakebase_instance_name: values.lakebase_instance_name || 'lakebase-instance'
+      lakebase_instance_name: values.lakebase_instance_name || 'lakebase-accelerator-instance',
+      uc_catalog_name: values.uc_catalog_name || 'lakebase-accelerator-catalog',
+      database_name: values.database_name || 'databricks_postgres'
     };
 
     onSubmit(config);
@@ -155,6 +157,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       form={form}
       layout="vertical"
       onFinish={handleSubmit}
+      className="databricks-form"
       initialValues={{
         bulk_writes_per_second: 5000,
         continuous_writes_per_second: 2000,
@@ -169,11 +172,13 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         expected_data_per_sync_gb: 20,
         sync_mode: 'SNAPSHOT',
         sync_frequency: 'Per day',
-        lakebase_instance_name: 'lakebase-instance'
+        lakebase_instance_name: 'lakebase-accelerator-instance',
+        uc_catalog_name: 'lakebase-accelerator-catalog',
+        database_name: 'databricks_postgres'
       }}
     >
       {/* Database Instance Configuration */}
-      <Card title="Database Instance Configuration" style={{ marginBottom: '24px' }}>
+      <Card title="Database Instance Configuration" className="databricks-card" style={{ marginBottom: '24px' }}>
         <Row gutter={16}>
           <Col span={8}>
             <Form.Item
@@ -275,7 +280,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       </Card>
 
       {/* Database Storage Configuration */}
-      <Card title="Database Storage Configuration" style={{ marginBottom: '24px' }}>
+      <Card title="Database Storage Configuration" className="databricks-card" style={{ marginBottom: '24px' }}>
         <Row gutter={16}>
           <Col span={8}>
             <Form.Item
@@ -326,10 +331,10 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         </Row>
       </Card>
 
-      {/* Delta Synchronization Configuration */}
-      <Card title="Delta Synchronization Configuration" style={{ marginBottom: '24px' }}>
+      {/* Continuous Sync Configuration */}
+      <Card title="Continuous Sync Configuration" className="databricks-card" style={{ marginBottom: '24px' }}>
         <Row gutter={16}>
-          <Col span={6}>
+          <Col span={12}>
             <Form.Item
               label={
                 <span>
@@ -344,7 +349,13 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
           </Col>
-          <Col span={6}>
+        </Row>
+      </Card>
+
+      {/* Batch Sync Configuration */}
+      <Card title="Batch Sync Configuration" className="databricks-card" style={{ marginBottom: '24px' }}>
+        <Row gutter={16}>
+          <Col span={8}>
             <Form.Item
               label={
                 <span>
@@ -359,7 +370,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
           </Col>
-          <Col span={6}>
+          <Col span={8}>
             <Form.Item
               label="Sync Mode"
               name="sync_mode"
@@ -367,11 +378,10 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               <Select>
                 <Option value="SNAPSHOT">Snapshot</Option>
                 <Option value="TRIGGERED">Triggered</Option>
-                <Option value="CONTINUOUS">Continuous</Option>
               </Select>
             </Form.Item>
           </Col>
-          <Col span={6}>
+          <Col span={8}>
             <Form.Item
               label="Sync Frequency"
               name="sync_frequency"
@@ -385,11 +395,13 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       {/* Tables to Sync */}
       <Card 
         title="Tables to Sync" 
+        className="databricks-card"
         extra={
           <Button 
             type="dashed" 
             onClick={addTable} 
             icon={<PlusOutlined />}
+            className="databricks-secondary-btn"
           >
             Add Table
           </Button>
@@ -402,11 +414,12 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
           pagination={false}
           rowKey={(record, index) => `table-${index}`}
           size="small"
+          className="databricks-table"
         />
       </Card>
 
       {/* Databricks Configuration */}
-      <Card title="Databricks Configuration" style={{ marginBottom: '24px' }}>
+      <Card title="Databricks Configuration" className="databricks-card" style={{ marginBottom: '24px' }}>
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item
@@ -414,7 +427,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               name="databricks_workspace_url"
               rules={[{ required: true, message: 'Required field' }]}
             >
-              <Input placeholder="https://your-workspace.cloud.databricks.com" />
+              <Input placeholder="https://e2-demo-field-eng.cloud.databricks.com" />
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -422,7 +435,25 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               label="Lakebase Instance Name"
               name="lakebase_instance_name"
             >
-              <Input placeholder="lakebase-instance" />
+              <Input placeholder="lakebase-accelerator-instance" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label="UC Catalog Name"
+              name="uc_catalog_name"
+            >
+              <Input placeholder="lakebase-accelerator-catalog" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label="Database Name"
+              name="database_name"
+            >
+              <Input placeholder="databricks_postgres" />
             </Form.Item>
           </Col>
         </Row>
@@ -434,6 +465,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
           htmlType="submit" 
           loading={loading} 
           size="large"
+          className="databricks-primary-btn"
           style={{ width: '200px' }}
         >
           {loading ? 'Processing...' : 'Generate Cost Estimate'}
