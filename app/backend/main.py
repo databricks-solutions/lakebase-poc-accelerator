@@ -16,12 +16,17 @@ from pydantic import BaseModel, Field
 import yaml
 from dotenv import load_dotenv
 
-# Add the src directory to the Python path to import existing modules
-sys.path.append(str(Path(__file__).parent.parent.parent / "src"))
+# Import the cost estimator and table generator functions from services
+from services.lakebase_cost_estimator import estimate_cost_from_config
+from services.generate_synced_tables import generate_synced_tables_from_config
 
-# Import the cost estimator and table generator functions
-from lakebase_cost_estimator import estimate_cost_from_config
-from generate_synced_tables import generate_synced_tables_from_config
+# Import concurrency testing modules
+from models.query_models import ConcurrencyTestRequest, ConcurrencyTestReport, SimpleQueryConfig
+from services.lakebase_connection_service import LakebaseConnectionService
+from services.oauth_service import DatabricksOAuthService
+from services.query_executor import QueryExecutorService
+from services.metrics_service import ConcurrencyMetricsService
+from utils.parameter_parser import SimpleParameterParser
 
 # Load environment variables from project root
 env_path = Path(__file__).parent.parent.parent / ".env"
@@ -78,6 +83,7 @@ class WorkloadConfigRequest(BaseModel):
     database_storage: DatabaseStorageConfig
     delta_synchronization: DeltaSynchronizationConfig
     databricks_workspace_url: str = Field(..., description="Databricks workspace URL")
+    warehouse_http_path: str = Field(..., description="SQL warehouse HTTP path for table size calculation")
     lakebase_instance_name: str = Field("lakebase-accelerator-instance", description="Name for the Lakebase instance")
     uc_catalog_name: str = Field("lakebase-accelerator-catalog", description="Name for the UC catalog")
     database_name: str = Field("databricks_postgres", description="Name for the database")
@@ -104,26 +110,22 @@ async def estimate_cost(request: CostEstimationRequest):
     try:
         # Prepare workload data for the cost estimator
         workload_data = {
-            'database_instance': request.workload_config.database_instance.dict(),
-            'database_storage': request.workload_config.database_storage.dict(),
-            'delta_synchronization': request.workload_config.delta_synchronization.dict()
+            'database_instance': request.workload_config.database_instance.model_dump(),
+            'database_storage': request.workload_config.database_storage.model_dump(),
+            'delta_synchronization': request.workload_config.delta_synchronization.model_dump()
         }
-        
+
         # Call the cost estimator directly
         cost_report = estimate_cost_from_config(
             workload_data, 
-            calculate_table_sizes=request.calculate_table_sizes
+            calculate_table_sizes=request.calculate_table_sizes,
+            warehouse_http_path=request.workload_config.warehouse_http_path
         )
         
         # Transform the response to match frontend expectations
         transformed_response = {
             "timestamp": cost_report.get("timestamp"),
             "cost_breakdown": cost_report.get("cost_breakdown"),
-            "cost_efficiency_metrics": {
-                "cost_per_gb_monthly": cost_report.get("cost_breakdown", {}).get("cost_per_gb", 0),
-                "cost_per_qps_monthly": cost_report.get("cost_breakdown", {}).get("cost_per_qps", 0),
-                "cost_per_cu_monthly": cost_report.get("cost_breakdown", {}).get("cost_per_cu", 0)
-            },
             "recommendations": []  # Add recommendations if needed
         }
         
@@ -151,27 +153,7 @@ async def estimate_cost(request: CostEstimationRequest):
         print(f"Error during cost estimation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error during cost estimation: {str(e)}")
 
-@app.post("/api/generate-synced-tables")
-async def generate_synced_tables(request: WorkloadConfigRequest):
-    """
-    Generate synced tables configuration from workload config.
-    """
-    try:
-        # Prepare workload data for the table generator
-        workload_data = {
-            'database_instance': request.database_instance.dict(),
-            'database_storage': request.database_storage.dict(),
-            'delta_synchronization': request.delta_synchronization.dict()
-        }
-        
-        # Call the table generator directly
-        synced_tables_config = generate_synced_tables_from_config(workload_data)
-        
-        return JSONResponse(content=synced_tables_config)
 
-    except Exception as e:
-        print(f"Error generating synced tables: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error generating synced tables: {str(e)}")
 
 @app.post("/api/generate-databricks-config")
 async def generate_databricks_config(request: WorkloadConfigRequest):
@@ -214,20 +196,21 @@ async def generate_lakebase_instance(request: WorkloadConfigRequest):
     """
     Generate lakebase instance configuration file.
     """
+    database_instance_name = request.lakebase_instance_name.replace('-', '_')
     try:
         # Generate YAML content that matches the existing lakebase_instance.yml structure
         yaml_content = f"""resources:
 #  Provision Lakebase database instance
 #  https://docs.databricks.com/aws/en/dev-tools/bundles/resources#database_instances
   database_instances:
-    my_instance:
+    {database_instance_name}:
       name: {request.lakebase_instance_name}
       capacity: CU_{request.recommended_cu}
 
   # Register Lakebase database as a read-only UC catalog to enable federated queries + data governance
   database_catalogs:
-    my_catalog:
-      database_instance_name: ${{resources.database_instances.my_instance.name}} 
+    {request.uc_catalog_name}:
+      database_instance_name: ${{resources.database_instances.{database_instance_name}.name}} 
       name: {request.uc_catalog_name}
       database_name: {request.database_name}
       create_database_if_not_exists: true"""
@@ -240,6 +223,32 @@ async def generate_lakebase_instance(request: WorkloadConfigRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating lakebase instance config: {str(e)}")
+
+@app.post("/api/generate-synced-tables")
+async def generate_synced_tables(request: WorkloadConfigRequest):
+    """
+    Generate synced tables configuration from workload config.
+    """
+    print("Request in generate-synced-tables: ", request.model_dump())
+    try:
+        # Prepare workload data for the table generator
+        workload_data = {
+            'database_instance': request.database_instance.model_dump(),
+            'database_storage': request.database_storage.model_dump(),
+            'delta_synchronization': request.delta_synchronization.model_dump(),
+            'uc_catalog_name': request.uc_catalog_name,
+            'lakebase_instance_name': request.lakebase_instance_name,
+            'database_name': request.database_name
+        }
+        
+        # Call the table generator directly
+        synced_tables_config = generate_synced_tables_from_config(workload_data)
+        
+        return JSONResponse(content=synced_tables_config)
+
+    except Exception as e:
+        print(f"Error generating synced tables: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating synced tables: {str(e)}")
 
 @app.post("/api/deploy")
 async def deploy_to_databricks(request: dict | None = None):
@@ -330,6 +339,12 @@ async def deploy_to_databricks(request: dict | None = None):
     if not cli_path:
       raise HTTPException(status_code=500, detail='Databricks CLI not found in PATH. Please install and ensure it is accessible to the backend process.')
 
+    # Wait 5 seconds after files are saved before running CLI command
+    import time
+    print("Files saved successfully. Waiting 5 seconds before running CLI command...")
+    time.sleep(5)
+    print("Starting Databricks bundle deploy...")
+    
     # Run deploy
     result = subprocess.run(
       [cli_path, 'bundle', 'deploy', '--force', '--auto-approve'],
@@ -356,6 +371,362 @@ async def deploy_to_databricks(request: dict | None = None):
     raise HTTPException(status_code=500, detail=f'Databricks CLI invocation failed: {str(e)}')
   except Exception as e:
     raise HTTPException(status_code=500, detail=f'Deployment failed: {str(e)}')
+
+# Concurrency Testing Endpoints
+
+@app.post("/api/concurrency-test/validate-query")
+async def validate_query(query: str):
+    """
+    Validate a SQL query for concurrency testing.
+    
+    Args:
+        query: SQL query string to validate
+        
+    Returns:
+        Validation result with parameter count and safety check
+    """
+    try:
+        # Use parameter parser to validate query
+        validation_result = SimpleParameterParser.validate_query_format(query)
+        
+        # Additional safety check
+        query_executor = QueryExecutorService()
+        is_safe, safety_message = query_executor.validate_query_safety(query)
+        
+        return {
+            "is_valid": validation_result["is_valid"] and is_safe,
+            "parameter_count": validation_result["parameter_count"],
+            "error_message": validation_result["error_message"] or safety_message,
+            "query_type": query_executor.get_query_type(query)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Query validation failed: {str(e)}")
+
+@app.post("/api/concurrency-test/validate-instance")
+async def validate_lakebase_instance(workspace_url: str, instance_name: str):
+    """
+    Validate access to a Lakebase instance.
+    
+    Args:
+        workspace_url: Databricks workspace URL
+        instance_name: Lakebase instance name
+        
+    Returns:
+        Validation result
+    """
+    try:
+        oauth_service = DatabricksOAuthService()
+        has_access = await oauth_service.validate_instance_access(workspace_url, instance_name)
+        
+        return {
+            "has_access": has_access,
+            "workspace_url": workspace_url,
+            "instance_name": instance_name
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Instance validation failed: {str(e)}")
+
+@app.post("/api/concurrency-test/execute")
+async def execute_concurrency_test(test_request: ConcurrencyTestRequest):
+    """
+    Execute concurrency test against Lakebase instance.
+    
+    Args:
+        test_request: Complete test configuration including queries and parameters
+        
+    Returns:
+        ConcurrencyTestReport with test results and metrics
+    """
+    try:
+        # Initialize connection service
+        connection_service = LakebaseConnectionService()
+        
+        # Initialize connection pool
+        pool_initialized = await connection_service.initialize_connection_pool(
+            workspace_url=test_request.workspace_url,
+            instance_name=test_request.instance_name,
+            database=test_request.database_name,
+            pool_config=test_request.connection_pool_config
+        )
+        
+        if not pool_initialized:
+            raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
+        
+        # Convert simple query configs to execution format
+        execution_queries = []
+        for query_config in test_request.queries:
+            execution_query = {
+                "query_identifier": query_config.query_identifier,
+                "query_content": query_config.query_content,
+                "test_scenarios": [
+                    {
+                        "name": scenario.name,
+                        "parameters": scenario.parameters,
+                        "execution_count": scenario.execution_count
+                    }
+                    for scenario in query_config.test_scenarios
+                ]
+            }
+            execution_queries.append(execution_query)
+        
+        # Execute concurrent queries
+        report = await connection_service.execute_concurrent_queries(
+            queries=execution_queries,
+            concurrency_level=test_request.concurrency_level
+        )
+        
+        # Clean up connection pool
+        connection_service.close_connection_pool()
+        
+        return report
+        
+    except Exception as e:
+        # Ensure connection pool is closed on error
+        try:
+            connection_service.close_connection_pool()
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Concurrency test failed: {str(e)}")
+
+@app.post("/api/concurrency-test/upload-query")
+async def upload_query_file(file: UploadFile = File(...)):
+    """
+    Upload and parse a SQL query file, saving it to app/queries/ folder.
+    
+    Args:
+        file: SQL file to upload
+        
+    Returns:
+        Parsed query information
+    """
+    try:
+        # Validate file type
+        if not file.filename.endswith('.sql'):
+            raise HTTPException(status_code=400, detail="File must be a .sql file")
+        
+        # Read file content
+        content = await file.read()
+        query_content = content.decode('utf-8')
+        
+        # Parse query
+        query_identifier = file.filename.replace('.sql', '')
+        validation_result = SimpleParameterParser.validate_query_format(query_content)
+        
+        # Save file to app/queries/ folder
+        queries_dir = Path(__file__).parent.parent / "queries"
+        queries_dir.mkdir(exist_ok=True)
+        
+        file_path = queries_dir / file.filename
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(query_content)
+        
+        return {
+            "query_identifier": query_identifier,
+            "query_content": query_content,
+            "parameter_count": validation_result["parameter_count"],
+            "is_valid": validation_result["is_valid"],
+            "error_message": validation_result["error_message"],
+            "saved_path": str(file_path)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"File upload failed: {str(e)}")
+
+@app.post("/api/concurrency-test/run-uploaded-tests")
+async def run_uploaded_tests(test_request: dict):
+    """
+    Run concurrency tests using uploaded SQL files from app/queries/ folder.
+    
+    Args:
+        test_request: Test configuration with databricks_profile, instance_name, database_name, concurrency_level
+        
+    Returns:
+        ConcurrencyTestReport with test results and metrics
+    """
+    try:
+        # Debug: Log the incoming request
+        print(f"🔍 Incoming test_request: {test_request}")
+        
+        # Extract test configuration
+        databricks_profile = test_request.get("databricks_profile", "DEFAULT")
+        instance_name = test_request.get("instance_name") 
+        database_name = test_request.get("database_name", "databricks_postgres")
+        concurrency_level = test_request.get("concurrency_level", 10)
+        
+        print(f"🔍 Extracted values:")
+        print(f"   databricks_profile: {databricks_profile}")
+        print(f"   instance_name: {instance_name}")
+        print(f"   database_name: {database_name}")
+        print(f"   concurrency_level: {concurrency_level}")
+        
+        if not instance_name:
+            raise HTTPException(status_code=400, detail="instance_name is required")
+        
+        # Use the profile name to set Databricks environment
+        # The profile name will be used by the Databricks SDK to resolve credentials
+        workspace_url = os.getenv("DATABRICKS_SERVER_HOSTNAME")
+        if not workspace_url:
+            raise HTTPException(status_code=400, detail="DATABRICKS_SERVER_HOSTNAME environment variable not set. Please configure your Databricks environment.")
+        
+        # Get all SQL files from app/queries/ folder
+        queries_dir = Path(__file__).parent.parent / "queries"
+        if not queries_dir.exists():
+            raise HTTPException(status_code=404, detail="No queries folder found")
+        
+        sql_files = list(queries_dir.glob("*.sql"))
+        if not sql_files:
+            raise HTTPException(status_code=404, detail="No SQL files found in queries folder")
+        
+        # Parse each SQL file and prepare queries
+        execution_queries = []
+        for sql_file in sql_files:
+            try:
+                # Read and parse SQL file
+                content = sql_file.read_text(encoding='utf-8')
+                lines = content.split('\n')
+                
+                sql_lines = []
+                parameter_sets = []
+                exec_count = 5  # Default
+                
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('-- PARAMETERS:'):
+                        json_str = line.replace('-- PARAMETERS:', '').strip()
+                        try:
+                            parameter_sets = json.loads(json_str)
+                        except json.JSONDecodeError:
+                            parameter_sets = []
+                    elif line.startswith('-- EXEC_COUNT:'):
+                        exec_count = int(line.replace('-- EXEC_COUNT:', '').strip())
+                    elif not line.startswith('--'):
+                        sql_lines.append(line)
+                
+                sql_content = '\n'.join(sql_lines).strip()
+                
+                # Create test scenarios for each parameter set
+                test_scenarios = []
+                if parameter_sets:
+                    for i, params in enumerate(parameter_sets, 1):
+                        test_scenarios.append({
+                            "name": f"scenario_{i}",
+                            "parameters": params,
+                            "execution_count": exec_count,
+                        })
+                else:
+                    # No parameters - single scenario
+                    test_scenarios.append({
+                        "name": "scenario_1", 
+                        "parameters": [],
+                        "execution_count": exec_count,
+                    })
+                
+                execution_queries.append({
+                    "query_identifier": sql_file.stem,
+                    "query_content": sql_content,
+                    "test_scenarios": test_scenarios
+                })
+                
+            except Exception as e:
+                print(f"Error parsing {sql_file.name}: {e}")
+                continue
+        
+        if not execution_queries:
+            raise HTTPException(status_code=400, detail="No valid queries found")
+        
+        # Initialize connection service
+        connection_service = LakebaseConnectionService()
+        
+        # Initialize connection pool
+        pool_config = {
+            "base_pool_size": max(1, concurrency_level // 4),
+            "max_overflow": concurrency_level,
+            "pool_timeout": 30,
+            "pool_recycle": 3600,
+            "command_timeout": 30,
+            "ssl_mode": "require"
+        }
+        
+        try:
+            pool_initialized = await connection_service.initialize_connection_pool(
+                workspace_url=workspace_url,
+                instance_name=instance_name,
+                database=database_name,
+                pool_config=pool_config,
+                profile=databricks_profile
+            )
+            
+            if not pool_initialized:
+                raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
+        except Exception as e:
+            # Provide more specific error details
+            error_message = str(e)
+            if "Resource not found" in error_message:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Lakebase instance '{instance_name}' not found or not accessible with profile '{databricks_profile}'. Please verify the instance name and your Databricks profile configuration."
+                )
+            elif "profile" in error_message.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid Databricks profile '{databricks_profile}'. Please check your Databricks CLI configuration."
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Connection initialization failed: {error_message}"
+                )
+        
+        # Execute concurrent queries
+        report = await connection_service.execute_concurrent_queries(
+            queries=execution_queries,
+            concurrency_level=concurrency_level
+        )
+        
+        # Clean up connection pool
+        connection_service.close_connection_pool()
+        
+        return report
+        
+    except Exception as e:
+        # Ensure connection pool is closed on error
+        try:
+            connection_service.close_connection_pool()
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Test execution failed: {str(e)}")
+
+@app.get("/api/concurrency-test/status")
+async def get_concurrency_test_status():
+    """
+    Get the current status of the concurrency testing service.
+    
+    Returns:
+        Service status information
+    """
+    try:
+        connection_service = LakebaseConnectionService()
+        pool_status = connection_service.get_pool_status()
+        
+        return {
+            "service_status": "running",
+            "connection_pool": pool_status,
+            "available_endpoints": [
+                "/api/concurrency-test/validate-query",
+                "/api/concurrency-test/validate-instance", 
+                "/api/concurrency-test/execute",
+                "/api/concurrency-test/upload-query",
+                "/api/concurrency-test/run-uploaded-tests"
+            ]
+        }
+        
+    except Exception as e:
+        return {
+            "service_status": "error",
+            "error": str(e)
+        }
 
 if __name__ == "__main__":
     import uvicorn

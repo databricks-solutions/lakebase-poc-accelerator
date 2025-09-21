@@ -8,7 +8,7 @@ interface Props {
 }
 
 const CostReport: React.FC<Props> = ({ data }) => {
-  const { cost_breakdown, table_sizes, cost_efficiency_metrics, recommendations } = data;
+  const { cost_breakdown, table_sizes, recommendations } = data;
 
   const tableColumns = [
     {
@@ -130,40 +130,6 @@ const CostReport: React.FC<Props> = ({ data }) => {
         </Row>
       </Card>
 
-      {/* Cost Efficiency Metrics */}
-      {cost_efficiency_metrics && (
-        <Card title="Cost Efficiency Metrics">
-          <Row gutter={16}>
-            <Col span={8}>
-              <Statistic
-                title="Cost per GB (Monthly)"
-                value={cost_efficiency_metrics?.cost_per_gb_monthly || 0}
-                precision={3}
-                prefix="$"
-                suffix="USD/GB"
-              />
-            </Col>
-            <Col span={8}>
-              <Statistic
-                title="Cost per QPS (Monthly)"
-                value={cost_efficiency_metrics?.cost_per_qps_monthly || 0}
-                precision={3}
-                prefix="$"
-                suffix="USD/QPS"
-              />
-            </Col>
-            <Col span={8}>
-              <Statistic
-                title="Cost per CU (Monthly)"
-                value={cost_efficiency_metrics?.cost_per_cu_monthly || 0}
-                precision={2}
-                prefix="$"
-                suffix="USD/CU"
-              />
-            </Col>
-          </Row>
-        </Card>
-      )}
 
       {/* Table Size Analysis */}
       {table_sizes && (
@@ -197,6 +163,7 @@ const CostReport: React.FC<Props> = ({ data }) => {
             pagination={{ pageSize: 10 }}
             size="small"
             scroll={{ x: true }}
+            rowKey={(record) => `table-${record.table_name || Math.random()}`}
           />
         </Card>
       )}

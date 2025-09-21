@@ -108,10 +108,10 @@ const LakebaseOverview: React.FC = () => {
             <Card size="small" title="Read Performance">
               <List size="small">
                 <List.Item>
-                  <Text strong>Read QPS:</Text> <Tag color="green">10K point lookup</Tag>
+                  <Text strong>Read QPS:</Text> <Tag color="green">around 10K QPS point lookup</Tag>
                 </List.Item>
                 <List.Item>
-                  <Text strong>Range:</Text> <Text type="secondary">2k-30k depending on data size & cache hit ratio</Text>
+                  <Text strong>Range:</Text> <Text type="secondary">2k-30k QPS depending on data size & cache hit ratio</Text>
                 </List.Item>
               </List>
             </Card>
@@ -123,7 +123,7 @@ const LakebaseOverview: React.FC = () => {
             <Card size="small" title="Write Performance (Initial)">
               <Statistic
                 value="15k"
-                suffix="1KB rows/sec per CU"
+                suffix="per 1KB rows/sec per CU"
                 valueStyle={{ color: '#1890ff' }}
               />
             </Card>
@@ -132,7 +132,7 @@ const LakebaseOverview: React.FC = () => {
             <Card size="small" title="Write Performance (Incremental)">
               <Statistic
                 value="1.2k"
-                suffix="1KB rows/sec per CU"
+                suffix="per 1KB rows/sec per CU"
                 valueStyle={{ color: '#722ed1' }}
               />
             </Card>
@@ -189,7 +189,7 @@ const LakebaseOverview: React.FC = () => {
                   <Text strong>Efficiency:</Text> 10x more efficient than other modes
                 </List.Item>
                 <List.Item>
-                  <Text strong>Use Case:</Text> When modifying &gt;10% of source table
+                  <Text strong>Use Case:</Text> When modifying &gt;10% of source table. Work for Views and Materialized Views, or tables without Change Data Feed.
                 </List.Item>
               </List>
             </Card>

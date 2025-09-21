@@ -8,18 +8,14 @@ import {
   Row,
   Col,
   Select,
-  Divider,
-  Space,
   Table,
   message,
-  Tooltip,
-  Tag
+  Tooltip
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { WorkloadConfig, TableToSync } from '../types';
 
 const { Option } = Select;
-const { TextArea } = Input;
 
 interface Props {
   onSubmit: (config: WorkloadConfig) => void;
@@ -88,6 +84,8 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         tables_to_sync: tables
       },
       databricks_workspace_url: values.databricks_workspace_url,
+      warehouse_http_path: values.warehouse_http_path,
+      databricks_profile: values.databricks_profile || 'DEFAULT',
       lakebase_instance_name: values.lakebase_instance_name || 'lakebase-accelerator-instance',
       uc_catalog_name: values.uc_catalog_name || 'lakebase-accelerator-catalog',
       database_name: values.database_name || 'databricks_postgres'
@@ -172,6 +170,9 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         expected_data_per_sync_gb: 20,
         sync_mode: 'TRIGGERED',
         sync_frequency: 'Per day',
+        databricks_workspace_url: 'https://your-workspace.cloud.databricks.com',
+        warehouse_http_path: '/sql/1.0/warehouses/your-warehouse-id',
+        databricks_profile: 'DEFAULT',
         lakebase_instance_name: 'lakebase-accelerator-instance',
         uc_catalog_name: 'lakebase_accelerator_catalog',
         database_name: 'databricks_postgres'
@@ -412,7 +413,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
           columns={tableColumns}
           dataSource={tables}
           pagination={false}
-          rowKey={(record, index) => `table-${index}`}
+          rowKey={(record) => `table-${record.name}`}
           size="small"
           className="databricks-table"
         />
@@ -423,11 +424,45 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item
-              label="Databricks Workspace URL"
+              label={
+                <span>
+                  Databricks Workspace URL{' '}
+                  <Tooltip title="Your Databricks workspace URL (e.g., https://your-workspace.cloud.databricks.com)">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
               name="databricks_workspace_url"
               rules={[{ required: true, message: 'Required field' }]}
             >
-              <Input placeholder="https://e2-demo-field-eng.cloud.databricks.com" />
+              <Input placeholder="https://your-workspace.cloud.databricks.com" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label={
+                <span>
+                  Warehouse HTTP Path{' '}
+                  <Tooltip title="SQL warehouse HTTP path for table size calculation (e.g., /sql/1.0/warehouses/your-warehouse-id)">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
+              name="warehouse_http_path"
+              rules={[{ required: true, message: 'Required field' }]}
+            >
+              <Input placeholder="/sql/1.0/warehouses/your-warehouse-id" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label="Databricks Profile Name"
+              name="databricks_profile"
+              rules={[{ required: true, message: 'Required field' }]}
+            >
+              <Input placeholder="DEFAULT" />
             </Form.Item>
           </Col>
           <Col span={12}>

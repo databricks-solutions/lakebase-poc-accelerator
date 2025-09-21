@@ -16,6 +16,7 @@ AGENTS.md
 CLAUDE.md
 .env_prod
 .env_dev
+app/test_queries/*
 
 
 

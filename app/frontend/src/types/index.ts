@@ -32,6 +32,9 @@ export interface WorkloadConfig {
   database_storage: DatabaseStorageConfig;
   delta_synchronization: DeltaSynchronizationConfig;
   databricks_workspace_url: string;
+  warehouse_http_path: string;
+  // Optional: support profile-based auth to Databricks SDK
+  databricks_profile?: string;
   lakebase_instance_name: string;
   uc_catalog_name: string;
   database_name: string;
@@ -66,11 +69,6 @@ export interface CostEstimationResult {
   table_sizes?: {
     total_uncompressed_size_mb: number;
     table_details: TableSizeInfo[];
-  };
-  cost_efficiency_metrics: {
-    cost_per_gb_monthly: number;
-    cost_per_qps_monthly: number;
-    cost_per_cu_monthly: number;
   };
   recommendations: string[];
   timestamp: string;

@@ -7,7 +7,7 @@ workload characteristics and usage patterns.
 
 Usage:
     # From base directory:
-    python src/lakebase_cost_estimator.py --config sample_workload_config.yml --output cost_report.json
+    python app/backend/services/lakebase_cost_estimator.py --config sample_workload_config.yml --output cost_report.json
     
     # Required environment variables in .env file:
     # DATABRICKS_SERVER_HOSTNAME=your-databricks-hostname
@@ -17,6 +17,8 @@ Usage:
 """
 
 import argparse
+import concurrent.futures
+import re
 import json
 import logging
 import math
@@ -38,6 +40,36 @@ try:
 except ImportError:
     DATABRICKS_SQL_AVAILABLE = False
     logger.warning("databricks-sql-connector not available. Table size calculation will be skipped.")
+
+try:
+    from databricks.sdk import WorkspaceClient
+    DATABRICKS_SDK_AVAILABLE = True
+except Exception:
+    DATABRICKS_SDK_AVAILABLE = False
+
+def _parse_warehouse_id(http_path: str) -> Optional[str]:
+    """Extract warehouse id from HTTP path like /sql/1.0/warehouses/<id>."""
+    if not http_path:
+        return None
+    match = re.search(r"/warehouses/([A-Za-z0-9\-]+)", http_path.strip())
+    return match.group(1) if match else None
+
+def _warehouse_exists(http_path: str, profile: Optional[str] = None) -> tuple[bool, str]:
+    """Check existence of a SQL warehouse using Databricks SDK. Returns (exists, message)."""
+    if not DATABRICKS_SDK_AVAILABLE:
+        return True, "Databricks SDK not available; skipping existence check"
+    wid = _parse_warehouse_id(http_path)
+    if not wid:
+        return False, "Invalid DATABRICKS_HTTP_PATH (cannot parse warehouse id)"
+    try:
+        client = WorkspaceClient(profile=profile) if profile else WorkspaceClient()
+        wh = client.warehouses.get(id=wid)
+        return True, f"Warehouse {wid} exists (state={getattr(wh, 'state', 'unknown')})"
+    except DbxNotFound:
+        return False, f"Warehouse {wid} not found"
+    except Exception as e:
+        # If SDK cannot authenticate, don't block; report error and allow timeout path below
+        return False, f"Warehouse check failed: {e}"
 
 
 @dataclass
@@ -94,10 +126,6 @@ class CostBreakdown:
     # Total costs
     total_monthly_cost: float
     
-    # Cost per unit metrics
-    cost_per_gb: float
-    cost_per_qps: float
-    cost_per_cu: float
 
 
 class LakebaseCostEstimator:
@@ -283,11 +311,6 @@ class LakebaseCostEstimator:
             sync_costs["total_sync_cost"]
         )
         
-        # Calculate cost per unit metrics
-        total_qps = config.reads_per_second + config.bulk_writes_per_second + config.continuous_writes_per_second
-        cost_per_gb = total_monthly_cost / config.data_stored_gb if config.data_stored_gb > 0 else 0
-        cost_per_qps = total_monthly_cost / total_qps if total_qps > 0 else 0
-        cost_per_cu = total_monthly_cost / cu_requirements["recommended_cu"]
         
         return CostBreakdown(
             # CU calculations
@@ -312,12 +335,7 @@ class LakebaseCostEstimator:
             estimated_sync_time_hours=sync_costs["estimated_sync_time_hours"],
             
             # Total costs
-            total_monthly_cost=total_monthly_cost,
-            
-            # Cost per unit metrics
-            cost_per_gb=cost_per_gb,
-            cost_per_qps=cost_per_qps,
-            cost_per_cu=cost_per_cu
+            total_monthly_cost=total_monthly_cost
         )
 
 
@@ -447,7 +465,7 @@ def get_delta_table_sizes(tables_config: List[Dict[str, Any]],
         return {"error": str(e)}
 
 
-def estimate_cost_from_config(config_data: Dict[str, Any], calculate_table_sizes: bool = False) -> Dict[str, Any]:
+def estimate_cost_from_config(config_data: Dict[str, Any], calculate_table_sizes: bool = False, warehouse_http_path: str = None) -> Dict[str, Any]:
     """
     Estimate cost from configuration data and return JSON structure for the app.
     
@@ -491,24 +509,48 @@ def estimate_cost_from_config(config_data: Dict[str, Any], calculate_table_sizes
         
         # Check if we should calculate table sizes
         hostname = os.getenv('DATABRICKS_SERVER_HOSTNAME')
-        http_path = os.getenv('DATABRICKS_HTTP_PATH')
+        # Use provided warehouse HTTP path or fall back to environment variable
+        http_path = warehouse_http_path or os.getenv('DATABRICKS_HTTP_PATH')
         access_token = os.getenv('DATABRICKS_ACCESS_TOKEN')
         
         # Auto-calculate if credentials are available and tables exist, or if explicitly requested
         should_calculate = (all([hostname, http_path, access_token]) and tables_to_sync) or calculate_table_sizes
-        
+
         if should_calculate and tables_to_sync:
-            if all([hostname, http_path, access_token]):
-                logger.info("Databricks credentials found - calculating actual table sizes...")
-                table_sizes = get_delta_table_sizes(
-                    tables_to_sync,
-                    hostname,
-                    http_path,
-                    access_token
-                )
-            else:
+            # Fast validation before attempting a connection
+            if not hostname or not http_path or not access_token:
                 logger.info("Databricks credentials not found - skipping table size calculation")
                 table_sizes = {"error": "Databricks credentials not configured"}
+            elif not isinstance(http_path, str) or not http_path.strip():
+                logger.info("DATABRICKS_HTTP_PATH is empty - skipping table size calculation")
+                table_sizes = {"error": "DATABRICKS_HTTP_PATH is empty or missing"}
+            else:
+                # Check warehouse existence via SDK when available
+                # Support profile override via env DATABRICKS_CONFIG_PROFILE
+                profile = os.getenv('DATABRICKS_CONFIG_PROFILE') or os.getenv('DATABRICKS_PROFILE')
+                exists, msg = _warehouse_exists(http_path, profile=profile)
+                if not exists:
+                    logger.error(f"Warehouse existence check failed: {msg}")
+                    table_sizes = {"error": msg}
+                else:
+                # Execute with a hard timeout so we never hang if the warehouse was deleted
+                    try:
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(
+                                get_delta_table_sizes,
+                                tables_to_sync,
+                                hostname,
+                                http_path,
+                                access_token,
+                            )
+                            # Fail fast after 10 seconds to keep the UI responsive
+                            table_sizes = future.result(timeout=10)
+                    except concurrent.futures.TimeoutError:
+                        logger.error("Timed out calculating table sizes (warehouse may be deleted or unreachable)")
+                        table_sizes = {"error": "Timed out calculating table sizes. Verify your SQL warehouse (DATABRICKS_HTTP_PATH)."}
+                    except Exception as e:
+                        logger.error(f"Failed calculating table sizes: {e}")
+                        table_sizes = {"error": str(e)}
         
         # Build results dictionary
         results = {
@@ -629,10 +671,6 @@ def main():
         print(f"  Estimated sync time: {cost_breakdown['estimated_sync_time_hours']:.2f} hours")
         print(f"  Total monthly cost: ${cost_breakdown['total_monthly_cost']:.2f}")
         
-        print(f"\nCost Efficiency Metrics:")
-        print(f"  Cost per GB: ${cost_breakdown['cost_per_gb']:.4f}")
-        print(f"  Cost per QPS: ${cost_breakdown['cost_per_qps']:.4f}")
-        print(f"  Cost per CU: ${cost_breakdown['cost_per_cu']:.2f}")
         
         # Display table size information if calculated
         if 'table_sizes' in results:

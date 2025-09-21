@@ -114,13 +114,13 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
   const handleDeploy = async () => {
     setDeploying(true);
-    setDeploymentProgress('Deploying via Databricks CLI...');
-    setDeploymentOutput('Running: databricks bundle deploy --force --auto-approve\n\n');
+    setDeploymentProgress('Saving configuration files...');
+    setDeploymentOutput('📁 Saving files to project directory:\n  • databricks.yml → Project root\n  • synced_delta_tables.yml → resources/\n  • lakebase_instance.yml → resources/\n\n');
     setDeploymentModalVisible(true);
     
     try {
-      // Keep progress focused on CLI deployment; files are saved server-side
-      setDeploymentProgress('Deploying via Databricks CLI...');
+      // Update progress to show file saving phase
+      setDeploymentProgress('Saving configuration files...');
       
       // Call the real deployment API with generated configurations
       const response = await fetch('http://localhost:8000/api/deploy', {
@@ -133,6 +133,15 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         })
       });
 
+      setDeploymentProgress('Files downloaded successfully! Waiting 5 seconds before deployment...');
+      setDeploymentOutput(prev => prev + '✅ Files downloaded successfully!\n⏳ Waiting 5 seconds before running CLI command...\n\n');
+      
+      // Show success message for files downloaded
+      message.success('Configuration files saved successfully! Proceeding with deployment...');
+      
+      // Add a visual delay to show the waiting message
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       setDeploymentProgress('Processing deployment response...');
       const result = await response.json();
 
@@ -142,7 +151,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         
         // Add saved files information to output
         if (result.saved_files && result.saved_files.length > 0) {
-          output = `Files saved:\n${result.saved_files.map((f: string) => `- ${f}`).join('\n')}\n\n` + output;
+          output = `✅ Files downloaded successfully:\n${result.saved_files.map((f: string) => `  ✓ ${f}`).join('\n')}\n\n⏳ Waiting 5 seconds before running CLI command...\n\n` + output;
         }
         
         setDeploymentOutput(output);
@@ -158,7 +167,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         
         // Add saved files information even if deployment failed
         if (result.saved_files && result.saved_files.length > 0) {
-          errorOutput = `Files saved before deployment:\n${result.saved_files.map((f: string) => `- ${f}`).join('\n')}\n\n` + errorOutput;
+          errorOutput = `✅ Files downloaded successfully:\n${result.saved_files.map((f: string) => `  ✓ ${f}`).join('\n')}\n\n⏳ Waiting 5 seconds before running CLI command...\n\n` + errorOutput;
         }
         
         setDeploymentOutput(errorOutput);
@@ -381,31 +390,16 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               </Col>
               
               <Col span={24}>
-                <Space size="large">
-                  <Button 
-                    type="primary" 
-                    size="large"
-                    icon={<RocketOutlined />}
-                    loading={deploying}
-                    onClick={handleDeploy}
-                    className="databricks-primary-btn"
-                  >
-                    {deploying ? 'Deploying...' : 'Deploy to Databricks'}
-                  </Button>
-                  
-                  <Button 
-                    size="large"
-                    icon={<DownloadOutlined />}
-                    className="databricks-secondary-btn"
-                    onClick={() => {
-                      handleDownloadFile('databricks.yml', generatedConfigs.databricks_config);
-                      handleDownloadFile('synced_delta_tables.yml', generatedConfigs.synced_tables);
-                      handleDownloadFile('lakebase_instance.yml', generatedConfigs.lakebase_instance);
-                    }}
-                  >
-                    Download All Files
-                  </Button>
-                </Space>
+                <Button 
+                  type="primary" 
+                  size="large"
+                  icon={<RocketOutlined />}
+                  loading={deploying}
+                  onClick={handleDeploy}
+                  className="databricks-primary-btn"
+                >
+                  {deploying ? 'Deploying...' : 'Deploy to Databricks'}
+                </Button>
               </Col>
             </Row>
             
@@ -530,7 +524,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                 height: '16px', 
                 borderRadius: '50%', 
                 backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' : 
-                                deploymentProgress.includes('failed') ? '#ff4d4f' : '#1890ff',
+                                deploymentProgress.includes('failed') ? '#ff4d4f' : 
+                                deploymentProgress.includes('downloaded successfully') ? '#52c41a' : '#1890ff',
                 marginRight: '8px'
               }} />
             )}

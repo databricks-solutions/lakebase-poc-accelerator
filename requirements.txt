@@ -11,3 +11,9 @@ pydantic
 pyyaml
 python-multipart
 psycopg2-binary
+
+# Concurrency testing dependencies
+databricks-sdk
+asyncpg
+sqlalchemy
+greenlet

@@ -104,7 +104,7 @@ DATABRICKS_ENDPOINT=https://your-workspace.cloud.databricks.com/serving-endpoint
 # LLM Model name for Query Conversion, defaults to databricks-meta-llama-3-1-70b-instruct
 MODEL_NAME=databricks-meta-llama-3-1-70b-instruct
 
-# Required for table size calculation (src/lakebase_cost_estimator.py)
+# Required for table size calculation (app/backend/services/lakebase_cost_estimator.py)
 DATABRICKS_SERVER_HOSTNAME=your-workspace.cloud.databricks.com
 DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/your-warehouse-id
 ````
@@ -114,19 +114,19 @@ DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/your-warehouse-id
 - `DATABRICKS_SERVER_HOSTNAME`: Your Databricks workspace hostname (e.g., `adb-1234567890123456.7.azuredatabricks.net`)
 - `DATABRICKS_HTTP_PATH`: SQL warehouse HTTP path (e.g., `/sql/1.0/warehouses/abc123def456`)
 
-**Note:** The same `DATABRICKS_ACCESS_TOKEN` is used for both query conversion (`src/convert_queries.py`) and table size calculation (`src/lakebase_cost_estimator.py`). This simplifies configuration by using a single token for all Databricks API operations.
+**Note:** The same `DATABRICKS_ACCESS_TOKEN` is used for both query conversion (`src/convert_queries.py`) and table size calculation (`app/backend/services/lakebase_cost_estimator.py`). This simplifies configuration by using a single token for all Databricks API operations.
 
 ## Usage
 
 ### Cost Estimation
 
-The project includes a comprehensive cost estimator (`src/lakebase_cost_estimator.py`) that can calculate Lakebase Postgres costs based on workload characteristics. It also supports calculating actual uncompressed table sizes from Databricks Delta tables. 
+The project includes a comprehensive cost estimator (`app/backend/services/lakebase_cost_estimator.py`) that can calculate Lakebase Postgres costs based on workload characteristics. It also supports calculating actual uncompressed table sizes from Databricks Delta tables. 
 
 #### Basic Cost Estimation
 
 ```bash
 # Basic cost estimation using workload configuration
-python src/lakebase_cost_estimator.py --config workload_config.yml --output cost_report.json
+python app/backend/services/lakebase_cost_estimator.py --config workload_config.yml --output cost_report.json
 ```
 
 
@@ -141,19 +141,19 @@ The cost estimator provides detailed breakdown including:
 
 ### Table Configuration Generator
 
-The project includes a table configuration generator (`src/generate_synced_tables.py`) that creates Databricks bundle configuration files from workload definitions.
+The project includes a table configuration generator (`app/backend/services/generate_synced_tables.py`) that creates Databricks bundle configuration files from workload definitions.
 
 #### Basic Usage
 
 ```bash
 # Generate synced tables from workload config
-python src/generate_synced_tables.py --config workload_config.yml
+python app/backend/services/generate_synced_tables.py --config workload_config.yml
 
 # Specify custom output path
-python src/generate_synced_tables.py --config workload_config.yml --output synced_tables.yml
+python app/backend/services/generate_synced_tables.py --config workload_config.yml --output synced_tables.yml
 
 # Enable verbose output for debugging
-python src/generate_synced_tables.py --config workload_config.yml --verbose
+python app/backend/services/generate_synced_tables.py --config workload_config.yml --verbose
 ```
 
 #### Features

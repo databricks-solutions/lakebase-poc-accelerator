@@ -6,6 +6,7 @@ import './App.css';
 import LakebaseOverview from './components/LakebaseOverview';
 import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
+import ConcurrencyTesting from './components/ConcurrencyTesting';
 import TBDTab from './components/TBDTab';
 import DatabricksLogo from './components/DatabricksLogo';
 import { WorkloadConfig, CostEstimationResult } from './types';
@@ -65,7 +66,7 @@ function App() {
         <div style={{ display: 'flex', alignItems: 'center', height: '64px' }}>
           <DatabricksLogo height={32} width={32} className="databricks-logo" />
           <Title level={3} className="databricks-title">
-            Databricks Lakebase Accelerator
+            Lakebase Reverse ETL Accelerator
           </Title>
         </div>
       </Header>
@@ -90,6 +91,11 @@ function App() {
               key: 'deployment',
               label: 'Lakebase Deployment',
               children: <LakebaseDeployment generatedConfigs={generatedConfigs} />
+            },
+            {
+              key: 'concurrency',
+              label: 'Concurrency Testing',
+              children: <ConcurrencyTesting />
             },
             {
               key: 'tbd',
