@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
+import asyncio
+from typing import AsyncGenerator
+import json
 import yaml
-from dotenv import load_dotenv
 
 # Import the cost estimator and table generator functions from services
 from services.lakebase_cost_estimator import estimate_cost_from_config
@@ -26,22 +28,17 @@ from services.lakebase_connection_service import LakebaseConnectionService
 from services.oauth_service import DatabricksOAuthService
 from services.query_executor import QueryExecutorService
 from services.metrics_service import ConcurrencyMetricsService
+from services.databricks_deployment_service import DatabricksDeploymentService, DeploymentProgress
 from utils.parameter_parser import SimpleParameterParser
-
-# Load environment variables from project root
-env_path = Path(__file__).parent.parent.parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
-    print(f"Loaded environment variables from: {env_path}")
-else:
-    print(f"Warning: .env file not found at {env_path}")
-    print("Please create a .env file with your Databricks credentials")
 
 app = FastAPI(
     title="Databricks Lakebase Accelerator API",
     description="API for cost estimation, table generation, and workload configuration",
     version="1.0.0"
 )
+
+# Global progress tracker for deployment status
+deployment_progress_tracker = {}
 
 # Configure CORS
 app.add_middleware(
@@ -91,7 +88,11 @@ class WorkloadConfigRequest(BaseModel):
 
 class CostEstimationRequest(BaseModel):
     workload_config: WorkloadConfigRequest
-    calculate_table_sizes: bool = Field(False, description="Whether to calculate actual table sizes from Databricks")
+
+class DeploymentRequest(BaseModel):
+    workload_config: WorkloadConfigRequest
+    databricks_profile_name: Optional[str] = Field(None, description="Databricks profile name for authentication")
+    tables: List[Dict[str, Any]] = Field(default_factory=list, description="Tables to sync")
 
 @app.get("/")
 async def root():
@@ -105,7 +106,7 @@ async def health_check():
 async def estimate_cost(request: CostEstimationRequest):
     """
     Estimate Lakebase costs based on workload configuration.
-    Optionally calculate actual table sizes from Databricks.
+    Automatically calculates actual table sizes from Databricks when tables are configured.
     """
     try:
         # Prepare workload data for the cost estimator
@@ -117,9 +118,10 @@ async def estimate_cost(request: CostEstimationRequest):
 
         # Call the cost estimator directly
         cost_report = estimate_cost_from_config(
-            workload_data, 
-            calculate_table_sizes=request.calculate_table_sizes,
-            warehouse_http_path=request.workload_config.warehouse_http_path
+            workload_data,
+            warehouse_http_path=request.workload_config.warehouse_http_path,
+            workspace_url=request.workload_config.databricks_workspace_url,
+            profile=None  # Could be extended to accept profile from request if needed
         )
         
         # Transform the response to match frontend expectations
@@ -251,126 +253,96 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
         raise HTTPException(status_code=500, detail=f"Error generating synced tables: {str(e)}")
 
 @app.post("/api/deploy")
-async def deploy_to_databricks(request: dict | None = None):
-  """
-  Save provided YAMLs to the repo and run `databricks bundle deploy`.
-  Reads credentials from environment variables.
-  """
-  try:
-    import subprocess
-    import os
-    import yaml
-    import shutil
-    from dotenv import load_dotenv
+async def deploy_to_databricks(request: DeploymentRequest):
+    """
+    Deploy Lakebase instance directly using Databricks SDK.
+    Creates database instance, catalog, and synced tables.
+    """
+    try:
+        import uuid
 
-    # Load environment variables from project root (if present)
-    load_dotenv()
+        # Generate unique deployment ID
+        deployment_id = str(uuid.uuid4())
 
-    access_token = os.getenv('DATABRICKS_ACCESS_TOKEN')
-    workspace = os.getenv('DATABRICKS_WORKSPACE_URL') or os.getenv('DATABRICKS_SERVER_HOSTNAME')
+        # Initialize deployment service
+        deployment_service = DatabricksDeploymentService()
 
-    if not access_token:
-      raise HTTPException(status_code=400, detail='DATABRICKS_ACCESS_TOKEN not found in environment variables')
-    if not workspace:
-      raise HTTPException(status_code=400, detail='DATABRICKS_WORKSPACE_URL or DATABRICKS_SERVER_HOSTNAME not found in environment variables')
+        # Set up progress tracking
+        def progress_callback(progress: DeploymentProgress):
+            deployment_progress_tracker[deployment_id] = progress.__dict__
 
-    # Normalize workspace host
-    workspace_host = workspace.rstrip('/')
-    if not workspace_host.startswith('http://') and not workspace_host.startswith('https://'):
-      workspace_host = f'https://{workspace_host}'
+        deployment_service.set_progress_callback(progress_callback)
 
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Convert request to config dictionary
+        config = {
+            'databricks_workspace_url': request.workload_config.databricks_workspace_url,
+            'lakebase_instance_name': request.workload_config.lakebase_instance_name,
+            'database_name': request.workload_config.database_name,
+            'uc_catalog_name': request.workload_config.uc_catalog_name,
+            'recommended_cu': request.workload_config.recommended_cu,
+            'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
+            'tables': request.tables
+        }
 
-    # Validate request payload
-    if not request or 'generatedConfigs' not in request:
-      raise HTTPException(status_code=400, detail='Generated configurations not provided')
+        # Deploy the instance
+        result = await deployment_service.deploy_lakebase_instance(
+            config=config,
+            profile=request.databricks_profile_name
+        )
 
-    generated_configs = request['generatedConfigs']
+        # Add deployment ID to result
+        result['deployment_id'] = deployment_id
 
-    saved_files: list[str] = []
+        return result
 
-    # Save databricks.yml at repo root
-    if 'databricks_config' in generated_configs:
-      databricks_yml_path = os.path.join(project_dir, 'databricks.yml')
-      with open(databricks_yml_path, 'w') as f:
-        cfg = generated_configs['databricks_config']
-        if isinstance(cfg, str):
-          f.write(cfg)
-        else:
-          yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
-      saved_files.append('databricks.yml')
+    except Exception as e:
+        logger.error(f"Deployment failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
 
-    # Ensure resources directory
-    resources_dir = os.path.join(project_dir, 'resources')
-    os.makedirs(resources_dir, exist_ok=True)
+@app.get("/api/deploy/progress/{deployment_id}")
+async def get_deployment_progress(deployment_id: str):
+    """
+    Get current deployment progress for a specific deployment ID
+    """
+    if deployment_id not in deployment_progress_tracker:
+        raise HTTPException(status_code=404, detail="Deployment not found")
 
-    # Save synced_delta_tables.yml
-    if 'synced_tables' in generated_configs:
-      synced_path = os.path.join(resources_dir, 'synced_delta_tables.yml')
-      with open(synced_path, 'w') as f:
-        tables_cfg = generated_configs['synced_tables']
-        if isinstance(tables_cfg, str):
-          f.write(tables_cfg)
-        else:
-          yaml.dump(tables_cfg, f, default_flow_style=False, sort_keys=False)
-      saved_files.append('resources/synced_delta_tables.yml')
+    return deployment_progress_tracker[deployment_id]
 
-    # Save lakebase_instance.yml
-    if 'lakebase_instance' in generated_configs:
-      instance_cfg = generated_configs['lakebase_instance']
-      instance_path = os.path.join(resources_dir, 'lakebase_instance.yml')
-      with open(instance_path, 'w') as f:
-        if isinstance(instance_cfg, dict) and 'yaml_content' in instance_cfg:
-          f.write(instance_cfg['yaml_content'])
-        elif isinstance(instance_cfg, str):
-          f.write(instance_cfg)
-        else:
-          yaml.dump(instance_cfg, f, default_flow_style=False, sort_keys=False)
-      saved_files.append('resources/lakebase_instance.yml')
+@app.get("/api/deploy/progress/{deployment_id}/stream")
+async def stream_deployment_progress(deployment_id: str):
+    """
+    Stream deployment progress updates using Server-Sent Events
+    """
+    async def event_generator():
+        last_status = None
+        while True:
+            if deployment_id in deployment_progress_tracker:
+                current_progress = deployment_progress_tracker[deployment_id]
+                current_status = current_progress.get('status', 'pending')
 
-    # Prepare environment for CLI
-    env = os.environ.copy()
-    env.update({
-      'DATABRICKS_TOKEN': access_token,
-      'DATABRICKS_HOST': workspace_host,
-    })
+                # Send update if status changed or if still in progress
+                if current_status != last_status or current_status == 'in_progress':
+                    yield f"data: {json.dumps(current_progress)}\n\n"
+                    last_status = current_status
 
-    cli_path = shutil.which('databricks')
-    if not cli_path:
-      raise HTTPException(status_code=500, detail='Databricks CLI not found in PATH. Please install and ensure it is accessible to the backend process.')
+                # Stop streaming if deployment is completed or failed
+                if current_status in ['completed', 'failed']:
+                    break
+            else:
+                yield f"data: {json.dumps({'status': 'pending', 'message': 'Deployment not started'})}\n\n"
 
-    # Wait 5 seconds after files are saved before running CLI command
-    import time
-    print("Files saved successfully. Waiting 5 seconds before running CLI command...")
-    time.sleep(5)
-    print("Starting Databricks bundle deploy...")
-    
-    # Run deploy
-    result = subprocess.run(
-      [cli_path, 'bundle', 'deploy', '--force', '--auto-approve'],
-      cwd=project_dir,
-      capture_output=True,
-      text=True,
-      timeout=300,
-      env=env
+            await asyncio.sleep(1)  # Check every second
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream"
+        }
     )
-
-    success = result.returncode == 0
-    return {
-      'success': success,
-      'message': 'Deployment completed successfully!' if success else f'Deployment failed with return code {result.returncode}',
-      'output': result.stdout,
-      'stderr': result.stderr,
-      'workspace_url': workspace_host,
-      'saved_files': saved_files,
-    }
-
-  except subprocess.TimeoutExpired:
-    raise HTTPException(status_code=408, detail='Deployment timed out after 5 minutes')
-  except FileNotFoundError as e:
-    raise HTTPException(status_code=500, detail=f'Databricks CLI invocation failed: {str(e)}')
-  except Exception as e:
-    raise HTTPException(status_code=500, detail=f'Deployment failed: {str(e)}')
 
 # Concurrency Testing Endpoints
 
@@ -551,24 +523,23 @@ async def run_uploaded_tests(test_request: dict):
         
         # Extract test configuration
         databricks_profile = test_request.get("databricks_profile", "DEFAULT")
-        instance_name = test_request.get("instance_name") 
+        workspace_url = test_request.get("workspace_url")
+        instance_name = test_request.get("instance_name")
         database_name = test_request.get("database_name", "databricks_postgres")
         concurrency_level = test_request.get("concurrency_level", 10)
-        
+
         print(f"🔍 Extracted values:")
         print(f"   databricks_profile: {databricks_profile}")
+        print(f"   workspace_url: {workspace_url}")
         print(f"   instance_name: {instance_name}")
         print(f"   database_name: {database_name}")
         print(f"   concurrency_level: {concurrency_level}")
-        
+
         if not instance_name:
             raise HTTPException(status_code=400, detail="instance_name is required")
-        
-        # Use the profile name to set Databricks environment
-        # The profile name will be used by the Databricks SDK to resolve credentials
-        workspace_url = os.getenv("DATABRICKS_SERVER_HOSTNAME")
+
         if not workspace_url:
-            raise HTTPException(status_code=400, detail="DATABRICKS_SERVER_HOSTNAME environment variable not set. Please configure your Databricks environment.")
+            raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
         
         # Get all SQL files from app/queries/ folder
         queries_dir = Path(__file__).parent.parent / "queries"

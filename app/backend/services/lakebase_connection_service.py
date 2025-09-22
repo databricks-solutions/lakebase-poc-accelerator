@@ -8,13 +8,10 @@ from typing import Dict, List, Any, Optional, Tuple
 from databricks.sdk import WorkspaceClient
 from sqlalchemy import URL, event, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-from dotenv import load_dotenv
 
 from services.oauth_service import DatabricksOAuthService
 from models.query_models import QueryExecutionResult, ConcurrencyTestReport
 
-# Load environment variables from .env file
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +76,7 @@ class LakebaseConnectionService:
         try:
             # Set the profile and initialize Databricks SDK client
             self._profile = profile
-            self._workspace_client = WorkspaceClient(profile=self._profile)
+            self._workspace_client = WorkspaceClient(profile=self._profile) if self._profile else WorkspaceClient()
 
             # Lookup database instance by name
             self._database_instance = self._workspace_client.database.get_database_instance(name=instance_name)
@@ -101,18 +98,14 @@ class LakebaseConnectionService:
             ssl_mode = pool_config.get('DB_SSL_MODE', 'require')
 
             # Build SQLAlchemy async URL for asyncpg
-            username = (
-                os.getenv("DATABRICKS_CLIENT_ID")
-                or self._workspace_client.current_user.me().user_name
-                or None
-            )
+            username = self._workspace_client.current_user.me().user_name
 
             url = URL.create(
                 drivername="postgresql+asyncpg",
                 username=username,
                 password="",  # password injected by do_connect event
                 host=self._database_instance.read_write_dns,
-                port=int(os.getenv("DATABRICKS_DATABASE_PORT", "5432")),
+                port=5432,
                 database=database,
             )
 

@@ -52,6 +52,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploymentProgress, setDeploymentProgress] = useState<string>('');
   const [deploymentOutput, setDeploymentOutput] = useState<string>('');
   const [deploymentModalVisible, setDeploymentModalVisible] = useState(false);
+  const [deploymentId, setDeploymentId] = useState<string>('');
+  const [deploymentSteps, setDeploymentSteps] = useState<any[]>([]);
+  const [currentStep, setCurrentStep] = useState<number>(0);
   
   // Helper to build workspace monitor URL
   const getWorkspaceMonitorUrl = (fallback?: string): string | null => {
@@ -59,7 +62,11 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
     const raw = (cfg && cfg.databricks_workspace_url) || fallback;
     if (!raw) return null;
     const base = String(raw).replace(/\/$/, '');
-    return `${base}/compute/database-instances`;
+
+    // Get instance name from config
+    const instanceName = cfg?.lakebase_instance_name || 'lakebase-accelerator-instance';
+
+    return `${base}/compute/database-instances/${encodeURIComponent(instanceName)}`;
   };
 
   // Helper function to get file content
@@ -114,71 +121,95 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
   const handleDeploy = async () => {
     setDeploying(true);
-    setDeploymentProgress('Saving configuration files...');
-    setDeploymentOutput('📁 Saving files to project directory:\n  • databricks.yml → Project root\n  • synced_delta_tables.yml → resources/\n  • lakebase_instance.yml → resources/\n\n');
+    setDeploymentProgress('Initializing deployment...');
+    setDeploymentOutput('🚀 Starting Lakebase deployment using Databricks SDK...\n\n');
     setDeploymentModalVisible(true);
-    
+
     try {
-      // Update progress to show file saving phase
-      setDeploymentProgress('Saving configuration files...');
-      
-      // Call the real deployment API with generated configurations
+      // Prepare deployment request with workload config and tables
+      const workloadConfig = (generatedConfigs as any)?.workload_config;
+      const tablesConfig = (generatedConfigs as any)?.synced_tables;
+
+      if (!workloadConfig) {
+        throw new Error('Workload configuration not found. Please generate configuration first.');
+      }
+
+      // Extract tables from the configuration - try multiple possible paths
+      const tables = tablesConfig?.synced_tables ||
+                     workloadConfig?.delta_synchronization?.tables_to_sync ||
+                     workloadConfig?.delta_synchronization?.tables ||
+                     (generatedConfigs as any)?.tables ||
+                     [];
+
+      console.log('Debug - Deployment tables extraction:', { tablesConfig, workloadConfig, tables });
+
+      const deploymentRequest = {
+        workload_config: workloadConfig,
+        databricks_profile_name: null, // Using default profile/environment variables
+        tables: tables
+      };
+
+      // Call the new deployment API
       const response = await fetch('http://localhost:8000/api/deploy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          generatedConfigs: generatedConfigs
-        })
+        body: JSON.stringify(deploymentRequest)
       });
 
-      setDeploymentProgress('Files downloaded successfully! Waiting 5 seconds before deployment...');
-      setDeploymentOutput(prev => prev + '✅ Files downloaded successfully!\n⏳ Waiting 5 seconds before running CLI command...\n\n');
-      
-      // Show success message for files downloaded
-      message.success('Configuration files saved successfully! Proceeding with deployment...');
-      
-      // Add a visual delay to show the waiting message
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setDeploymentProgress('Processing deployment response...');
       const result = await response.json();
 
       if (response.ok && result.success) {
         setDeploymentProgress('Deployment completed successfully!');
-        let output = result.output || 'No output available';
-        
-        // Add saved files information to output
-        if (result.saved_files && result.saved_files.length > 0) {
-          output = `✅ Files downloaded successfully:\n${result.saved_files.map((f: string) => `  ✓ ${f}`).join('\n')}\n\n⏳ Waiting 5 seconds before running CLI command...\n\n` + output;
+        setDeploymentSteps(result.progress?.steps || []);
+        setCurrentStep(result.progress?.current_step || 0);
+
+        let output = '✅ Deployment completed successfully!\n\n';
+
+        if (result.instance) {
+          output += `📊 Database Instance Details:\n`;
+          output += `  • Name: ${result.instance.name}\n`;
+          output += `  • ID: ${result.instance.id || 'Provisioning...'}\n`;
+          output += `  • Host: ${result.instance.host || 'Provisioning...'}\n`;
+          output += `  • Port: ${result.instance.port || '5432'}\n`;
+          output += `  • State: ${result.instance.state || 'Unknown'}\n`;
+          output += `  • Capacity: ${result.instance.capacity || 'N/A'}\n\n`;
         }
-        
+
+        if (result.catalog) {
+          output += `📁 Unity Catalog:\n`;
+          output += `  • Name: ${result.catalog.name}\n\n`;
+        }
+
+        if (result.tables && result.tables.length > 0) {
+          output += `📋 Synced Tables:\n`;
+          result.tables.forEach((table: any) => {
+            output += `  • ${table.name} (${table.status})\n`;
+          });
+        }
+
         setDeploymentOutput(output);
-        message.success(`Deployment completed successfully! Lakebase instance is now available at ${result.workspace_url}`);
-        
-        if (result.stderr) {
-          setDeploymentOutput(prev => prev + '\n\nWarnings:\n' + result.stderr);
-          console.warn('Deployment warnings:', result.stderr);
-        }
+        message.success('Lakebase instance deployed successfully!');
+
       } else {
         setDeploymentProgress('Deployment failed!');
-        let errorOutput = result.stderr || result.message || 'Unknown error';
-        
-        // Add saved files information even if deployment failed
-        if (result.saved_files && result.saved_files.length > 0) {
-          errorOutput = `✅ Files downloaded successfully:\n${result.saved_files.map((f: string) => `  ✓ ${f}`).join('\n')}\n\n⏳ Waiting 5 seconds before running CLI command...\n\n` + errorOutput;
+        setDeploymentSteps(result.progress?.steps || []);
+        setCurrentStep(result.progress?.current_step || 0);
+
+        let errorOutput = `❌ Deployment failed: ${result.message}\n\n`;
+
+        if (result.progress?.error_message) {
+          errorOutput += `Error details: ${result.progress.error_message}\n\n`;
         }
-        
+
         setDeploymentOutput(errorOutput);
-        message.error(`Deployment failed: ${result.message || 'Unknown error'}`);
-        console.error('Deployment error:', result);
+        message.error('Deployment failed. Check the output for details.');
       }
     } catch (error) {
       setDeploymentProgress('Deployment failed!');
-      setDeploymentOutput(`Network error: ${error}`);
-      message.error(`Deployment failed: ${error}`);
-      console.error('Deployment error:', error);
+      setDeploymentOutput(`❌ Error: ${error}\n\nPlease check your Databricks credentials and workspace configuration.`);
+      message.error('Failed to deploy. Please check your connection and try again.');
     } finally {
       setDeploying(false);
     }
@@ -231,7 +262,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
   return (
     <div style={{ padding: '24px' }}>
-      <Card 
+      <Card
         title={
           <span>
             <RocketOutlined style={{ marginRight: '8px' }} />
@@ -242,25 +273,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         style={{ marginBottom: '24px' }}
       >
         <Paragraph>
-          Deploy your Lakebase instance and synced tables using the generated Databricks bundle configurations.
-          The deployment process will create the necessary YAML files and deploy them to your Databricks workspace.
+          Choose your preferred deployment method: automatic deployment using the Python SDK for a seamless experience,
+          or manual deployment using the Databricks CLI for more control.
         </Paragraph>
-        
-        <Alert
-          message="Deployment Process"
-          description={
-            <div>
-              <p>1. <strong>databricks.yml</strong> → Project root</p>
-              <p>2. <strong>synced_delta_tables.yml</strong> → resources/ directory</p>
-              <p>3. <strong>lakebase_instance.yml</strong> → resources/ directory</p>
-              <p>4. Deploy using: <code>databricks bundle deploy --target dev</code></p>
-            </div>
-          }
-          type="info"
-          showIcon
-          className="databricks-alert"
-          style={{ marginBottom: '16px' }}
-        />
       </Card>
 
       {!hasConfigs ? (
@@ -283,27 +298,164 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         </Card>
       ) : (
         <div>
-          {/* Generated Files Section */}
-          <Card title="Generated Configuration Files" className="databricks-card" style={{ marginBottom: '24px' }}>
+          {/* Automatic Deployment Section */}
+          <Card title="🤖 Automatic Deployment (Python SDK)" className="databricks-card" style={{ marginBottom: '24px' }}>
+            <Paragraph>
+              Deploy directly using the Python SDK. This method automatically creates all resources in your Databricks workspace.
+            </Paragraph>
+
+            <Alert
+              message="Deployment Process"
+              description={
+                <div>
+                  <p>1. <strong>Initialize</strong> → Connect to Databricks workspace</p>
+                  <p>2. <strong>Database Instance</strong> → Create Lakebase instance</p>
+                  <p>3. <strong>Database Catalog</strong> → Create catalog for data organization</p>
+                  <p>4. <strong>Synced Tables</strong> → Create and configure table synchronization</p>
+                  <p>5. <strong>Finalize</strong> → Complete deployment and provide connection details</p>
+                </div>
+              }
+              type="info"
+              showIcon
+              className="databricks-alert"
+              style={{ marginBottom: '16px' }}
+            />
+
+            {/* Deployment Summary */}
+            <Card size="small" title="Deployment Summary" style={{ marginBottom: '16px', backgroundColor: '#fafafa' }}>
+              <Row gutter={[16, 8]}>
+                <Col span={12}>
+                  <Text strong>Databricks Workspace:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.databricks_workspace_url || 'Not specified'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Authentication:</Text>
+                  <br />
+                  <Text>Environment variables / Default profile</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Lakebase Instance:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.lakebase_instance_name || 'lakebase-accelerator-instance'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Database Catalog:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.uc_catalog_name || 'lakebase-accelerator-catalog'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Database Name:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.database_name || 'databricks_postgres'}</Text>
+                </Col>
+                <Col span={24}>
+                  <Text strong>Tables to Sync:</Text>
+                  <br />
+                  {(() => {
+                    // Try multiple possible paths for tables data
+                    const tables = (generatedConfigs as any)?.synced_tables?.synced_tables ||
+                                 (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
+                                 (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
+                                 (generatedConfigs as any)?.tables ||
+                                 [];
+
+                    console.log('Debug - generatedConfigs:', generatedConfigs);
+                    console.log('Debug - tables found:', tables);
+
+                    if (tables.length === 0) {
+                      return <Text type="secondary">No tables configured</Text>;
+                    }
+
+                    return (
+                      <div>
+                        <Text>{tables.length} table{tables.length !== 1 ? 's' : ''}</Text>
+                        <div style={{ marginTop: '8px' }}>
+                          {tables.slice(0, 3).map((table: any, index: number) => (
+                            <Tag key={index} style={{ marginBottom: '4px' }}>
+                              {table.table_name || table.name || `Table ${index + 1}`}
+                            </Tag>
+                          ))}
+                          {tables.length > 3 && (
+                            <Tag>+{tables.length - 3} more</Tag>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </Col>
+              </Row>
+            </Card>
+
             <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <Alert
+                  message="Ready to Deploy"
+                  description="All configuration has been generated. Click the deploy button to start the automatic deployment process."
+                  type="success"
+                  showIcon
+                  className="databricks-alert"
+                  style={{ marginBottom: '16px' }}
+                />
+              </Col>
+
+              <Col span={24}>
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<RocketOutlined />}
+                  loading={deploying}
+                  onClick={handleDeploy}
+                  className="databricks-primary-btn"
+                >
+                  {deploying ? 'Deploying...' : 'Deploy to Databricks'}
+                </Button>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* Manual Deployment Section */}
+          <Card title="⚙️ Manual Deployment (Databricks Asset Bundle)" className="databricks-card">
+            <Paragraph>
+              Download configuration files and deploy manually using the Databricks CLI and Databricks Asset Bundle for more control over the deployment process.
+            </Paragraph>
+
+            <Alert
+              message="Manual Deployment Steps"
+              description={
+                <div>
+                  <p>1. <strong>Download</strong> → Download the configuration files below</p>
+                  <p>2. <strong>Authenticate</strong> → Set up Databricks CLI authentication</p>
+                  <p>3. <strong>Deploy</strong> → Run the deployment command in your terminal</p>
+                </div>
+              }
+              type="warning"
+              showIcon
+              className="databricks-alert"
+              style={{ marginBottom: '16px' }}
+            />
+
+            {/* Generated Files Section */}
+            <Title level={5}>Generated Configuration Files</Title>
+            <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
               <Col span={8}>
-                <Card 
-                  size="small" 
+                <Card
+                  size="small"
                   title={`databricks.yml${savedEdits['databricks.yml'] ? ' (Edited)' : ''}`}
                   className="databricks-card"
                   extra={<Tag className="databricks-tag-secondary">Project Root</Tag>}
                   actions={[
-                    <Button 
-                      key="view" 
-                      type="link" 
+                    <Button
+                      key="view"
+                      type="link"
                       icon={<FileTextOutlined />}
                       onClick={() => handleViewFile('databricks.yml', generatedConfigs.databricks_config)}
                     >
                       View
                     </Button>,
-                    <Button 
-                      key="download" 
-                      type="link" 
+                    <Button
+                      key="download"
+                      type="link"
                       icon={<DownloadOutlined />}
                       onClick={() => handleDownloadFile('databricks.yml', generatedConfigs.databricks_config)}
                     >
@@ -314,25 +466,25 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   <Text type="secondary">Main bundle configuration</Text>
                 </Card>
               </Col>
-              
+
               <Col span={8}>
-                <Card 
-                  size="small" 
+                <Card
+                  size="small"
                   title={`synced_delta_tables.yml${savedEdits['synced_delta_tables.yml'] ? ' (Edited)' : ''}`}
                   className="databricks-card"
                   extra={<Tag className="databricks-tag">resources/</Tag>}
                   actions={[
-                    <Button 
-                      key="view" 
-                      type="link" 
+                    <Button
+                      key="view"
+                      type="link"
                       icon={<FileTextOutlined />}
                       onClick={() => handleViewFile('synced_delta_tables.yml', generatedConfigs.synced_tables)}
                     >
                       View
                     </Button>,
-                    <Button 
-                      key="download" 
-                      type="link" 
+                    <Button
+                      key="download"
+                      type="link"
                       icon={<DownloadOutlined />}
                       onClick={() => handleDownloadFile('synced_delta_tables.yml', generatedConfigs.synced_tables)}
                     >
@@ -343,25 +495,25 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   <Text type="secondary">Table sync configurations</Text>
                 </Card>
               </Col>
-              
+
               <Col span={8}>
-                <Card 
-                  size="small" 
+                <Card
+                  size="small"
                   title={`lakebase_instance.yml${savedEdits['lakebase_instance.yml'] ? ' (Edited)' : ''}`}
                   className="databricks-card"
                   extra={<Tag className="databricks-tag">resources/</Tag>}
                   actions={[
-                    <Button 
-                      key="view" 
-                      type="link" 
+                    <Button
+                      key="view"
+                      type="link"
                       icon={<FileTextOutlined />}
                       onClick={() => handleViewFile('lakebase_instance.yml', generatedConfigs.lakebase_instance)}
                     >
                       View
                     </Button>,
-                    <Button 
-                      key="download" 
-                      type="link" 
+                    <Button
+                      key="download"
+                      type="link"
                       icon={<DownloadOutlined />}
                       onClick={() => handleDownloadFile('lakebase_instance.yml', generatedConfigs.lakebase_instance)}
                     >
@@ -373,38 +525,18 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                 </Card>
               </Col>
             </Row>
-          </Card>
 
-          {/* Deployment Section */}
-          <Card title="Deployment Actions" className="databricks-card">
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Alert
-                  message="Ready to Deploy"
-                  description="All configuration files have been generated. Click the deploy button to start the deployment process."
-                  type="success"
-                  showIcon
-                  className="databricks-alert"
-                  style={{ marginBottom: '16px' }}
-                />
-              </Col>
-              
-              <Col span={24}>
-                <Button 
-                  type="primary" 
-                  size="large"
-                  icon={<RocketOutlined />}
-                  loading={deploying}
-                  onClick={handleDeploy}
-                  className="databricks-primary-btn"
-                >
-                  {deploying ? 'Deploying...' : 'Deploy to Databricks'}
-                </Button>
-              </Col>
-            </Row>
-            
             <Divider />
-            
+
+            <Title level={5}>Deployment Instructions</Title>
+            <Card size="small" style={{ backgroundColor: '#f5f5f5', marginBottom: '16px' }}>
+              <ol style={{ margin: 0, paddingLeft: '20px' }}>
+                <li>Download all configuration files above</li>
+                <li>Authenticate with Databricks CLI: <Text code>databricks auth login</Text></li>
+                <li>Run the deployment command below</li>
+              </ol>
+            </Card>
+
             <Row gutter={[16, 16]}>
               <Col span={24}>
                 <Title level={5}>Deployment Command</Title>
@@ -412,8 +544,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   <Space>
                     <Text code>databricks bundle deploy --target dev</Text>
                     <Tooltip title="Copy to clipboard">
-                      <Button 
-                        size="small" 
+                      <Button
+                        size="small"
                         icon={<CopyOutlined />}
                         onClick={() => copyToClipboard('databricks bundle deploy --target dev')}
                       />

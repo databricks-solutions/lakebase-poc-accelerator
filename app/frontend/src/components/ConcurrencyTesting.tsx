@@ -119,11 +119,21 @@ const ConcurrencyTesting: React.FC = () => {
       
       // Get form values without validation first to see what we have
       const formValues = form.getFieldsValue();
-      console.log('Form values (before validation):', formValues);
-      
-      const values = await form.validateFields();
-      console.log('Form values (after validation):', values);
-      
+      console.log('Form values (raw):', formValues);
+      console.log('workspace_url specifically:', formValues.workspace_url);
+      console.log('All form field names:', Object.keys(formValues));
+
+      // Validate required fields manually to avoid workspace_url validation issues
+      const requiredFields = ['databricks_profile', 'workspace_url', 'instance_name', 'concurrency_level'];
+      const missingFields = requiredFields.filter(field => !formValues[field]);
+
+      console.log('Missing fields check:', missingFields);
+
+      if (missingFields.length > 0) {
+        message.error(`Please fill in the following required fields: ${missingFields.join(', ')}`);
+        return;
+      }
+
       if (uploadedFiles.length === 0) {
         message.error('Please upload at least one SQL file before running tests');
         return;
@@ -134,10 +144,11 @@ const ConcurrencyTesting: React.FC = () => {
       setTestError(null); // Clear any previous errors
 
       const testConfig = {
-        databricks_profile: values.databricks_profile,
-        instance_name: values.instance_name,
-        database_name: values.database_name || 'databricks_postgres',
-        concurrency_level: values.concurrency_level || 10
+        databricks_profile: formValues.databricks_profile,
+        workspace_url: formValues.workspace_url,
+        instance_name: formValues.instance_name,
+        database_name: formValues.database_name || 'databricks_postgres',
+        concurrency_level: formValues.concurrency_level || 10
       };
 
       console.log('Sending test config:', testConfig);
@@ -222,6 +233,9 @@ const ConcurrencyTesting: React.FC = () => {
         <Form.Item name="databricks_profile" style={{ display: 'none' }}>
           <Input />
         </Form.Item>
+        <Form.Item name="workspace_url" style={{ display: 'none' }}>
+          <Input />
+        </Form.Item>
         <Form.Item name="instance_name" style={{ display: 'none' }}>
           <Input />
         </Form.Item>
@@ -265,7 +279,7 @@ const ConcurrencyTesting: React.FC = () => {
                       { required: true, message: 'Please enter Databricks CLI profile name' }
                     ]}
                   >
-                  <Input 
+                  <Input
                     placeholder="DEFAULT"
                     suffix={
                       <Tooltip title="Enter your Databricks CLI profile name (e.g., DEFAULT, DEV, PROD)">
@@ -277,21 +291,17 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
               <Col span={12}>
                   <Form.Item
-                    label="Lakebase Instance Name"
-                    name="instance_name"
+                    label="Databricks Workspace URL"
+                    name="workspace_url"
                     rules={[
-                      { required: true, message: 'Please enter instance name' },
-                      { 
-                        pattern: /^[a-zA-Z0-9-]+$/,
-                        message: 'Only alphanumeric characters and hyphens allowed'
-                      }
+                      { required: true, message: 'Please enter Databricks workspace URL' }
                     ]}
                   >
-                  <Input 
-                    placeholder="my-lakebase-instance"
+                  <Input
+                    placeholder="https://your-workspace.cloud.databricks.com"
                     suffix={
-                      <Tooltip title="Enter an existing Lakebase instance name. Ensure you have proper permissions.">
-                        <WarningOutlined />
+                      <Tooltip title="Enter your Databricks workspace URL">
+                        <InfoCircleOutlined />
                       </Tooltip>
                     }
                   />
@@ -302,12 +312,37 @@ const ConcurrencyTesting: React.FC = () => {
             <Row gutter={16}>
               <Col span={12}>
                   <Form.Item
+                    label="Lakebase Instance Name"
+                    name="instance_name"
+                    rules={[
+                      { required: true, message: 'Please enter instance name' },
+                      {
+                        pattern: /^[a-zA-Z0-9-]+$/,
+                        message: 'Only alphanumeric characters and hyphens allowed'
+                      }
+                    ]}
+                  >
+                  <Input
+                    placeholder="my-lakebase-instance"
+                    suffix={
+                      <Tooltip title="Enter an existing Lakebase instance name. Ensure you have proper permissions.">
+                        <WarningOutlined />
+                      </Tooltip>
+                    }
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                  <Form.Item
                     label="Database Name"
                     name="database_name"
                   >
                   <Input placeholder="databricks_postgres" />
                 </Form.Item>
               </Col>
+            </Row>
+
+            <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
                   label="Concurrent Connections"
@@ -317,9 +352,9 @@ const ConcurrencyTesting: React.FC = () => {
                     { type: 'number', min: 1, max: 1000, message: 'Must be between 1 and 1000' }
                   ]}
                 >
-                  <InputNumber 
-                    min={1} 
-                    max={1000} 
+                  <InputNumber
+                    min={1}
+                    max={1000}
                     style={{ width: '100%' }}
                     suffix={
                       <Tooltip title="Number of concurrent connections to test">

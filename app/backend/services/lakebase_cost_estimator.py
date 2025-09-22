@@ -9,10 +9,8 @@ Usage:
     # From base directory:
     python app/backend/services/lakebase_cost_estimator.py --config sample_workload_config.yml --output cost_report.json
     
-    # Required environment variables in .env file:
-    # DATABRICKS_SERVER_HOSTNAME=your-databricks-hostname
-    # DATABRICKS_HTTP_PATH=your-sql-warehouse-http-path
-    # DATABRICKS_ACCESS_TOKEN=your-databricks-access-token
+    # Note: Databricks credentials are now passed from the application,
+    # not loaded from .env file
     
 """
 
@@ -28,7 +26,6 @@ from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import yaml
-from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -65,8 +62,6 @@ def _warehouse_exists(http_path: str, profile: Optional[str] = None) -> tuple[bo
         client = WorkspaceClient(profile=profile) if profile else WorkspaceClient()
         wh = client.warehouses.get(id=wid)
         return True, f"Warehouse {wid} exists (state={getattr(wh, 'state', 'unknown')})"
-    except DbxNotFound:
-        return False, f"Warehouse {wid} not found"
     except Exception as e:
         # If SDK cannot authenticate, don't block; report error and allow timeout path below
         return False, f"Warehouse check failed: {e}"
@@ -465,14 +460,16 @@ def get_delta_table_sizes(tables_config: List[Dict[str, Any]],
         return {"error": str(e)}
 
 
-def estimate_cost_from_config(config_data: Dict[str, Any], calculate_table_sizes: bool = False, warehouse_http_path: str = None) -> Dict[str, Any]:
+def estimate_cost_from_config(config_data: Dict[str, Any], warehouse_http_path: str = None, workspace_url: str = None, profile: str = None) -> Dict[str, Any]:
     """
     Estimate cost from configuration data and return JSON structure for the app.
-    
+
     Args:
         config_data: Dictionary containing workload configuration
-        calculate_table_sizes: Whether to calculate actual table sizes from Databricks
-        
+        warehouse_http_path: SQL warehouse HTTP path for table size calculation
+        workspace_url: Databricks workspace URL
+        profile: Databricks CLI profile name for authentication
+
     Returns:
         Dictionary with cost estimation results
     """
@@ -507,50 +504,76 @@ def estimate_cost_from_config(config_data: Dict[str, Any], calculate_table_sizes
         table_sizes = None
         tables_to_sync = sync.get('tables_to_sync', [])
         
-        # Check if we should calculate table sizes
-        hostname = os.getenv('DATABRICKS_SERVER_HOSTNAME')
-        # Use provided warehouse HTTP path or fall back to environment variable
-        http_path = warehouse_http_path or os.getenv('DATABRICKS_HTTP_PATH')
-        access_token = os.getenv('DATABRICKS_ACCESS_TOKEN')
-        
-        # Auto-calculate if credentials are available and tables exist, or if explicitly requested
-        should_calculate = (all([hostname, http_path, access_token]) and tables_to_sync) or calculate_table_sizes
+        # Always calculate table sizes when tables are provided
+        should_calculate = bool(tables_to_sync)
 
         if should_calculate and tables_to_sync:
-            # Fast validation before attempting a connection
-            if not hostname or not http_path or not access_token:
-                logger.info("Databricks credentials not found - skipping table size calculation")
-                table_sizes = {"error": "Databricks credentials not configured"}
-            elif not isinstance(http_path, str) or not http_path.strip():
-                logger.info("DATABRICKS_HTTP_PATH is empty - skipping table size calculation")
-                table_sizes = {"error": "DATABRICKS_HTTP_PATH is empty or missing"}
+            # Validate required parameters
+            if not workspace_url or not warehouse_http_path:
+                logger.info("Workspace URL or warehouse HTTP path not provided - skipping table size calculation")
+                table_sizes = {"error": "Workspace URL and warehouse HTTP path are required for table size calculation"}
+            elif not isinstance(warehouse_http_path, str) or not warehouse_http_path.strip():
+                logger.info("Warehouse HTTP path is empty - skipping table size calculation")
+                table_sizes = {"error": "Warehouse HTTP path is empty or missing"}
             else:
-                # Check warehouse existence via SDK when available
-                # Support profile override via env DATABRICKS_CONFIG_PROFILE
-                profile = os.getenv('DATABRICKS_CONFIG_PROFILE') or os.getenv('DATABRICKS_PROFILE')
-                exists, msg = _warehouse_exists(http_path, profile=profile)
-                if not exists:
-                    logger.error(f"Warehouse existence check failed: {msg}")
-                    table_sizes = {"error": msg}
-                else:
-                # Execute with a hard timeout so we never hang if the warehouse was deleted
-                    try:
-                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                            future = executor.submit(
-                                get_delta_table_sizes,
-                                tables_to_sync,
-                                hostname,
-                                http_path,
-                                access_token,
-                            )
-                            # Fail fast after 10 seconds to keep the UI responsive
-                            table_sizes = future.result(timeout=10)
-                    except concurrent.futures.TimeoutError:
-                        logger.error("Timed out calculating table sizes (warehouse may be deleted or unreachable)")
-                        table_sizes = {"error": "Timed out calculating table sizes. Verify your SQL warehouse (DATABRICKS_HTTP_PATH)."}
-                    except Exception as e:
-                        logger.error(f"Failed calculating table sizes: {e}")
-                        table_sizes = {"error": str(e)}
+                try:
+                    # Extract hostname from workspace URL
+                    hostname = workspace_url.replace('https://', '').replace('http://', '')
+
+                    # Check warehouse existence via SDK
+                    exists, msg = _warehouse_exists(warehouse_http_path, profile=profile)
+                    if not exists:
+                        logger.error(f"Warehouse existence check failed: {msg}")
+                        table_sizes = {"error": msg}
+                    else:
+                        # Generate temporary access token using WorkspaceClient
+                        if DATABRICKS_SDK_AVAILABLE:
+                            try:
+                                # Initialize WorkspaceClient with profile or default auth
+                                client = WorkspaceClient(profile=profile, host=workspace_url) if profile else WorkspaceClient(host=workspace_url)
+
+                                # Generate a temporary token for SQL operations
+                                # Token lifetime: 1 hour (3600 seconds)
+                                temp_token = client.tokens.create(
+                                    comment="Temporary token for Lakebase cost estimation",
+                                    lifetime_seconds=3600
+                                )
+                                access_token = temp_token.token_value
+
+                                logger.info("Generated temporary access token for table size calculation")
+
+                                # Execute with a hard timeout so we never hang if the warehouse was deleted
+                                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                                    future = executor.submit(
+                                        get_delta_table_sizes,
+                                        tables_to_sync,
+                                        hostname,
+                                        warehouse_http_path,
+                                        access_token,
+                                    )
+                                    # Fail fast after 10 seconds to keep the UI responsive
+                                    table_sizes = future.result(timeout=10)
+
+                                # Clean up the temporary token after use
+                                try:
+                                    client.tokens.delete(temp_token.token_id)
+                                    logger.info("Cleaned up temporary access token")
+                                except Exception as cleanup_error:
+                                    logger.warning(f"Failed to clean up temporary token: {cleanup_error}")
+
+                            except Exception as token_error:
+                                logger.error(f"Failed to generate temporary token: {token_error}")
+                                table_sizes = {"error": f"Failed to generate access token: {str(token_error)}"}
+                        else:
+                            logger.error("Databricks SDK not available for token generation")
+                            table_sizes = {"error": "Databricks SDK not available for token generation"}
+
+                except concurrent.futures.TimeoutError:
+                    logger.error("Timed out calculating table sizes (warehouse may be deleted or unreachable)")
+                    table_sizes = {"error": "Timed out calculating table sizes. Verify your SQL warehouse HTTP path."}
+                except Exception as e:
+                    logger.error(f"Failed calculating table sizes: {e}")
+                    table_sizes = {"error": str(e)}
         
         # Build results dictionary
         results = {
@@ -570,8 +593,7 @@ def estimate_cost_from_config(config_data: Dict[str, Any], calculate_table_sizes
 
 
 def main():
-    # Load environment variables from .env file
-    load_dotenv()
+    # Note: Environment variables are no longer loaded from .env file
     
     parser = argparse.ArgumentParser(
         description='Lakebase Postgres Cost Estimator - Load configuration from YAML file'
