@@ -8,6 +8,7 @@ scratch/**
 !scratch/README.md
 .vscode/*
 .env
+.env.example
 .DS_Store
 instructions/*
 .cursor/*
