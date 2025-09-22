@@ -19,5 +19,12 @@ CLAUDE.md
 .env_bkup
 app/test_queries/*
 
+# Documentation and sample files
+sample_workload_config.yml
+LAKEBASE_BENCHMARK.md
+APP_README.md
 
+# Source folder
+src/
 
+# Scratch folder (already covered by scratch/** above)
