@@ -22,7 +22,7 @@ Use [Cost Estimation with Table Size Calculation](#cost-estimation-with-table-si
 3. Instances per workspace: 10 
 4. Max connections: 1000 per database
 
-See [LAKEBASE_BENCHMARK.md](LAKEBASE_BENCHMARK.md)
+For detailed performance benchmarks, contact your Databricks representative.
 
 ## Delta Sync
 
@@ -93,113 +93,26 @@ $ brew update && brew upgrade databricks && databricks --version | cat
    $ databricks auth profiles
    ```
 
-3. Environment Variables (.env)
-
-Create a `.env` file in the project root with the following variables:
-
-````bash
-# Required for query conversion (src/convert_queries.py)
-DATABRICKS_ACCESS_TOKEN=your_databricks_pat
-DATABRICKS_ENDPOINT=https://your-workspace.cloud.databricks.com/serving-endpoints
-# LLM Model name for Query Conversion, defaults to databricks-meta-llama-3-1-70b-instruct
-MODEL_NAME=databricks-meta-llama-3-1-70b-instruct
-
-# Required for table size calculation (app/backend/services/lakebase_cost_estimator.py)
-DATABRICKS_SERVER_HOSTNAME=your-workspace.cloud.databricks.com
-DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/your-warehouse-id
-````
-
-**Environment Variable Details:**
-- `DATABRICKS_ACCESS_TOKEN`: Your Databricks Personal Access Token (used for both query conversion and table size calculation)
-- `DATABRICKS_SERVER_HOSTNAME`: Your Databricks workspace hostname (e.g., `adb-1234567890123456.7.azuredatabricks.net`)
-- `DATABRICKS_HTTP_PATH`: SQL warehouse HTTP path (e.g., `/sql/1.0/warehouses/abc123def456`)
-
-**Note:** The same `DATABRICKS_ACCESS_TOKEN` is used for both query conversion (`src/convert_queries.py`) and table size calculation (`app/backend/services/lakebase_cost_estimator.py`). This simplifies configuration by using a single token for all Databricks API operations.
-
-## Usage
-
-### Cost Estimation
-
-The project includes a comprehensive cost estimator (`app/backend/services/lakebase_cost_estimator.py`) that can calculate Lakebase Postgres costs based on workload characteristics. It also supports calculating actual uncompressed table sizes from Databricks Delta tables. 
-
-#### Basic Cost Estimation
-
-```bash
-# Basic cost estimation using workload configuration
-python app/backend/services/lakebase_cost_estimator.py --config workload_config.yml --output cost_report.json
-```
-
-
-#### Cost Estimation Output
-
-The cost estimator provides detailed breakdown including:
-- **Compute costs**: Main instance and readable secondaries
-- **Storage costs**: Based on data size and retention policies
-- **Sync costs**: Delta synchronization costs
-- **Table size analysis**: Total compressed size and per-table details
-- **Cost efficiency metrics**: Cost per GB, QPS, and Capacity Unit
-
-### Table Configuration Generator
-
-The project includes a table configuration generator (`app/backend/services/generate_synced_tables.py`) that creates Databricks bundle configuration files from workload definitions.
-
-#### Basic Usage
-
-```bash
-# Generate synced tables from workload config
-python app/backend/services/generate_synced_tables.py --config workload_config.yml
-
-# Specify custom output path
-python app/backend/services/generate_synced_tables.py --config workload_config.yml --output synced_tables.yml
-
-# Enable verbose output for debugging
-python app/backend/services/generate_synced_tables.py --config workload_config.yml --verbose
-```
-
-#### Features
-
-- **Flexible input**: Accepts any workload configuration file with `tables_to_sync` section
-- **Auto-generated output**: Automatically determines output path based on input file location
-- **Custom output**: Allows specifying custom output file paths
-- **Verbose mode**: Provides detailed error information for debugging
-- **YAML validation**: Ensures proper formatting of generated configuration files
-
-
-## Deployment
-
-To deploy a development copy of this project, use below command:
-
-```bash
-$ databricks bundle deploy --target dev --debug
-```
-
-(Note that "dev" is the default target, so the `--target` parameter
-is optional here. `--debug` flag is optional to view the deployment log)
-
-This deploys everything that's defined for this project. Note that Lakebase instance will take ~3-5 minutes to spin up. You can view the deployment in Databricks workspace: Compute > 
-
-Similarly, to deploy a production copy, use below command:
-
-```bash
-$ databricks bundle deploy --target prod
-```
-
 ## Starting the Web Application
 
-The project includes a full-stack web application for interactive workload configuration, cost estimation, and configuration file generation.
+The project includes a full-stack web application for interactive workload configuration, cost estimation, and deployment automation using the Databricks Python SDK.
+
+### Prerequisites
+
+Ensure you have completed the [Environment Setup](#environments-setup) and authenticated with Databricks CLI.
 
 ### Development Setup
 
-#### Option 1: Full Stack Development (Recommended)
+#### Full Stack Development (Recommended)
 
 ```bash
-# Terminal 1 - Start Backend
+# Terminal 1 - Start Backend API
 cd app/backend
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp ../../.env.example .env  # Edit with your Databricks credentials
-python main.py
+pip install -r ../requirements.txt
+# Run development server
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # Terminal 2 - Start Frontend
 cd app/frontend
@@ -207,28 +120,25 @@ npm install
 npm start
 ```
 
-- Backend API: http://localhost:8000
-- Frontend App: http://localhost:3000
-- API Docs: http://localhost:8000/docs
+**Access Points:**
+- **Frontend App**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
-#### Option 2: Backend Only (API Service)
-
-```bash
-cd app/backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp ../../.env.example .env  # Edit with your credentials
-python main.py
-```
-
-Access API documentation at: http://localhost:8000/docs
 
 ### Application Features
 
-- **Interactive Configuration**: Web form for workload parameters
-- **Real-time Cost Estimation**: Calculate Lakebase costs with table size analysis
-- **Configuration Generation**: Download YAML files for Databricks bundle deployment
-- **Professional UI**: Enterprise-grade interface with Ant Design components
+- **🧮 Lakebase Calculator**: Interactive cost estimation with real table size calculation
+- **🚀 Automatic Deployment**: Direct deployment using Databricks Python SDK
+- **📁 Manual Deployment**: Generate and download Databricks Asset Bundle files
+- **🧪 Concurrency Testing**: Upload and execute SQL queries for performance testing
+- **📊 Real-time Progress**: Live deployment progress tracking with detailed status updates
 
-For detailed deployment options including Databricks Apps, see [app/README.md](app/README.md).
+**Key Improvements:**
+- **SDK-based deployment**: Direct deployment without CLI bundle commands
+- **Enhanced UI feedback**: Real-time progress tracking and better error handling
+- **Table size calculation**: Automatic calculation of actual Delta table sizes for accurate cost estimation
+
+### Authentication
+
+Authentication is handled via your Databricks CLI profiles, as set up in the [Environment Setup](#environments-setup) section. The backend uses these CLI profiles to authenticate with the Databricks Python SDK (WorkspaceClient). No extra environment variables or config files are required.
