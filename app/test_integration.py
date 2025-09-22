@@ -11,8 +11,7 @@ import tempfile
 import subprocess
 from pathlib import Path
 
-# Add paths for imports
-sys.path.append(str(Path(__file__).parent.parent / "src"))
+# Add path for backend imports
 sys.path.append(str(Path(__file__).parent / "backend"))
 
 def test_cost_estimator_integration():

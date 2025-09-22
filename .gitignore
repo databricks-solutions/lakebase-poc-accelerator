@@ -4,8 +4,6 @@ dist/
 __pycache__/
 *.egg-info
 .venv/
-scratch/**
-!scratch/README.md
 .vscode/*
 .env
 .env.example
@@ -27,5 +25,5 @@ APP_README.md
 
 # Source folder
 src/
-
+scratch/
 # Scratch folder (already covered by scratch/** above)

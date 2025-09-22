@@ -20,7 +20,8 @@ class DatabricksOAuthService:
         self,
         workspace_url: str,
         instance_name: str,
-        auth_method: str = "user"  # or "service_principal"
+        auth_method: str = "user",  # or "service_principal"
+        profile: Optional[str] = None
     ) -> Dict[str, str]:
         """
         Obtain OAuth credentials for Lakebase access.
@@ -42,8 +43,8 @@ class DatabricksOAuthService:
                     client_secret=os.getenv('DATABRICKS_CLIENT_SECRET')
                 )
             else:
-                # User authentication - uses default profile or environment variables
-                self._workspace_client = WorkspaceClient(host=workspace_url)
+                # User authentication - uses profile or default credentials
+                self._workspace_client = WorkspaceClient(profile=profile, host=workspace_url) if profile else WorkspaceClient(host=workspace_url)
             
             # Get database instance information
             instance = self._workspace_client.database.get_database_instance(name=instance_name)
@@ -75,7 +76,8 @@ class DatabricksOAuthService:
         self,
         workspace_url: str,
         instance_name: str,
-        auth_method: str = "user"
+        auth_method: str = "user",
+        profile: Optional[str] = None
     ) -> bool:
         """
         Validate that the user has access to the specified Lakebase instance.
@@ -97,7 +99,7 @@ class DatabricksOAuthService:
                     client_secret=os.getenv('DATABRICKS_CLIENT_SECRET')
                 )
             else:
-                self._workspace_client = WorkspaceClient(host=workspace_url)
+                self._workspace_client = WorkspaceClient(profile=profile, host=workspace_url) if profile else WorkspaceClient(host=workspace_url)
             
             # Try to get instance information
             instance = self._workspace_client.database.get_database_instance(name=instance_name)

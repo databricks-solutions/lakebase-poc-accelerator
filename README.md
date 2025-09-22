@@ -5,7 +5,15 @@ This project is designed to streamline the testing and migration of customer OLT
 
 ## Environments Setup 
 
-1. Install the Databricks CLI from <https://docs.databricks.com/dev-tools/cli/databricks-cli.html>
+1. Setup Python virtual environment
+
+```
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r ../requirements.txt
+```
+
+2. Install the Databricks CLI from <https://docs.databricks.com/dev-tools/cli/databricks-cli.html>
 
 ```bash
 $ brew install databricks
@@ -18,7 +26,7 @@ Databricks CLI v0.267+ is required, if you have older version, upgrade the CLI v
 $ brew update && brew upgrade databricks && databricks --version | cat
 ```
 
-2. Authenticate to your Databricks workspace, if you have not done so already:
+3. Authenticate to your Databricks workspace, if you have not done so already:
 
    #### Option A: Personal Access Token (PAT)
    **Configure CLI with PAT:**
@@ -68,9 +76,6 @@ Ensure you have completed the [Environment Setup](#environments-setup) and authe
 ```bash
 # Terminal 1 - Start Backend API
 cd app/backend
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r ../requirements.txt
 # Run development server
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
@@ -92,12 +97,6 @@ npm start
 - **🚀 Automatic Deployment**: Direct deployment using Databricks Python SDK
 - **📁 Manual Deployment**: Generate and download Databricks Asset Bundle files
 - **🧪 Concurrency Testing**: Upload and execute SQL queries for performance testing
-- **📊 Real-time Progress**: Live deployment progress tracking with detailed status updates
-
-**Key Improvements:**
-- **SDK-based deployment**: Direct deployment without CLI bundle commands
-- **Enhanced UI feedback**: Real-time progress tracking and better error handling
-- **Table size calculation**: Automatic calculation of actual Delta table sizes for accurate cost estimation
 
 ### Authentication
 

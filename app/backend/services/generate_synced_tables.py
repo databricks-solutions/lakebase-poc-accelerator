@@ -215,6 +215,16 @@ def generate_synced_tables_from_config(config_data: dict) -> dict:
         
         synced_tables_config['resources']['synced_database_tables'][table_short_name] = synced_table
     
+    # Add a convenient tables list for frontend consumption
+    synced_tables_config['synced_tables'] = [
+        {
+            'table_name': table_config['name'],
+            'primary_keys': table_config['primary_keys'],
+            'sync_policy': table_config.get('scheduling_policy', 'TRIGGERED').upper()
+        }
+        for table_config in tables_to_sync
+    ]
+
     return synced_tables_config
 
 

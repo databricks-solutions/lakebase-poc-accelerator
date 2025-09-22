@@ -22,7 +22,6 @@ import sys
 import argparse
 import json
 from pathlib import Path
-from dotenv import load_dotenv
 
 
 # Calculate paths correctly
@@ -31,8 +30,6 @@ BACKEND_ROOT = SCRIPT_DIR.parent  # app/backend/
 PROJECT_ROOT = BACKEND_ROOT.parent.parent  # project root
 APP_ROOT = PROJECT_ROOT / "app"
 
-# Load environment variables from .env file in project root
-load_dotenv(PROJECT_ROOT / ".env")
 
 # Ensure backend services are importable
 sys.path.insert(0, str(BACKEND_ROOT))
@@ -42,7 +39,6 @@ print(f"   Project root: {PROJECT_ROOT}")
 print(f"   Python path: {sys.path}")
 print(f"   Backend root: {BACKEND_ROOT}")
 print(f"   Backend exists: {BACKEND_ROOT.exists()}")
-print(f"   Env file: {PROJECT_ROOT / ".env"}")
 
 try:
     from services.lakebase_connection_service import LakebaseConnectionService  # noqa: E402
@@ -112,9 +108,10 @@ async def main():
     args = parser.parse_args()
     sql_file = args.sql_file
     
+    # Note: This script now requires environment variables to be set externally
+    # or passed via command line arguments (not implemented yet)
     instance_name = os.getenv("LAKEBASE_INSTANCE_NAME")
     database_name = os.getenv("LAKEBASE_DATABASE_NAME")
-    access_token = os.getenv("DATABRICKS_ACCESS_TOKEN")
     workspace_url = os.getenv("DATABRICKS_SERVER_HOSTNAME")
     
     print(f"🔍 Environment check:")
@@ -136,12 +133,12 @@ async def main():
 
     # Build pool config based on concurrency and env overrides
     pool_config = {
-        "DB_POOL_SIZE": int(os.getenv("DB_POOL_SIZE", str(max(1, concurrency)))),
-        "DB_MAX_OVERFLOW": int(os.getenv("DB_MAX_OVERFLOW", str(max(0, concurrency)))),
-        "DB_POOL_TIMEOUT": int(os.getenv("DB_POOL_TIMEOUT", "10")),
-        "DB_POOL_RECYCLE_INTERVAL": int(os.getenv("DB_POOL_RECYCLE_INTERVAL", "3600")),
-        "DB_COMMAND_TIMEOUT": int(os.getenv("DB_COMMAND_TIMEOUT", "30")),
-        "DB_SSL_MODE": os.getenv("DB_SSL_MODE", "require")
+        "DB_POOL_SIZE": max(1, concurrency),
+        "DB_MAX_OVERFLOW": max(0, concurrency),
+        "DB_POOL_TIMEOUT": 10,
+        "DB_POOL_RECYCLE_INTERVAL": 3600,
+        "DB_COMMAND_TIMEOUT": 30,
+        "DB_SSL_MODE": "require"
     }
 
     service = LakebaseConnectionService()
