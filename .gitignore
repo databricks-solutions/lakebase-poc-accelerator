@@ -4,7 +4,27 @@ dist/
 __pycache__/
 *.egg-info
 .venv/
-scratch/**
-!scratch/README.md
 .vscode/*
 .env
+.env.example
+.DS_Store
+instructions/*
+.cursor/*
+.claude/*
+AGENTS.md 
+CLAUDE.md
+.env_prod
+.env_dev
+.env_bkup
+app/test_queries/*
+queries/**
+
+# Documentation and sample files
+sample_workload_config.yml
+LAKEBASE_BENCHMARK.md
+APP_README.md
+
+# Source folder
+src/
+scratch/
+# Scratch folder (already covered by scratch/** above)
