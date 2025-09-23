@@ -1,3 +1,20 @@
-psycopg2-binary==2.9.9
-python-dotenv==1.0.0
-pandas==2.1.4
+psycopg2-binary
+python-dotenv
+# Core dependencies
+pyyaml
+# Databricks connector for table size calculation
+databricks-sql-connector
+
+fastapi
+uvicorn[standard]
+pydantic
+pyyaml
+python-multipart
+psycopg2-binary
+
+# Concurrency testing dependencies
+databricks-sdk
+asyncpg
+sqlalchemy
+greenlet
+numpy
