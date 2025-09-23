@@ -10,7 +10,8 @@ import {
   Select,
   Table,
   message,
-  Tooltip
+  Tooltip,
+  Alert
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { WorkloadConfig, TableToSync } from '../types';
@@ -125,15 +126,61 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       title: 'Sync Policy',
       dataIndex: 'scheduling_policy',
       render: (policy: string, record: TableToSync, index: number) => (
-        <Select
-          value={policy}
-          onChange={(value) => updateTable(index, 'scheduling_policy', value)}
-          style={{ width: '120px' }}
-        >
-          <Option value="SNAPSHOT">Snapshot</Option>
-          <Option value="TRIGGERED">Triggered</Option>
-          <Option value="CONTINUOUS">Continuous</Option>
-        </Select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Select
+            value={policy}
+            onChange={(value) => updateTable(index, 'scheduling_policy', value)}
+            style={{ width: '120px' }}
+          >
+            <Option value="SNAPSHOT">Snapshot</Option>
+            <Option value="TRIGGERED">
+              Triggered
+            </Option>
+            <Option value="CONTINUOUS">
+              Continuous
+            </Option>
+          </Select>
+          {(policy === 'TRIGGERED' || policy === 'CONTINUOUS') && (
+            <Tooltip
+              title={
+                <div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>{policy}</strong> mode requires Change Data Feed (CDF) enabled on the source table.
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>For sample tables, Views and Materialized Views:</strong> Only SNAPSHOT mode works (sample tables are read-only).
+                  </div>
+                  <div>
+                    <strong>For your tables:</strong> Run this command first:
+                    <br />
+                    <code style={{
+                      fontSize: '11px',
+                      backgroundColor: '#1f1f1f',
+                      color: '#fff',
+                      padding: '4px 6px',
+                      borderRadius: '3px',
+                      display: 'block',
+                      marginTop: '4px'
+                    }}>
+                      ALTER TABLE {record.name}<br />
+                      SET TBLPROPERTIES (delta.enableChangeDataFeed = true);
+                    </code>
+                  </div>
+                </div>
+              }
+              placement="topLeft"
+              overlayStyle={{ maxWidth: '400px' }}
+            >
+              <InfoCircleOutlined
+                style={{
+                  color: '#faad14',
+                  cursor: 'help',
+                  fontSize: '16px'
+                }}
+              />
+            </Tooltip>
+          )}
+        </div>
       )
     },
     {
@@ -409,6 +456,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         }
         style={{ marginBottom: '24px' }}
       >
+
         <Table
           columns={tableColumns}
           dataSource={tables}

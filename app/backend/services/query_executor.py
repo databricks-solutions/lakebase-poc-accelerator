@@ -49,7 +49,7 @@ class QueryExecutorService:
                 # Fetch results if it's a SELECT query
                 if query.strip().upper().startswith('SELECT'):
                     results = cursor.fetchall()
-                    row_count = len(results) if results else 0
+                    # row_count = len(results) if results else 0
                 
                 end_time = time.time()
                 duration_ms = (end_time - start_time) * 1000

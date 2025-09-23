@@ -155,3 +155,68 @@ class ConcurrencyTestRequest(BaseModel):
     concurrency_level: int
     connection_pool_config: Dict[str, Any]
     queries: List[SimpleQueryConfig]
+
+# Pgbench-specific models
+class PgbenchConfig(BaseModel):
+    """Configuration for pgbench test execution."""
+    clients: int = Field(..., ge=1, le=1000, description="Number of concurrent database sessions")
+    jobs: int = Field(..., ge=1, le=100, description="Number of worker threads")
+    duration_seconds: Optional[int] = Field(None, ge=1, le=3600, description="Run benchmark for specified duration")
+    transactions_per_client: Optional[int] = Field(None, ge=1, description="Number of transactions per client")
+    progress_interval: Optional[int] = Field(None, ge=1, le=60, description="Show progress reports every N seconds")
+    protocol: str = Field(default="prepared", description="Query protocol mode")
+    target_tps: Optional[int] = Field(None, ge=1, description="Target transactions per second rate")
+    per_statement_latency: bool = Field(default=True, description="Report per-statement latency statistics")
+    detailed_logging: bool = Field(default=True, description="Enable detailed transaction logging")
+    connect_per_transaction: bool = Field(default=False, description="Establish new connection for each transaction")
+
+    @validator('protocol')
+    def validate_protocol(cls, v):
+        if v not in ['simple', 'extended', 'prepared']:
+            raise ValueError('Protocol must be one of: simple, extended, prepared')
+        return v
+
+    @validator('jobs')
+    def validate_jobs_vs_clients(cls, v, values):
+        clients = values.get('clients', 1)
+        if v > clients:
+            raise ValueError('Number of jobs cannot exceed number of clients')
+        return v
+
+class PgbenchQueryConfig(BaseModel):
+    """Query configuration for pgbench execution."""
+    query_identifier: str = Field(..., min_length=1, max_length=100)
+    query_content: str = Field(..., min_length=1, description="SQL query in pgbench format")
+    weight: int = Field(default=1, ge=1, le=100, description="Relative weight for query execution")
+
+class PgbenchTestRequest(BaseModel):
+    """Request model for pgbench test execution."""
+    workspace_url: str
+    instance_name: str
+    database_name: str = "databricks_postgres"
+    pgbench_config: PgbenchConfig
+    queries: List[PgbenchQueryConfig]
+
+class PgbenchExecutionResult(BaseModel):
+    """Raw execution result from pgbench subprocess."""
+    return_code: int
+    stdout: str
+    stderr: str
+    execution_time_seconds: float
+
+class PgbenchTestReport(BaseModel):
+    """Comprehensive report of pgbench test results."""
+    test_id: str
+    test_start_time: float
+    test_end_time: float
+    total_duration_seconds: float
+    pgbench_config: PgbenchConfig
+    queries_tested: int
+    tps: Optional[float] = Field(None, description="Transactions per second")
+    average_latency_ms: Optional[float] = Field(None, description="Average latency in milliseconds")
+    latency_stddev_ms: Optional[float] = Field(None, description="Latency standard deviation")
+    latency_percentiles: Dict[str, float] = Field(default_factory=dict, description="Latency percentiles (p50, p95, p99)")
+    per_statement_stats: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    progress_reports: List[Dict[str, Any]] = Field(default_factory=list)
+    execution_result: PgbenchExecutionResult
+    recommendations: List[str] = Field(default_factory=list)

@@ -23,8 +23,9 @@ from services.lakebase_cost_estimator import estimate_cost_from_config
 from services.generate_synced_tables import generate_synced_tables_from_config
 
 # Import concurrency testing modules
-from models.query_models import ConcurrencyTestRequest, ConcurrencyTestReport, SimpleQueryConfig
+from models.query_models import ConcurrencyTestRequest, ConcurrencyTestReport, SimpleQueryConfig, PgbenchTestRequest, PgbenchTestReport
 from services.lakebase_connection_service import LakebaseConnectionService
+from services.pgbench_service import PgbenchService
 from services.oauth_service import DatabricksOAuthService
 from services.query_executor import QueryExecutorService
 from services.metrics_service import ConcurrencyMetricsService
@@ -673,26 +674,282 @@ async def run_uploaded_tests(test_request: dict):
 async def get_concurrency_test_status():
     """
     Get the current status of the concurrency testing service.
-    
+
     Returns:
         Service status information
     """
     try:
         connection_service = LakebaseConnectionService()
         pool_status = connection_service.get_pool_status()
-        
+
         return {
             "service_status": "running",
             "connection_pool": pool_status,
             "available_endpoints": [
                 "/api/concurrency-test/validate-query",
-                "/api/concurrency-test/validate-instance", 
+                "/api/concurrency-test/validate-instance",
                 "/api/concurrency-test/execute",
                 "/api/concurrency-test/upload-query",
                 "/api/concurrency-test/run-uploaded-tests"
             ]
         }
-        
+
+    except Exception as e:
+        return {
+            "service_status": "error",
+            "error": str(e)
+        }
+
+# pgbench Testing Endpoints
+
+@app.delete("/api/pgbench-test/delete-query")
+async def delete_pgbench_query_file(request: dict):
+    """
+    Delete a pgbench query file from the app/queries/ folder.
+
+    Args:
+        request: Dictionary containing file_path
+
+    Returns:
+        Success message
+    """
+    try:
+        file_path = request.get('file_path')
+        if not file_path:
+            raise HTTPException(status_code=400, detail="file_path is required")
+
+        # Ensure the file is in the queries directory for security
+        queries_dir = Path(__file__).parent.parent / "queries"
+        file_to_delete = Path(file_path)
+
+        # Security check: ensure the file is within the queries directory
+        if not str(file_to_delete).startswith(str(queries_dir)):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+
+        if file_to_delete.exists():
+            file_to_delete.unlink()
+            return {"message": f"File {file_to_delete.name} deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="File not found")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File deletion failed: {str(e)}")
+
+@app.post("/api/pgbench-test/upload-query")
+async def upload_pgbench_query_file(file: UploadFile = File(...)):
+    """
+    Upload and save a pgbench-format SQL query file to app/queries/ folder.
+
+    Args:
+        file: SQL file in pgbench format to upload
+
+    Returns:
+        Parsed query information
+    """
+    try:
+        # Validate file type
+        if not file.filename.endswith('.sql'):
+            raise HTTPException(status_code=400, detail="File must be a .sql file")
+
+        # Read file content
+        content = await file.read()
+        query_content = content.decode('utf-8')
+
+        # Parse pgbench query (simple validation)
+        query_identifier = file.filename.replace('.sql', '')
+
+        # Count pgbench variables (lines starting with \set)
+        variable_count = len([line for line in query_content.split('\n') if line.strip().startswith('\\set')])
+
+        # Save file to app/queries/ folder
+        queries_dir = Path(__file__).parent.parent / "queries"
+        queries_dir.mkdir(exist_ok=True)
+
+        file_path = queries_dir / file.filename
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(query_content)
+
+        return {
+            "query_identifier": query_identifier,
+            "query_content": query_content,
+            "variable_count": variable_count,
+            "is_valid": True,
+            "saved_path": str(file_path),
+            "format": "pgbench"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"File upload failed: {str(e)}")
+
+@app.post("/api/pgbench-test/execute")
+async def execute_pgbench_test(test_request: PgbenchTestRequest):
+    """
+    Execute pgbench test against Lakebase instance using uploaded queries.
+
+    Args:
+        test_request: Complete pgbench test configuration
+
+    Returns:
+        PgbenchTestReport with test results and metrics
+    """
+    try:
+        # Initialize pgbench service
+        pgbench_service = PgbenchService()
+
+        # Initialize connection
+        connection_initialized = await pgbench_service.initialize_connection(
+            workspace_url=test_request.workspace_url,
+            instance_name=test_request.instance_name,
+            database=test_request.database_name
+        )
+
+        if not connection_initialized:
+            raise HTTPException(status_code=500, detail="Failed to initialize pgbench connection")
+
+        # Convert query configs to format expected by pgbench service
+        queries_with_weights = []
+        for query_config in test_request.queries:
+            queries_with_weights.append({
+                "query_identifier": query_config.query_identifier,
+                "query_content": query_config.query_content,
+                "weight": query_config.weight
+            })
+
+        # Execute pgbench test
+        report = await pgbench_service.execute_pgbench_test(
+            queries=queries_with_weights,
+            pgbench_config=test_request.pgbench_config.model_dump()
+        )
+
+        return report
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pgbench test failed: {str(e)}")
+
+@app.post("/api/pgbench-test/run-uploaded-tests")
+async def run_pgbench_uploaded_tests(test_request: dict):
+    """
+    Run pgbench tests using uploaded SQL files from app/queries/ folder.
+
+    Args:
+        test_request: pgbench test configuration with connection and benchmark settings
+
+    Returns:
+        PgbenchTestReport with test results and metrics
+    """
+    try:
+        # Extract test configuration
+        databricks_profile = test_request.get("databricks_profile", "DEFAULT")
+        workspace_url = test_request.get("workspace_url")
+        instance_name = test_request.get("instance_name")
+        database_name = test_request.get("database_name", "databricks_postgres")
+
+        # Extract pgbench configuration
+        pgbench_config = {
+            "clients": test_request.get("pgbench_clients", 8),
+            "jobs": test_request.get("pgbench_jobs", 8),
+            "duration_seconds": test_request.get("pgbench_duration", 30),
+            "progress_interval": test_request.get("pgbench_progress_interval", 5),
+            "protocol": test_request.get("pgbench_protocol", "prepared"),
+            "per_statement_latency": test_request.get("pgbench_per_statement_latency", True),
+            "detailed_logging": test_request.get("pgbench_detailed_logging", True),
+            "connect_per_transaction": test_request.get("pgbench_connect_per_transaction", False)
+        }
+
+        if not instance_name:
+            raise HTTPException(status_code=400, detail="instance_name is required")
+
+        if not workspace_url:
+            raise HTTPException(status_code=400, detail="workspace_url is required")
+
+        # Get all SQL files from app/queries/ folder
+        queries_dir = Path(__file__).parent.parent / "queries"
+        if not queries_dir.exists():
+            raise HTTPException(status_code=404, detail="No queries folder found")
+
+        sql_files = list(queries_dir.glob("*.sql"))
+        if not sql_files:
+            raise HTTPException(status_code=404, detail="No SQL files found in queries folder")
+
+        # Prepare queries for pgbench
+        queries_with_weights = []
+        for sql_file in sql_files:
+            try:
+                content = sql_file.read_text(encoding='utf-8')
+                queries_with_weights.append({
+                    "query_identifier": sql_file.stem,
+                    "query_content": content,
+                    "weight": 1  # Equal weight for all queries
+                })
+            except Exception as e:
+                print(f"Error reading {sql_file.name}: {e}")
+                continue
+
+        if not queries_with_weights:
+            raise HTTPException(status_code=400, detail="No valid queries found")
+
+        # Initialize pgbench service
+        pgbench_service = PgbenchService()
+
+        try:
+            # Initialize connection
+            connection_initialized = await pgbench_service.initialize_connection(
+                workspace_url=workspace_url,
+                instance_name=instance_name,
+                database=database_name,
+                profile=databricks_profile
+            )
+
+            if not connection_initialized:
+                raise HTTPException(status_code=500, detail="Failed to initialize pgbench connection")
+        except Exception as e:
+            error_message = str(e)
+            if "Resource not found" in error_message:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Lakebase instance '{instance_name}' not found or not accessible with profile '{databricks_profile}'"
+                )
+            elif "profile" in error_message.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid Databricks profile '{databricks_profile}'"
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Connection initialization failed: {error_message}"
+                )
+
+        # Execute pgbench test
+        report = await pgbench_service.execute_pgbench_test(
+            queries=queries_with_weights,
+            pgbench_config=pgbench_config
+        )
+
+        return report
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pgbench test execution failed: {str(e)}")
+
+@app.get("/api/pgbench-test/status")
+async def get_pgbench_test_status():
+    """
+    Get the current status of the pgbench testing service.
+
+    Returns:
+        Service status information
+    """
+    try:
+        return {
+            "service_status": "running",
+            "pgbench_available": True,
+            "available_endpoints": [
+                "/api/pgbench-test/upload-query",
+                "/api/pgbench-test/execute",
+                "/api/pgbench-test/run-uploaded-tests"
+            ]
+        }
+
     except Exception as e:
         return {
             "service_status": "error",

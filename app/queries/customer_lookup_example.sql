@@ -1,7 +1,0 @@
--- PARAMETERS: [[1, "AAAAAAAABAAAAAAA", 100], [2, "AAAAAAAACAAAAAAA", 50], [3, "AAAAAAAADAAAAAAA", 200], [4, "AAAAAAAAEAAAAAAA", 1000]]
--- EXEC_COUNT: 40
-
-SELECT * FROM customer 
-WHERE c_customer_sk = %s 
-  AND c_customer_id = %s 
-LIMIT %s;

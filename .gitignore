@@ -17,6 +17,7 @@ CLAUDE.md
 .env_dev
 .env_bkup
 app/test_queries/*
+queries/**
 
 # Documentation and sample files
 sample_workload_config.yml
