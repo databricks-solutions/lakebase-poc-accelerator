@@ -18,7 +18,7 @@ const LakebaseCalculator: React.FC<Props> = ({ onConfigGenerated }) => {
     try {
       
       // Call cost estimation API
-      const response = await fetch('http://localhost:8000/api/estimate-cost', {
+      const response = await fetch('/api/estimate-cost', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -41,17 +41,17 @@ const LakebaseCalculator: React.FC<Props> = ({ onConfigGenerated }) => {
 
       // Generate configuration files
       const [syncedTablesResponse, databricksConfigResponse, lakebaseInstanceResponse] = await Promise.all([
-        fetch('http://localhost:8000/api/generate-synced-tables', {
+        fetch('/api/generate-synced-tables', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(config)
         }),
-        fetch('http://localhost:8000/api/generate-databricks-config', {
+        fetch('/api/generate-databricks-config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(config)
         }),
-        fetch('http://localhost:8000/api/generate-lakebase-instance', {
+        fetch('/api/generate-lakebase-instance', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

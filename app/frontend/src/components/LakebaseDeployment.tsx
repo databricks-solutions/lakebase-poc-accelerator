@@ -150,7 +150,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
       };
 
       // Call the new deployment API
-      const response = await fetch('http://localhost:8000/api/deploy', {
+      const response = await fetch('/api/deploy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

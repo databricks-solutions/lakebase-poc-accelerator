@@ -13,7 +13,7 @@ python-multipart
 psycopg2-binary
 
 # Concurrency testing dependencies
-databricks-sdk
+databricks-sdk==0.66.0
 asyncpg
 sqlalchemy
 greenlet

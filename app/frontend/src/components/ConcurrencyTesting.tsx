@@ -45,7 +45,7 @@ const ConcurrencyTesting: React.FC = () => {
   const handleDeleteFile = async (index: number, filePath: string) => {
     try {
       // Call backend API to delete the file
-      const response = await fetch(`http://localhost:8000/api/pgbench-test/delete-query`, {
+      const response = await fetch(`/api/pgbench-test/delete-query`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -71,7 +71,7 @@ const ConcurrencyTesting: React.FC = () => {
     try {
       // Delete all files from backend
       const deletePromises = uploadedFiles.map(file =>
-        fetch(`http://localhost:8000/api/pgbench-test/delete-query`, {
+        fetch(`/api/pgbench-test/delete-query`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
@@ -100,8 +100,8 @@ const ConcurrencyTesting: React.FC = () => {
     formData.append('file', file);
 
     try {
-      console.log('Sending request to http://localhost:8000/api/pgbench-test/upload-query');
-      const response = await fetch('http://localhost:8000/api/pgbench-test/upload-query', {
+      console.log('Sending request to /api/pgbench-test/upload-query');
+      const response = await fetch('/api/pgbench-test/upload-query', {
         method: 'POST',
         body: formData,
       });
@@ -209,7 +209,7 @@ const ConcurrencyTesting: React.FC = () => {
 
       console.log('Sending test config:', testConfig);
 
-      const response = await fetch('http://localhost:8000/api/pgbench-test/run-uploaded-tests', {
+      const response = await fetch('/api/pgbench-test/run-uploaded-tests', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
