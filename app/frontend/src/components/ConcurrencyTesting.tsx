@@ -95,7 +95,7 @@ const ConcurrencyTesting: React.FC = () => {
 
   const handleFileUpload = useCallback(async (file: File) => {
     console.log('Starting file upload:', file.name, file.size);
-    
+
     const formData = new FormData();
     formData.append('file', file);
 
@@ -118,7 +118,7 @@ const ConcurrencyTesting: React.FC = () => {
 
       const result = await response.json();
       console.log('Response result:', result);
-      
+
       if (!result.is_valid) {
         message.error(`Query validation failed: ${result.error_message}`);
         return false;
@@ -131,7 +131,7 @@ const ConcurrencyTesting: React.FC = () => {
         parameter_count: result.variable_count || 0,
         saved_path: result.saved_path
       }]);
-      
+
       message.success(`Query "${result.query_identifier}" uploaded and saved successfully`);
       return false; // Prevent default upload behavior
     } catch (error) {
@@ -164,7 +164,7 @@ const ConcurrencyTesting: React.FC = () => {
     try {
       console.log('Button clicked! Starting test execution...');
       console.log('Uploaded files:', uploadedFiles);
-      
+
       // Get form values without validation first to see what we have
       const formValues = form.getFieldsValue();
       console.log('Form values (raw):', formValues);
@@ -233,7 +233,7 @@ const ConcurrencyTesting: React.FC = () => {
       setTestResults(results);
       setTestError(null); // Clear any previous errors on success
       message.success(`pgbench test completed successfully! Executed ${uploadedFiles.length} uploaded queries.`);
-      
+
     } catch (error) {
       console.error('Test execution error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -268,8 +268,8 @@ const ConcurrencyTesting: React.FC = () => {
 
       <Steps current={currentStep} items={steps} style={{ marginBottom: '24px' }} />
 
-      <Form 
-        form={form} 
+      <Form
+        form={form}
         layout="vertical"
         initialValues={{
           databricks_profile: "DEFAULT",
@@ -332,13 +332,13 @@ const ConcurrencyTesting: React.FC = () => {
           <Card title="Connection Setup" style={{ marginBottom: '24px' }}>
             <Row gutter={16}>
               <Col span={12}>
-                  <Form.Item
-                    label="Databricks Profile Name"
-                    name="databricks_profile"
-                    rules={[
-                      { required: true, message: 'Please enter Databricks CLI profile name' }
-                    ]}
-                  >
+                <Form.Item
+                  label="Databricks Profile Name"
+                  name="databricks_profile"
+                  rules={[
+                    { required: true, message: 'Please enter Databricks CLI profile name' }
+                  ]}
+                >
                   <Input
                     placeholder="DEFAULT"
                     suffix={
@@ -350,13 +350,13 @@ const ConcurrencyTesting: React.FC = () => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                  <Form.Item
-                    label="Databricks Workspace URL"
-                    name="workspace_url"
-                    rules={[
-                      { required: true, message: 'Please enter Databricks workspace URL' }
-                    ]}
-                  >
+                <Form.Item
+                  label="Databricks Workspace URL"
+                  name="workspace_url"
+                  rules={[
+                    { required: true, message: 'Please enter Databricks workspace URL' }
+                  ]}
+                >
                   <Input
                     placeholder="https://your-workspace.cloud.databricks.com"
                     suffix={
@@ -371,17 +371,17 @@ const ConcurrencyTesting: React.FC = () => {
 
             <Row gutter={16}>
               <Col span={12}>
-                  <Form.Item
-                    label="Lakebase Instance Name"
-                    name="instance_name"
-                    rules={[
-                      { required: true, message: 'Please enter instance name' },
-                      {
-                        pattern: /^[a-zA-Z0-9-]+$/,
-                        message: 'Only alphanumeric characters and hyphens allowed'
-                      }
-                    ]}
-                  >
+                <Form.Item
+                  label="Lakebase Instance Name"
+                  name="instance_name"
+                  rules={[
+                    { required: true, message: 'Please enter instance name' },
+                    {
+                      pattern: /^[a-zA-Z0-9-]+$/,
+                      message: 'Only alphanumeric characters and hyphens allowed'
+                    }
+                  ]}
+                >
                   <Input
                     placeholder="my-lakebase-instance"
                     suffix={
@@ -393,51 +393,29 @@ const ConcurrencyTesting: React.FC = () => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                  <Form.Item
-                    label="Database Name"
-                    name="database_name"
-                  >
+                <Form.Item
+                  label="Database Name"
+                  name="database_name"
+                >
                   <Input placeholder="databricks_postgres" />
                 </Form.Item>
               </Col>
             </Row>
 
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  label="Concurrent Connections"
-                  name="concurrency_level"
-                  rules={[
-                    { required: true, message: 'Please enter concurrency level' },
-                    { type: 'number', min: 1, max: 1000, message: 'Must be between 1 and 1000' }
-                  ]}
-                >
-                  <InputNumber
-                    min={1}
-                    max={1000}
-                    style={{ width: '100%' }}
-                    suffix={
-                      <Tooltip title="Number of concurrent connections to test">
-                        <InfoCircleOutlined />
-                      </Tooltip>
-                    }
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
+          
 
             <Divider>pgbench Benchmark Settings</Divider>
 
             <Row gutter={16}>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Number of concurrent database sessions
+                  Number of concurrent database sessions (Recommended: 8-50)
                 </Text>
                 <Form.Item
                   label={
                     <span>
                       Clients (-c)
-                      <Tooltip title="Number of concurrent database clients/connections for pgbench test">
+                      <Tooltip title="Number of concurrent database clients/connections for pgbench test. Higher values simulate more users but may overwhelm the system. Recommended: 8-50 for most tests, 100+ for stress testing.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -449,13 +427,13 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Worker threads (should be ≤ clients)
+                  Worker threads (should be ≤ clients, Recommended: 4-8)
                 </Text>
                 <Form.Item
                   label={
                     <span>
                       Jobs (-j)
-                      <Tooltip title="Number of worker threads. Must be ≤ clients; set to match CPU cores.">
+                      <Tooltip title="Number of worker threads that manage the clients. Should be ≤ clients and typically match your CPU cores. Recommended: 4-8 for most systems, or match your CPU core count.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -467,13 +445,13 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Test duration in seconds
+                  Test duration in seconds (Recommended: 30-60 for quick tests)
                 </Text>
                 <Form.Item
                   label={
                     <span>
                       Duration (-T)
-                      <Tooltip title="Run benchmark for specified duration in seconds">
+                      <Tooltip title="How long to run the benchmark test. Longer tests provide more stable results but take more time. Recommended: 30-60 seconds for quick tests, 300+ seconds for production-like testing.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -488,13 +466,13 @@ const ConcurrencyTesting: React.FC = () => {
             <Row gutter={16}>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Progress report interval
+                  Progress report interval (Recommended: 5-10 seconds)
                 </Text>
                 <Form.Item
                   label={
                     <span>
                       Progress (-P)
-                      <Tooltip title="Show progress reports every N seconds during test">
+                      <Tooltip title="How often to show progress updates during the test. More frequent updates provide better monitoring but add overhead. Recommended: 5-10 seconds for most tests, 1-2 seconds for short tests.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -506,13 +484,13 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Query protocol mode
+                  Query protocol mode (Recommended: Prepared)
                 </Text>
                 <Form.Item
                   label={
                     <span>
                       Protocol (-M)
-                      <Tooltip title="Query protocol: prepared is most efficient">
+                      <Tooltip title="Query execution protocol. Prepared is most efficient for repeated queries, Extended is good for complex queries, Simple is basic but slower. Recommended: Prepared for most use cases.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -531,13 +509,13 @@ const ConcurrencyTesting: React.FC = () => {
             <Row gutter={16}>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Per-statement latency reporting
+                  Per-statement latency reporting (Recommended: ON)
                 </Text>
                 <Form.Item
                   label={
                     <span>
                       Latency Stats (-r)
-                      <Tooltip title="Show detailed per-statement latencies at the end">
+                      <Tooltip title="Show detailed per-statement latency statistics at the end of the test. Provides min/max/avg latency for each query type. Recommended: ON for detailed analysis, OFF for basic throughput testing.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -550,13 +528,13 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Detailed transaction logging
+                  Detailed transaction logging (Recommended: ON for debugging)
                 </Text>
                 <Form.Item
                   label={
                     <span>
                       Log Details (-l)
-                      <Tooltip title="Enable per-transaction logging for detailed analysis">
+                      <Tooltip title="Enable detailed per-transaction logging to a file for in-depth analysis. Creates detailed logs but may impact performance. Recommended: ON for debugging, OFF for performance testing.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -569,13 +547,13 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  New connection per transaction
+                  New connection per transaction (Recommended: OFF)
                 </Text>
                 <Form.Item
                   label={
                     <span>
                       Connect Mode (-C)
-                      <Tooltip title="Establish new connection for each transaction (increases overhead)">
+                      <Tooltip title="Establish a new database connection for each transaction instead of reusing connections. Simulates real-world scenarios but adds significant overhead. Recommended: OFF for performance testing, ON for connection stress testing.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -589,460 +567,460 @@ const ConcurrencyTesting: React.FC = () => {
             </Row>
 
             <Form.Item>
-              <Button 
-                type="primary" 
+              <Button
+                type="primary"
                 onClick={() => setCurrentStep(1)}
                 size="large"
               >
                 Next: Upload Queries
               </Button>
             </Form.Item>
-        </Card>
-      )}
+          </Card>
+        )}
 
-      {/* Step 2: Upload SQL Files */}
-      {currentStep === 1 && (
-        <Card title="Upload SQL Files" style={{ marginBottom: '24px' }}>
-          <div style={{ marginBottom: '24px' }}>
-            <Title level={4}>Upload SQL Query Files</Title>
-            <Paragraph>
-              Upload .sql files containing your PostgreSQL queries. <strong>Each file must include required comments:</strong>
-            </Paragraph>
-            
-            <Upload
-              accept=".sql"
-              beforeUpload={handleBeforeUpload}
-              showUploadList={false}
-              multiple
-            >
-              <Button icon={<UploadOutlined />} size="large">
-                Upload SQL Files
-              </Button>
-            </Upload>
+        {/* Step 2: Upload SQL Files */}
+        {currentStep === 1 && (
+          <Card title="Upload SQL Files" style={{ marginBottom: '24px' }}>
+            <div style={{ marginBottom: '24px' }}>
+              <Title level={4}>Upload SQL Query Files</Title>
+              <Paragraph>
+                Upload .sql files containing your PostgreSQL queries. <strong>Each file must include required comments:</strong>
+              </Paragraph>
 
-            {/* Uploaded Files Display */}
-            <div style={{ marginTop: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <Title level={4} style={{ margin: 0 }}>Uploaded Files</Title>
-                {uploadedFiles.length > 0 && (
-                  <Button
-                    size="small"
-                    danger
-                    onClick={handleClearAllFiles}
-                    title="Clear all files"
-                  >
-                    Clear All
-                  </Button>
+              <Upload
+                accept=".sql"
+                beforeUpload={handleBeforeUpload}
+                showUploadList={false}
+                multiple
+              >
+                <Button icon={<UploadOutlined />} size="large">
+                  Upload SQL Files
+                </Button>
+              </Upload>
+
+              {/* Uploaded Files Display */}
+              <div style={{ marginTop: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <Title level={4} style={{ margin: 0 }}>Uploaded Files</Title>
+                  {uploadedFiles.length > 0 && (
+                    <Button
+                      size="small"
+                      danger
+                      onClick={handleClearAllFiles}
+                      title="Clear all files"
+                    >
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+                {uploadedFiles.length === 0 ? (
+                  <Alert
+                    message="No files uploaded yet"
+                    description="Upload SQL files to see them listed here"
+                    type="info"
+                    showIcon
+                  />
+                ) : (
+                  <div>
+                    {uploadedFiles.map((file, index) => (
+                      <Card key={index} size="small" style={{ marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <Text strong>{file.name}</Text>
+                            <br />
+                            <Text type="secondary">
+                              Parameters: {file.parameter_count} | Saved to: {file.saved_path}
+                            </Text>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Tag color="blue">{file.parameter_count} params</Tag>
+                            <Button
+                              type="text"
+                              danger
+                              size="small"
+                              icon={<DeleteOutlined />}
+                              onClick={() => handleDeleteFile(index, file.saved_path)}
+                              title="Delete file"
+                            />
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
                 )}
               </div>
-              {uploadedFiles.length === 0 ? (
+
+              {/* SQL Examples */}
+              <Card
+                title="SQL Query Examples"
+                size="small"
+                style={{ marginTop: '16px', backgroundColor: '#fafafa' }}
+              >
                 <Alert
-                  message="No files uploaded yet"
-                  description="Upload SQL files to see them listed here"
-                  type="info"
-                  showIcon
+                  message="pgbench SQL File Format"
+                  description={
+                    <div>
+                      <p><strong>⚠️ IMPORTANT:</strong> Use pgbench format with these features:</p>
+                      <ul style={{ marginBottom: '8px' }}>
+                        <li><code>\set variable_name random(min, max)</code> for random parameters</li>
+                        <li><code>:variable_name</code> for parameter placeholders (colon notation)</li>
+                        <li>No special comments needed - pgbench handles execution counts via configuration</li>
+                        <li>Each file will be weighted equally unless specified in backend</li>
+                      </ul>
+                    </div>
+                  }
+                  type="warning"
+                  style={{ marginBottom: '16px' }}
                 />
-              ) : (
-                <div>
-                  {uploadedFiles.map((file, index) => (
-                    <Card key={index} size="small" style={{ marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <Text strong>{file.name}</Text>
-                          <br />
-                          <Text type="secondary">
-                            Parameters: {file.parameter_count} | Saved to: {file.saved_path}
-                          </Text>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Tag color="blue">{file.parameter_count} params</Tag>
-                          <Button
-                            type="text"
-                            danger
-                            size="small"
-                            icon={<DeleteOutlined />}
-                            onClick={() => handleDeleteFile(index, file.saved_path)}
-                            title="Delete file"
-                          />
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
 
-            {/* SQL Examples */}
-            <Card 
-              title="SQL Query Examples" 
-              size="small" 
-              style={{ marginTop: '16px', backgroundColor: '#fafafa' }}
-            >
-              <Alert
-                message="pgbench SQL File Format"
-                description={
-                  <div>
-                    <p><strong>⚠️ IMPORTANT:</strong> Use pgbench format with these features:</p>
-                    <ul style={{ marginBottom: '8px' }}>
-                      <li><code>\set variable_name random(min, max)</code> for random parameters</li>
-                      <li><code>:variable_name</code> for parameter placeholders (colon notation)</li>
-                      <li>No special comments needed - pgbench handles execution counts via configuration</li>
-                      <li>Each file will be weighted equally unless specified in backend</li>
-                    </ul>
-                  </div>
-                }
-                type="warning"
-                style={{ marginBottom: '16px' }}
-              />
-
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Title level={5}>Example 1: Point Query</Title>
-                  <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
-                    File: point_query.sql
-                  </Text>
-                  <pre style={{
-                    backgroundColor: '#f5f5f5',
-                    padding: '12px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    marginBottom: '8px',
-                    overflow: 'auto'
-                  }}>
-{`\\set customer_sk random(1, 1000000)
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Title level={5}>Example 1: Point Query</Title>
+                    <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                      File: point_query.sql
+                    </Text>
+                    <pre style={{
+                      backgroundColor: '#f5f5f5',
+                      padding: '12px',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      marginBottom: '8px',
+                      overflow: 'auto'
+                    }}>
+                      {`\\set customer_sk random(1, 1000000)
 
 SELECT * FROM customer
 WHERE c_customer_sk = :customer_sk;`}
-                  </pre>
-                  <Text type="secondary" style={{ fontSize: '11px' }}>
-                    Random customer lookup by primary key using pgbench \\set
-                  </Text>
-                </Col>
-                
-                <Col span={12}>
-                  <Title level={5}>Example 2: Range Query</Title>
-                  <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
-                    File: range_query.sql
-                  </Text>
-                  <pre style={{
-                    backgroundColor: '#f5f5f5',
-                    padding: '12px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    marginBottom: '8px',
-                    overflow: 'auto'
-                  }}>
-{`\\set customer_sk random(1, 1000000)
+                    </pre>
+                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                      Random customer lookup by primary key using pgbench \\set
+                    </Text>
+                  </Col>
+
+                  <Col span={12}>
+                    <Title level={5}>Example 2: Range Query</Title>
+                    <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                      File: range_query.sql
+                    </Text>
+                    <pre style={{
+                      backgroundColor: '#f5f5f5',
+                      padding: '12px',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      marginBottom: '8px',
+                      overflow: 'auto'
+                    }}>
+                      {`\\set customer_sk random(1, 1000000)
 
 SELECT * FROM customer
 WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
-                  </pre>
-                  <Text type="secondary" style={{ fontSize: '11px' }}>
-                    Range query with random start point and fixed range size
-                  </Text>
-                </Col>
-              </Row>
-              
-              <Row gutter={16} style={{ marginTop: '16px' }}>
-                <Col span={24}>
-                  <Title level={5}>Example 3: Aggregation Query</Title>
-                  <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
-                    File: agg_query.sql
-                  </Text>
-                  <pre style={{
-                    backgroundColor: '#f5f5f5',
-                    padding: '12px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    marginBottom: '8px',
-                    overflow: 'auto'
-                  }}>
-{`SELECT COUNT(*) as total_customers FROM customer;`}
-                  </pre>
-                  <Text type="secondary" style={{ fontSize: '11px' }}>
-                    Simple aggregation query without parameters for baseline performance
-                  </Text>
-                </Col>
-              </Row>
-            </Card>
-          </div>
-
-
-          <div style={{ marginTop: '24px', textAlign: 'center' }}>
-            <Space>
-              <Button onClick={() => setCurrentStep(0)}>
-                Previous
-              </Button>
-              <Button 
-                type="primary" 
-                onClick={() => setCurrentStep(2)}
-                disabled={uploadedFiles.length === 0}
-                size="large"
-              >
-                Next: Run Tests
-              </Button>
-            </Space>
-          </div>
-        </Card>
-      )}
-
-      {/* Step 3: Run Tests */}
-      {currentStep === 2 && (
-        <Card title="Run Tests" style={{ marginBottom: '24px' }}>
-          <div style={{ marginBottom: '24px' }}>
-            <Title level={4}>Test Configuration Summary</Title>
-            <Row gutter={16}>
-              <Col span={6}>
-                <Card size="small">
-                  <Text strong>Total Queries</Text>
-                  <div style={{ fontSize: '24px', color: '#1890ff' }}>
-                    {uploadedFiles.length}
-                  </div>
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card size="small">
-                  <Text strong>pgbench Clients</Text>
-                  <div style={{ fontSize: '24px', color: '#fa8c16' }}>
-                    {form.getFieldValue('pgbench_clients') || 8}
-                  </div>
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card size="small">
-                  <Text strong>Test Duration</Text>
-                  <div style={{ fontSize: '24px', color: '#722ed1' }}>
-                    {form.getFieldValue('pgbench_duration') || 30}s
-                  </div>
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card size="small">
-                  <Text strong>Protocol Mode</Text>
-                  <div style={{ fontSize: '20px', color: '#52c41a', textTransform: 'capitalize' }}>
-                    {form.getFieldValue('pgbench_protocol') || 'prepared'}
-                  </div>
-                </Card>
-              </Col>
-            </Row>
-          </div>
-
-          {isTestRunning && (
-            <Alert
-              message="Test Running"
-              description="Executing concurrency tests. Please wait..."
-              type="info"
-              showIcon
-              style={{ marginBottom: '24px' }}
-            />
-          )}
-
-          {testError && (
-            <Alert
-              message="Test Execution Failed"
-              description={
-                <div>
-                  <Text strong>Error Details:</Text>
-                  <br />
-                  <Text code style={{ marginTop: '8px', display: 'block' }}>
-                    {testError}
-                  </Text>
-                  <br />
-                  <Text type="secondary" style={{ marginTop: '8px', display: 'block' }}>
-                    Please check your configuration and try again. Common issues:
-                  </Text>
-                  <ul style={{ marginTop: '8px', marginBottom: 0 }}>
-                    <li>Invalid Databricks profile name</li>
-                    <li>Incorrect Lakebase instance name</li>
-                    <li>Missing permissions for the specified instance</li>
-                    <li>Network connectivity issues</li>
-                  </ul>
-                </div>
-              }
-              type="error"
-              showIcon
-              style={{ marginBottom: '24px' }}
-              action={
-                <Button 
-                  size="small" 
-                  danger 
-                  onClick={() => setTestError(null)}
-                >
-                  Dismiss
-                </Button>
-              }
-            />
-          )}
-
-          {testResults && (
-            <div style={{ marginBottom: '24px' }}>
-              <Title level={4}>pgbench Test Results</Title>
-              
-              {/* High-level Test Information */}
-              <Card style={{ marginBottom: '16px' }}>
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <div style={{ marginBottom: '8px' }}>
-                      <Text strong>pgbench Clients:</Text>
-                      <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#1890ff' }}>
-                        {testResults.pgbench_config?.clients || 'N/A'}
-                      </Text>
-                    </div>
-                    <div style={{ marginBottom: '8px' }}>
-                      <Text strong>Test Duration:</Text>
-                      <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#722ed1' }}>
-                        {testResults.total_duration_seconds ? testResults.total_duration_seconds.toFixed(1) + 's' : 'N/A'}
-                      </Text>
-                    </div>
+                    </pre>
+                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                      Range query with random start point and fixed range size
+                    </Text>
                   </Col>
-                  <Col span={12}>
-                    <div style={{ marginBottom: '8px' }}>
-                      <Text strong>Queries Tested:</Text>
-                      <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#52c41a' }}>
-                        {testResults.queries_tested || 'N/A'}
-                      </Text>
-                    </div>
-                    <div style={{ marginBottom: '8px' }}>
-                      <Text strong>Protocol Mode:</Text>
-                      <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#fa8c16', textTransform: 'capitalize' }}>
-                        {testResults.pgbench_config?.protocol || 'N/A'}
-                      </Text>
-                    </div>
+                </Row>
+
+                <Row gutter={16} style={{ marginTop: '16px' }}>
+                  <Col span={24}>
+                    <Title level={5}>Example 3: Aggregation Query</Title>
+                    <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                      File: agg_query.sql
+                    </Text>
+                    <pre style={{
+                      backgroundColor: '#f5f5f5',
+                      padding: '12px',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      marginBottom: '8px',
+                      overflow: 'auto'
+                    }}>
+                      {`SELECT COUNT(*) as total_customers FROM customer;`}
+                    </pre>
+                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                      Simple aggregation query without parameters for baseline performance
+                    </Text>
                   </Col>
                 </Row>
               </Card>
+            </div>
 
-              {/* Performance Metrics */}
-              <Row gutter={16} style={{ marginBottom: '16px' }}>
+
+            <div style={{ marginTop: '24px', textAlign: 'center' }}>
+              <Space>
+                <Button onClick={() => setCurrentStep(0)}>
+                  Previous
+                </Button>
+                <Button
+                  type="primary"
+                  onClick={() => setCurrentStep(2)}
+                  disabled={uploadedFiles.length === 0}
+                  size="large"
+                >
+                  Next: Run Tests
+                </Button>
+              </Space>
+            </div>
+          </Card>
+        )}
+
+        {/* Step 3: Run Tests */}
+        {currentStep === 2 && (
+          <Card title="Run Tests" style={{ marginBottom: '24px' }}>
+            <div style={{ marginBottom: '24px' }}>
+              <Title level={4}>Test Configuration Summary</Title>
+              <Row gutter={16}>
                 <Col span={6}>
                   <Card size="small">
-                    <Text strong>TPS</Text>
-                    <div style={{ fontSize: '20px', color: '#1890ff', marginTop: '4px' }}>
-                      {testResults.tps ? testResults.tps.toFixed(2) : 'N/A'}
+                    <Text strong>Total Queries</Text>
+                    <div style={{ fontSize: '24px', color: '#1890ff' }}>
+                      {uploadedFiles.length}
                     </div>
                   </Card>
                 </Col>
                 <Col span={6}>
                   <Card size="small">
-                    <Text strong>Avg Latency</Text>
-                    <div style={{ fontSize: '20px', color: '#fa8c16', marginTop: '4px' }}>
-                      {testResults.average_latency_ms ? testResults.average_latency_ms.toFixed(2) + 'ms' : 'N/A'}
+                    <Text strong>pgbench Clients</Text>
+                    <div style={{ fontSize: '24px', color: '#fa8c16' }}>
+                      {form.getFieldValue('pgbench_clients') || 8}
                     </div>
                   </Card>
                 </Col>
                 <Col span={6}>
                   <Card size="small">
-                    <Text strong>P95 Latency</Text>
-                    <div style={{ fontSize: '20px', color: '#f5222d', marginTop: '4px' }}>
-                      {testResults.latency_percentiles?.p95 ? testResults.latency_percentiles.p95.toFixed(2) + 'ms' : 'N/A'}
+                    <Text strong>Test Duration</Text>
+                    <div style={{ fontSize: '24px', color: '#722ed1' }}>
+                      {form.getFieldValue('pgbench_duration') || 30}s
                     </div>
                   </Card>
                 </Col>
                 <Col span={6}>
                   <Card size="small">
-                    <Text strong>P99 Latency</Text>
-                    <div style={{ fontSize: '20px', color: '#722ed1', marginTop: '4px' }}>
-                      {testResults.latency_percentiles?.p99 ? testResults.latency_percentiles.p99.toFixed(2) + 'ms' : 'N/A'}
+                    <Text strong>Protocol Mode</Text>
+                    <div style={{ fontSize: '20px', color: '#52c41a', textTransform: 'capitalize' }}>
+                      {form.getFieldValue('pgbench_protocol') || 'prepared'}
                     </div>
                   </Card>
                 </Col>
               </Row>
+            </div>
 
-              {/* pgbench Raw Output */}
-              {testResults.execution_result && (
-                <Card title="pgbench Execution Summary" style={{ marginBottom: '16px' }}>
+            {isTestRunning && (
+              <Alert
+                message="Test Running"
+                description="Executing concurrency tests. Please wait..."
+                type="info"
+                showIcon
+                style={{ marginBottom: '24px' }}
+              />
+            )}
+
+            {testError && (
+              <Alert
+                message="Test Execution Failed"
+                description={
+                  <div>
+                    <Text strong>Error Details:</Text>
+                    <br />
+                    <Text code style={{ marginTop: '8px', display: 'block' }}>
+                      {testError}
+                    </Text>
+                    <br />
+                    <Text type="secondary" style={{ marginTop: '8px', display: 'block' }}>
+                      Please check your configuration and try again. Common issues:
+                    </Text>
+                    <ul style={{ marginTop: '8px', marginBottom: 0 }}>
+                      <li>Invalid Databricks profile name</li>
+                      <li>Incorrect Lakebase instance name</li>
+                      <li>Missing permissions for the specified instance</li>
+                      <li>Network connectivity issues</li>
+                    </ul>
+                  </div>
+                }
+                type="error"
+                showIcon
+                style={{ marginBottom: '24px' }}
+                action={
+                  <Button
+                    size="small"
+                    danger
+                    onClick={() => setTestError(null)}
+                  >
+                    Dismiss
+                  </Button>
+                }
+              />
+            )}
+
+            {testResults && (
+              <div style={{ marginBottom: '24px' }}>
+                <Title level={4}>pgbench Test Results</Title>
+
+                {/* High-level Test Information */}
+                <Card style={{ marginBottom: '16px' }}>
                   <Row gutter={16}>
                     <Col span={12}>
-                      <div style={{ marginBottom: '16px' }}>
-                        <Text strong>Execution Details:</Text>
-                        <div style={{ marginTop: '8px', backgroundColor: '#f5f5f5', padding: '8px', borderRadius: '4px' }}>
-                          <Text type="secondary">Return Code:</Text>
-                          <Text style={{ marginLeft: '8px', color: testResults.execution_result.return_code === 0 ? '#52c41a' : '#f5222d' }}>
-                            {testResults.execution_result.return_code === 0 ? 'Success' : `Failed (${testResults.execution_result.return_code})`}
-                          </Text>
-                        </div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <Text strong>pgbench Clients:</Text>
+                        <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#1890ff' }}>
+                          {testResults.pgbench_config?.clients || 'N/A'}
+                        </Text>
                       </div>
-
-                      {testResults.per_statement_stats && Object.keys(testResults.per_statement_stats).length > 0 && (
-                        <div>
-                          <Text strong>Per-Statement Statistics:</Text>
-                          <div style={{ marginTop: '8px' }}>
-                            {Object.entries(testResults.per_statement_stats).map(([statement, stats]: [string, any]) => (
-                              <div key={statement} style={{ marginBottom: '8px', backgroundColor: '#fafafa', padding: '8px', borderRadius: '4px' }}>
-                                <Text type="secondary">{statement}:</Text>
-                                <Text style={{ marginLeft: '8px', fontWeight: 'bold' }}>
-                                  {stats.average_latency_ms?.toFixed(2)}ms
-                                </Text>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      <div style={{ marginBottom: '8px' }}>
+                        <Text strong>Test Duration:</Text>
+                        <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#722ed1' }}>
+                          {testResults.total_duration_seconds ? testResults.total_duration_seconds.toFixed(1) + 's' : 'N/A'}
+                        </Text>
+                      </div>
                     </Col>
-
                     <Col span={12}>
-                      {testResults.progress_reports && testResults.progress_reports.length > 0 && (
-                        <div>
-                          <Text strong>Progress Reports:</Text>
-                          <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-                            {testResults.progress_reports.map((report: any, index: number) => (
-                              <div key={index} style={{ marginBottom: '4px', fontSize: '12px', color: '#666' }}>
-                                <Text>{report.time_seconds?.toFixed(1)}s: </Text>
-                                <Text style={{ color: '#1890ff' }}>{report.tps?.toFixed(1)} TPS</Text>
-                                {report.latency_ms && (
-                                  <Text style={{ color: '#fa8c16' }}>, {report.latency_ms?.toFixed(2)}ms latency</Text>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
+                      <div style={{ marginBottom: '8px' }}>
+                        <Text strong>Queries Tested:</Text>
+                        <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#52c41a' }}>
+                          {testResults.queries_tested || 'N/A'}
+                        </Text>
+                      </div>
+                      <div style={{ marginBottom: '8px' }}>
+                        <Text strong>Protocol Mode:</Text>
+                        <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#fa8c16', textTransform: 'capitalize' }}>
+                          {testResults.pgbench_config?.protocol || 'N/A'}
+                        </Text>
+                      </div>
                     </Col>
                   </Row>
                 </Card>
-              )}
 
-              {/* Show raw pgbench output for debugging */}
-              {testResults.execution_result?.stdout && (
-                <Card title="Raw pgbench Output" style={{ marginBottom: '16px' }} size="small">
-                  <div style={{ backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace', maxHeight: '300px', overflowY: 'auto' }}>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                      {testResults.execution_result.stdout}
-                    </pre>
-                  </div>
-                  {testResults.execution_result.stderr && (
-                    <div style={{ marginTop: '8px', backgroundColor: '#fff2f0', padding: '8px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace' }}>
-                      <Text strong style={{ color: '#f5222d' }}>STDERR:</Text>
-                      <pre style={{ margin: 0, marginTop: '4px', whiteSpace: 'pre-wrap', color: '#f5222d' }}>
-                        {testResults.execution_result.stderr}
+                {/* Performance Metrics */}
+                <Row gutter={16} style={{ marginBottom: '16px' }}>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Text strong>TPS</Text>
+                      <div style={{ fontSize: '20px', color: '#1890ff', marginTop: '4px' }}>
+                        {testResults.tps ? testResults.tps.toFixed(2) : 'N/A'}
+                      </div>
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Text strong>Avg Latency</Text>
+                      <div style={{ fontSize: '20px', color: '#fa8c16', marginTop: '4px' }}>
+                        {testResults.average_latency_ms ? testResults.average_latency_ms.toFixed(2) + 'ms' : 'N/A'}
+                      </div>
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Text strong>P95 Latency</Text>
+                      <div style={{ fontSize: '20px', color: '#f5222d', marginTop: '4px' }}>
+                        {testResults.latency_percentiles?.p95 ? testResults.latency_percentiles.p95.toFixed(2) + 'ms' : 'N/A'}
+                      </div>
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Text strong>P99 Latency</Text>
+                      <div style={{ fontSize: '20px', color: '#722ed1', marginTop: '4px' }}>
+                        {testResults.latency_percentiles?.p99 ? testResults.latency_percentiles.p99.toFixed(2) + 'ms' : 'N/A'}
+                      </div>
+                    </Card>
+                  </Col>
+                </Row>
+
+                {/* pgbench Raw Output */}
+                {testResults.execution_result && (
+                  <Card title="pgbench Execution Summary" style={{ marginBottom: '16px' }}>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <div style={{ marginBottom: '16px' }}>
+                          <Text strong>Execution Details:</Text>
+                          <div style={{ marginTop: '8px', backgroundColor: '#f5f5f5', padding: '8px', borderRadius: '4px' }}>
+                            <Text type="secondary">Return Code:</Text>
+                            <Text style={{ marginLeft: '8px', color: testResults.execution_result.return_code === 0 ? '#52c41a' : '#f5222d' }}>
+                              {testResults.execution_result.return_code === 0 ? 'Success' : `Failed (${testResults.execution_result.return_code})`}
+                            </Text>
+                          </div>
+                        </div>
+
+                        {testResults.per_statement_stats && Object.keys(testResults.per_statement_stats).length > 0 && (
+                          <div>
+                            <Text strong>Per-Statement Statistics:</Text>
+                            <div style={{ marginTop: '8px' }}>
+                              {Object.entries(testResults.per_statement_stats).map(([statement, stats]: [string, any]) => (
+                                <div key={statement} style={{ marginBottom: '8px', backgroundColor: '#fafafa', padding: '8px', borderRadius: '4px' }}>
+                                  <Text type="secondary">{statement}:</Text>
+                                  <Text style={{ marginLeft: '8px', fontWeight: 'bold' }}>
+                                    {stats.average_latency_ms?.toFixed(2)}ms
+                                  </Text>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </Col>
+
+                      <Col span={12}>
+                        {testResults.progress_reports && testResults.progress_reports.length > 0 && (
+                          <div>
+                            <Text strong>Progress Reports:</Text>
+                            <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                              {testResults.progress_reports.map((report: any, index: number) => (
+                                <div key={index} style={{ marginBottom: '4px', fontSize: '12px', color: '#666' }}>
+                                  <Text>{report.time_seconds?.toFixed(1)}s: </Text>
+                                  <Text style={{ color: '#1890ff' }}>{report.tps?.toFixed(1)} TPS</Text>
+                                  {report.latency_ms && (
+                                    <Text style={{ color: '#fa8c16' }}>, {report.latency_ms?.toFixed(2)}ms latency</Text>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                      </Col>
+                    </Row>
+                  </Card>
+                )}
+
+                {/* Show raw pgbench output for debugging */}
+                {testResults.execution_result?.stdout && (
+                  <Card title="Raw pgbench Output" style={{ marginBottom: '16px' }} size="small">
+                    <div style={{ backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace', maxHeight: '300px', overflowY: 'auto' }}>
+                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                        {testResults.execution_result.stdout}
                       </pre>
                     </div>
-                  )}
-                </Card>
-              )}
+                    {testResults.execution_result.stderr && (
+                      <div style={{ marginTop: '8px', backgroundColor: '#fff2f0', padding: '8px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace' }}>
+                        <Text strong style={{ color: '#f5222d' }}>STDERR:</Text>
+                        <pre style={{ margin: 0, marginTop: '4px', whiteSpace: 'pre-wrap', color: '#f5222d' }}>
+                          {testResults.execution_result.stderr}
+                        </pre>
+                      </div>
+                    )}
+                  </Card>
+                )}
 
+              </div>
+            )}
+
+            <div style={{ textAlign: 'center' }}>
+              <Space>
+                <Button onClick={() => setCurrentStep(1)}>
+                  Previous
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<PlayCircleOutlined />}
+                  onClick={handleRunTest}
+                  loading={isTestRunning}
+                  size="large"
+                >
+                  {isTestRunning ? 'Running pgbench Test...' : 'Run pgbench Test'}
+                </Button>
+              </Space>
             </div>
-          )}
-
-          <div style={{ textAlign: 'center' }}>
-            <Space>
-              <Button onClick={() => setCurrentStep(1)}>
-                Previous
-              </Button>
-              <Button 
-                type="primary" 
-                icon={<PlayCircleOutlined />}
-                onClick={handleRunTest}
-                loading={isTestRunning}
-                size="large"
-              >
-                {isTestRunning ? 'Running pgbench Test...' : 'Run pgbench Test'}
-              </Button>
-            </Space>
-          </div>
-        </Card>
-      )}
+          </Card>
+        )}
 
       </Form>
     </div>

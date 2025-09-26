@@ -23,7 +23,7 @@ from services.lakebase_cost_estimator import estimate_cost_from_config
 from services.generate_synced_tables import generate_synced_tables_from_config
 
 # Import concurrency testing modules
-from models.query_models import ConcurrencyTestRequest, ConcurrencyTestReport, SimpleQueryConfig, PgbenchTestRequest, PgbenchTestReport
+from models.query_models import ConcurrencyTestRequest, ConcurrencyTestReport, SimpleQueryConfig, PgbenchTestReport
 from services.lakebase_connection_service import LakebaseConnectionService
 from services.pgbench_service import PgbenchService
 from services.oauth_service import DatabricksOAuthService
@@ -40,6 +40,12 @@ app = FastAPI(
 
 # Global progress tracker for deployment status
 deployment_progress_tracker = {}
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Databricks Apps."""
+    return {"status": "healthy", "service": "lakebase-accelerator-api"}
 
 # Configure CORS
 app.add_middleware(
@@ -232,7 +238,6 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
     """
     Generate synced tables configuration from workload config.
     """
-    print("Request in generate-synced-tables: ", request.model_dump())
     try:
         # Prepare workload data for the table generator
         workload_data = {
@@ -781,51 +786,6 @@ async def upload_pgbench_query_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"File upload failed: {str(e)}")
 
-@app.post("/api/pgbench-test/execute")
-async def execute_pgbench_test(test_request: PgbenchTestRequest):
-    """
-    Execute pgbench test against Lakebase instance using uploaded queries.
-
-    Args:
-        test_request: Complete pgbench test configuration
-
-    Returns:
-        PgbenchTestReport with test results and metrics
-    """
-    try:
-        # Initialize pgbench service
-        pgbench_service = PgbenchService()
-
-        # Initialize connection
-        connection_initialized = await pgbench_service.initialize_connection(
-            workspace_url=test_request.workspace_url,
-            instance_name=test_request.instance_name,
-            database=test_request.database_name
-        )
-
-        if not connection_initialized:
-            raise HTTPException(status_code=500, detail="Failed to initialize pgbench connection")
-
-        # Convert query configs to format expected by pgbench service
-        queries_with_weights = []
-        for query_config in test_request.queries:
-            queries_with_weights.append({
-                "query_identifier": query_config.query_identifier,
-                "query_content": query_config.query_content,
-                "weight": query_config.weight
-            })
-
-        # Execute pgbench test
-        report = await pgbench_service.execute_pgbench_test(
-            queries=queries_with_weights,
-            pgbench_config=test_request.pgbench_config.model_dump()
-        )
-
-        return report
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"pgbench test failed: {str(e)}")
-
 @app.post("/api/pgbench-test/run-uploaded-tests")
 async def run_pgbench_uploaded_tests(test_request: dict):
     """
@@ -945,7 +905,6 @@ async def get_pgbench_test_status():
             "pgbench_available": True,
             "available_endpoints": [
                 "/api/pgbench-test/upload-query",
-                "/api/pgbench-test/execute",
                 "/api/pgbench-test/run-uploaded-tests"
             ]
         }

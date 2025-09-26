@@ -76,8 +76,8 @@ const CostReport: React.FC<Props> = ({ data }) => {
             />
           </Card>
         </Col>
-        
-        
+
+
         <Col span={4.5}>
           <Card>
             <Statistic
@@ -134,6 +134,12 @@ const CostReport: React.FC<Props> = ({ data }) => {
       {/* Table Size Analysis */}
       {table_sizes && (
         <Card title="Table Size Analysis">
+          <Alert
+            message="Note: This shows uncompressed Delta table size similar to Postgres table size, not including index size"
+            type="info"
+            showIcon
+            style={{ marginBottom: '16px' }}
+          />
           <Row gutter={16} style={{ marginBottom: '16px' }}>
             <Col span={12}>
               <Statistic
@@ -154,9 +160,9 @@ const CostReport: React.FC<Props> = ({ data }) => {
               />
             </Col>
           </Row>
-          
+
           <Divider />
-          
+
           <Table
             columns={tableColumns}
             dataSource={table_sizes.table_details}
