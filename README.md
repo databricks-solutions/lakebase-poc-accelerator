@@ -10,7 +10,7 @@ This project is designed to streamline the testing and migration of customer OLT
 ```
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r ../requirements.txt
+pip install -r requirements.txt
 ```
 
 2. Install the Databricks CLI from <https://docs.databricks.com/dev-tools/cli/databricks-cli.html>
@@ -60,6 +60,18 @@ $ brew update && brew upgrade databricks && databricks --version | cat
    ```bash
    $ databricks auth profiles
    ```
+
+## Install pgbench for concurrency testing
+pgbench comes bundled with PostgreSQL. Install PostgreSQL client tools:
+
+#### macOS:
+```bash
+# Install PostgreSQL (includes pgbench)
+brew install postgresql
+
+# Verify installation
+pgbench --version
+```
 
 ## Starting the Web Application
 

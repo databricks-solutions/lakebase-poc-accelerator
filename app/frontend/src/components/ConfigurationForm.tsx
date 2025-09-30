@@ -27,6 +27,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
   const [form] = Form.useForm();
   const [tables, setTables] = useState<TableToSync[]>([
     {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-0`,
       name: 'samples.tpcds_sf1.customer',
       primary_keys: ['c_customer_sk'],
       scheduling_policy: 'SNAPSHOT'
@@ -35,6 +36,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
 
   const addTable = () => {
     setTables([...tables, {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${tables.length}`,
       name: '',
       primary_keys: [],
       scheduling_policy: 'SNAPSHOT'
@@ -97,7 +99,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
 
   const tableColumns = [
     {
-      title: 'Table Name',
+      title: 'Delta Table Name',
       dataIndex: 'name',
       render: (text: string, record: TableToSync, index: number) => (
         <Input
@@ -232,7 +234,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label={
                 <span>
-                  Bulk Writes/Second{' '}
+                  Bulk Writes rows/second{' '}
                   <Tooltip title="Writes for initial data loading and batch updates">
                     <InfoCircleOutlined />
                   </Tooltip>
@@ -248,7 +250,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label={
                 <span>
-                  Continuous Writes/Second{' '}
+                  Continuous Writes rows/second{' '}
                   <Tooltip title="Real-time writes for ongoing operations">
                     <InfoCircleOutlined />
                   </Tooltip>
@@ -264,7 +266,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label={
                 <span>
-                  Reads/Second{' '}
+                  Reads rows/second{' '}
                   <Tooltip title="Read operations for queries and lookups">
                     <InfoCircleOutlined />
                   </Tooltip>
@@ -441,13 +443,13 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       </Card>
 
       {/* Tables to Sync */}
-      <Card 
-        title="Tables to Sync" 
+      <Card
+        title="Tables to Sync"
         className="databricks-card"
         extra={
-          <Button 
-            type="dashed" 
-            onClick={addTable} 
+          <Button
+            type="dashed"
+            onClick={addTable}
             icon={<PlusOutlined />}
             className="databricks-secondary-btn"
           >
@@ -461,7 +463,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
           columns={tableColumns}
           dataSource={tables}
           pagination={false}
-          rowKey={(record) => `table-${record.name}`}
+          rowKey={(record) => (record.id ?? `table-${record.name}-${Math.random()}`)}
           size="small"
           className="databricks-table"
         />
@@ -506,7 +508,14 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item
-              label="Databricks Profile Name"
+              label={
+                <span>
+                  Databricks Profile Name{' '}
+                  <Tooltip title="Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
               name="databricks_profile"
               rules={[{ required: true, message: 'Required field' }]}
             >
@@ -543,10 +552,10 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       </Card>
 
       <Form.Item>
-        <Button 
-          type="primary" 
-          htmlType="submit" 
-          loading={loading} 
+        <Button
+          type="primary"
+          htmlType="submit"
+          loading={loading}
           size="large"
           className="databricks-primary-btn"
           style={{ width: '200px' }}

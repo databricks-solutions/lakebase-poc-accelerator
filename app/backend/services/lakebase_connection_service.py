@@ -313,10 +313,25 @@ class LakebaseConnectionService:
             
             # Calculate percentiles
             sorted_times = sorted(execution_times)
+            logger.info(f"Sorted execution times: {sorted_times}")
+            
+            # Log the sorted data for debugging
+            logger.info(f"Calculating percentiles for {len(sorted_times)} execution times")
+            logger.info(f"Sorted execution times (first 10): {sorted_times[:10]}")
+            if len(sorted_times) > 10:
+                logger.info(f"Sorted execution times (last 10): {sorted_times[-10:]}")
+            
             p95_index = int(len(sorted_times) * 0.95)
             p99_index = int(len(sorted_times) * 0.99)
+            
+            logger.info(f"P95 calculation: index = {p95_index} (len * 0.95 = {len(sorted_times) * 0.95:.4f})")
+            logger.info(f"P99 calculation: index = {p99_index} (len * 0.99 = {len(sorted_times) * 0.99:.4f})")
+            
             p95_execution_time = sorted_times[p95_index] if p95_index < len(sorted_times) else max_execution_time
             p99_execution_time = sorted_times[p99_index] if p99_index < len(sorted_times) else max_execution_time
+            
+            logger.info(f"P95 result: {p95_execution_time}ms at index {p95_index}")
+            logger.info(f"P99 result: {p99_execution_time}ms at index {p99_index}")
         else:
             avg_execution_time = 0
             min_execution_time = 0

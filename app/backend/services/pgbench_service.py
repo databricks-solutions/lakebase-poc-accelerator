@@ -311,6 +311,7 @@ class PgbenchService:
 
         # Try to parse percentiles directly from pgbench output
         # pgbench sometimes includes percentiles in stdout
+        logger.info(f"Parsing percentiles from pgbench output")
         p95_match = re.search(r"95th percentile: ([\d\.]+) ms", result.stdout)
         p99_match = re.search(r"99th percentile: ([\d\.]+) ms", result.stdout)
 
@@ -335,6 +336,7 @@ class PgbenchService:
 
         # If we don't have percentiles yet, try to estimate them from average and stddev
         if 'percentiles' not in parsed and parsed.get('average_latency') and parsed.get('latency_stddev'):
+            logger.info(f"Calculating percentiles from avg={parsed['average_latency']}ms, stddev={parsed['latency_stddev']}ms")
             avg_lat = parsed['average_latency']
             stddev_lat = parsed['latency_stddev']
             # Rough estimation: assume normal distribution

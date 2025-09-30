@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  Card, 
-  Button, 
-  message, 
-  Typography, 
-  Row, 
-  Col, 
-  Alert, 
+import {
+  Card,
+  Button,
+  message,
+  Typography,
+  Row,
+  Col,
+  Alert,
   Divider,
   Space,
   Tag,
@@ -15,10 +15,10 @@ import {
   Input,
   Spin
 } from 'antd';
-import { 
-  RocketOutlined, 
-  DownloadOutlined, 
-  FileTextOutlined, 
+import {
+  RocketOutlined,
+  DownloadOutlined,
+  FileTextOutlined,
   CopyOutlined,
   CalculatorOutlined,
   EditOutlined,
@@ -55,7 +55,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploymentId, setDeploymentId] = useState<string>('');
   const [deploymentSteps, setDeploymentSteps] = useState<any[]>([]);
   const [currentStep, setCurrentStep] = useState<number>(0);
-  
+
   // Helper to build workspace monitor URL
   const getWorkspaceMonitorUrl = (fallback?: string): string | null => {
     const cfg = (generatedConfigs as any)?.workload_config;
@@ -75,12 +75,22 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
     if (savedEdits[filename]) {
       return savedEdits[filename];
     }
-    
+
     // Otherwise return original content
     if (filename === 'databricks.yml') {
-      return JSON.stringify(generatedConfigs.databricks_config, null, 2);
+      const content = generatedConfigs.databricks_config;
+      if (content && content.yaml_content) {
+        return content.yaml_content;
+      } else {
+        return JSON.stringify(content, null, 2);
+      }
     } else if (filename === 'synced_delta_tables.yml') {
-      return JSON.stringify(generatedConfigs.synced_tables, null, 2);
+      const content = generatedConfigs.synced_tables;
+      if (content && content.yaml_content) {
+        return content.yaml_content;
+      } else {
+        return JSON.stringify(content, null, 2);
+      }
     } else if (filename === 'lakebase_instance.yml') {
       const content = generatedConfigs.lakebase_instance;
       if (content && content.yaml_content) {
@@ -114,7 +124,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
       ...prev,
       [selectedFile]: editedContent
     }));
-    
+
     message.success('Changes saved successfully!');
     setIsEditing(false);
   };
@@ -135,11 +145,12 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
       }
 
       // Extract tables from the configuration - try multiple possible paths
-      const tables = tablesConfig?.synced_tables ||
-                     workloadConfig?.delta_synchronization?.tables_to_sync ||
-                     workloadConfig?.delta_synchronization?.tables ||
-                     (generatedConfigs as any)?.tables ||
-                     [];
+      const tables = tablesConfig?.config_data?.synced_tables ||
+        tablesConfig?.synced_tables ||
+        workloadConfig?.delta_synchronization?.tables_to_sync ||
+        workloadConfig?.delta_synchronization?.tables ||
+        (generatedConfigs as any)?.tables ||
+        [];
 
       console.log('Debug - Deployment tables extraction:', { tablesConfig, workloadConfig, tables });
 
@@ -217,7 +228,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
   const handleDownloadFile = (filename: string, content: any) => {
     let fileContent;
-    
+
     // If we're currently viewing this file and it's being edited, use edited content
     if (selectedFile === filename && isEditing) {
       fileContent = editedContent;
@@ -231,7 +242,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
     } else {
       fileContent = JSON.stringify(content, null, 2);
     }
-    
+
     const blob = new Blob([fileContent], {
       type: 'text/yaml'
     });
@@ -286,8 +297,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             <Paragraph type="secondary">
               Please use the Lakebase Calculator tab to generate cost estimates and configuration files first.
             </Paragraph>
-            <Button 
-              type="primary" 
+            <Button
+              type="primary"
               icon={<CalculatorOutlined />}
               className="databricks-primary-btn"
               onClick={() => message.info('Please use the Lakebase Calculator tab first')}
@@ -355,10 +366,10 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   {(() => {
                     // Try multiple possible paths for tables data
                     const tables = (generatedConfigs as any)?.synced_tables?.synced_tables ||
-                                 (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
-                                 (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
-                                 (generatedConfigs as any)?.tables ||
-                                 [];
+                      (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
+                      (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
+                      (generatedConfigs as any)?.tables ||
+                      [];
 
                     console.log('Debug - generatedConfigs:', generatedConfigs);
                     console.log('Debug - tables found:', tables);
@@ -568,16 +579,16 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
           <Button key="close" onClick={() => setModalVisible(false)}>
             Close
           </Button>,
-          <Button 
-            key="edit" 
+          <Button
+            key="edit"
             icon={isEditing ? <CloseOutlined /> : <EditOutlined />}
             onClick={handleEditToggle}
           >
             {isEditing ? 'Cancel' : 'Edit'}
           </Button>,
           ...(isEditing ? [
-            <Button 
-              key="save" 
+            <Button
+              key="save"
               type="primary"
               icon={<SaveOutlined />}
               onClick={handleSaveChanges}
@@ -585,8 +596,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               Save
             </Button>
           ] : []),
-          <Button 
-            key="copy" 
+          <Button
+            key="copy"
             icon={<CopyOutlined />}
             onClick={() => {
               const contentToCopy = isEditing ? editedContent : getFileContent(selectedFile);
@@ -601,7 +612,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
           <TextArea
             value={editedContent}
             onChange={(e) => setEditedContent(e.target.value)}
-            style={{ 
+            style={{
               fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
               fontSize: '12px',
               minHeight: '400px',
@@ -610,9 +621,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             placeholder="Edit the configuration file..."
           />
         ) : (
-          <pre style={{ 
-            backgroundColor: '#f5f5f5', 
-            padding: '16px', 
+          <pre style={{
+            backgroundColor: '#f5f5f5',
+            padding: '16px',
             borderRadius: '4px',
             maxHeight: '400px',
             overflow: 'auto',
@@ -630,8 +641,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         onCancel={() => setDeploymentModalVisible(false)}
         width={800}
         footer={[
-          <Button 
-            key="close" 
+          <Button
+            key="close"
             onClick={() => setDeploymentModalVisible(false)}
             disabled={deploying}
           >
@@ -640,9 +651,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         ]}
       >
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
             marginBottom: '16px',
             padding: '12px',
             backgroundColor: '#f0f0f0',
@@ -651,19 +662,19 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             {deploying ? (
               <Spin size="small" style={{ marginRight: '8px' }} />
             ) : (
-              <div style={{ 
-                width: '16px', 
-                height: '16px', 
-                borderRadius: '50%', 
-                backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' : 
-                                deploymentProgress.includes('failed') ? '#ff4d4f' : 
-                                deploymentProgress.includes('downloaded successfully') ? '#52c41a' : '#1890ff',
+              <div style={{
+                width: '16px',
+                height: '16px',
+                borderRadius: '50%',
+                backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' :
+                  deploymentProgress.includes('failed') ? '#ff4d4f' :
+                    deploymentProgress.includes('downloaded successfully') ? '#52c41a' : '#1890ff',
                 marginRight: '8px'
               }} />
             )}
             <span style={{ fontWeight: 'bold' }}>{deploymentProgress}</span>
           </div>
-          
+
           {/* Monitor link */}
           {(() => {
             const url = getWorkspaceMonitorUrl();
@@ -678,9 +689,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
           {deploymentOutput && (
             <div>
               <h4>Deployment Output:</h4>
-              <pre style={{ 
-                backgroundColor: '#f5f5f5', 
-                padding: '12px', 
+              <pre style={{
+                backgroundColor: '#f5f5f5',
+                padding: '12px',
                 borderRadius: '4px',
                 maxHeight: '300px',
                 overflow: 'auto',

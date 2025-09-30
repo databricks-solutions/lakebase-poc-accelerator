@@ -1,9 +1,9 @@
 import React from 'react';
 import { Card, Typography, Row, Col, Tag, Alert, Divider, List, Statistic } from 'antd';
-import { 
-  CheckCircleOutlined, 
-  ExclamationCircleOutlined, 
-  DatabaseOutlined, 
+import {
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  DatabaseOutlined,
   ThunderboltOutlined,
   SyncOutlined,
   InfoCircleOutlined
@@ -15,7 +15,23 @@ const LakebaseOverview: React.FC = () => {
   return (
     <div style={{ padding: '24px' }}>
       <Title level={2}>Lakebase Overview</Title>
-      
+      <Alert
+        message="Official Documentation"
+        description={
+          <div>
+            <Text>Please refer to the official Databricks documentation for the most up-to-date details on Lakebase database instances.</Text>
+            <div style={{ marginTop: 8 }}>
+              <a href="https://docs.databricks.com/aws/en/oltp/instances/instance" target="_blank" rel="noreferrer">
+                Database instance overview
+              </a>
+            </div>
+          </div>
+        }
+        type="info"
+        showIcon
+        style={{ marginBottom: '16px' }}
+      />
+
       {/* Qualifications Section */}
       <Card title="Qualifications" className="databricks-card" style={{ marginBottom: '24px' }}>
         <Row gutter={[16, 16]}>
@@ -57,15 +73,15 @@ const LakebaseOverview: React.FC = () => {
             </div>
           </Col>
         </Row>
-        
+
         <Divider />
-        
+
         <List
           header={<Title level={4}>Key Features</Title>}
           dataSource={[
             'Reverse ETL is supported: data can be synchronized from Delta tables to Postgres in Lakebase',
             'Low-latency application serving capabilities',
-            'Column with UTF8 encoding is not supported'
+            'Recommend PrivateLink as a security best practice.'
           ]}
           renderItem={(item) => (
             <List.Item>
@@ -90,7 +106,7 @@ const LakebaseOverview: React.FC = () => {
             />
           </Col>
         </Row>
-        
+
         <Row gutter={[16, 16]}>
           <Col span={12}>
             <Card size="small" title="Latency & Connections">
@@ -117,7 +133,7 @@ const LakebaseOverview: React.FC = () => {
             </Card>
           </Col>
         </Row>
-        
+
         <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
           <Col span={12}>
             <Card size="small" title="Write Performance (Initial)">
@@ -138,13 +154,13 @@ const LakebaseOverview: React.FC = () => {
             </Card>
           </Col>
         </Row>
-        
+
         <Divider />
-        
+
         <Row gutter={[16, 16]}>
           <Col span={8}>
             <Statistic
-              title="Max Size"
+              title="Max Size Per Instance"
               value="2TB"
               suffix="across all databases"
               prefix={<DatabaseOutlined />}
@@ -172,11 +188,24 @@ const LakebaseOverview: React.FC = () => {
         <Paragraph>
           Delta tables can be synced to Lakebase by 3 modes: Snapshot, Triggered, Continuous.
         </Paragraph>
-        
+        <Paragraph>
+          <Text>
+            For additional instructions, see the official Databricks guide:
+            {' '}
+            <a
+              href="https://docs.databricks.com/aws/en/oltp/instances/sync-data/sync-table"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Sync data from Unity Catalog tables to a database instance
+            </a>.
+          </Text>
+        </Paragraph>
+
         <Row gutter={[16, 16]}>
           <Col span={8}>
-            <Card 
-              title="Snapshot" 
+            <Card
+              title="Snapshot"
               size="small"
               className="databricks-card"
               extra={<Tag className="databricks-tag">Most Efficient</Tag>}
@@ -195,8 +224,8 @@ const LakebaseOverview: React.FC = () => {
             </Card>
           </Col>
           <Col span={8}>
-            <Card 
-              title="Triggered" 
+            <Card
+              title="Triggered"
               size="small"
               className="databricks-card"
               extra={<Tag className="databricks-tag-secondary">Manual/Scheduled</Tag>}
@@ -215,8 +244,8 @@ const LakebaseOverview: React.FC = () => {
             </Card>
           </Col>
           <Col span={8}>
-            <Card 
-              title="Continuous" 
+            <Card
+              title="Continuous"
               size="small"
               className="databricks-card"
               extra={<Tag className="databricks-tag" style={{ background: '#dc2626' }}>Real-time</Tag>}
@@ -235,9 +264,9 @@ const LakebaseOverview: React.FC = () => {
             </Card>
           </Col>
         </Row>
-        
+
         <Divider />
-        
+
         <Alert
           message="Important Notes"
           description={

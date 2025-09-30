@@ -23,8 +23,7 @@ import {
   UploadOutlined,
   PlayCircleOutlined,
   InfoCircleOutlined,
-  WarningOutlined,
-  DeleteOutlined
+  WarningOutlined
 } from '@ant-design/icons';
 
 const { Option } = Select;
@@ -41,53 +40,6 @@ const ConcurrencyTesting: React.FC = () => {
     parameter_count: number;
     saved_path: string;
   }>>([]);
-
-  const handleDeleteFile = async (index: number, filePath: string) => {
-    try {
-      // Call backend API to delete the file
-      const response = await fetch(`http://localhost:8000/api/pgbench-test/delete-query`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ file_path: filePath }),
-      });
-
-      if (response.ok) {
-        // Remove from frontend state
-        setUploadedFiles(prev => prev.filter((_, i) => i !== index));
-        message.success('File deleted successfully');
-      } else {
-        const error = await response.json();
-        message.error(`Failed to delete file: ${error.detail}`);
-      }
-    } catch (error) {
-      console.error('Delete file error:', error);
-      message.error('Failed to delete file');
-    }
-  };
-
-  const handleClearAllFiles = async () => {
-    try {
-      // Delete all files from backend
-      const deletePromises = uploadedFiles.map(file =>
-        fetch(`http://localhost:8000/api/pgbench-test/delete-query`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ file_path: file.saved_path }),
-        })
-      );
-
-      await Promise.all(deletePromises);
-      setUploadedFiles([]);
-      message.success('All files cleared successfully');
-    } catch (error) {
-      console.error('Clear all files error:', error);
-      message.error('Failed to clear all files');
-    }
-  };
   const [isTestRunning, setIsTestRunning] = useState(false);
   const [testResults, setTestResults] = useState<any>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -100,8 +52,8 @@ const ConcurrencyTesting: React.FC = () => {
     formData.append('file', file);
 
     try {
-      console.log('Sending request to http://localhost:8000/api/pgbench-test/upload-query');
-      const response = await fetch('http://localhost:8000/api/pgbench-test/upload-query', {
+      console.log('Sending request to http://localhost:8000/api/concurrency-test/upload-query');
+      const response = await fetch('http://localhost:8000/api/concurrency-test/upload-query', {
         method: 'POST',
         body: formData,
       });
@@ -124,11 +76,11 @@ const ConcurrencyTesting: React.FC = () => {
         return false;
       }
 
-      // Add to uploaded files list (pgbench format)
+      // Add to uploaded files list (simplified - no parameter configuration needed)
       setUploadedFiles(prev => [...prev, {
         name: result.query_identifier,
         content: result.query_content,
-        parameter_count: result.variable_count || 0,
+        parameter_count: result.parameter_count,
         saved_path: result.saved_path
       }]);
 
@@ -196,20 +148,12 @@ const ConcurrencyTesting: React.FC = () => {
         workspace_url: formValues.workspace_url,
         instance_name: formValues.instance_name,
         database_name: formValues.database_name || 'databricks_postgres',
-        // pgbench configuration
-        pgbench_clients: formValues.pgbench_clients || 8,
-        pgbench_jobs: formValues.pgbench_jobs || 8,
-        pgbench_duration: formValues.pgbench_duration || 30,
-        pgbench_progress_interval: formValues.pgbench_progress_interval || 5,
-        pgbench_protocol: formValues.pgbench_protocol || 'prepared',
-        pgbench_per_statement_latency: formValues.pgbench_per_statement_latency !== false,
-        pgbench_detailed_logging: formValues.pgbench_detailed_logging !== false,
-        pgbench_connect_per_transaction: formValues.pgbench_connect_per_transaction === true
+        concurrency_level: formValues.concurrency_level || 10
       };
 
       console.log('Sending test config:', testConfig);
 
-      const response = await fetch('http://localhost:8000/api/pgbench-test/run-uploaded-tests', {
+      const response = await fetch('http://localhost:8000/api/concurrency-test/run-uploaded-tests', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -232,7 +176,7 @@ const ConcurrencyTesting: React.FC = () => {
       console.log('Test results:', results);
       setTestResults(results);
       setTestError(null); // Clear any previous errors on success
-      message.success(`pgbench test completed successfully! Executed ${uploadedFiles.length} uploaded queries.`);
+      message.success(`Concurrency test completed successfully! Executed ${uploadedFiles.length} uploaded queries.`);
 
     } catch (error) {
       console.error('Test execution error:', error);
@@ -261,63 +205,29 @@ const ConcurrencyTesting: React.FC = () => {
 
   return (
     <div style={{ padding: '24px' }}>
-      <Title level={2}>pgbench Concurrency Testing</Title>
+      <Title level={2}>Concurrency Testing (psycopg and SQLAlchemy)</Title>
+
       <Alert
-        message="Local Machine Required"
-        description="This pgbench testing method must be run on your local machine with postgres-client installed. To run on Databricks, required postgres-client CLI to be installed on Databricks cluster."
-        type="warning"
+        message="Cloud Compatible"
+        description="This psycopg framework testing method can be run on Databricks, local machines, or any Python environment. It provides flexible, customizable concurrency testing for Lakebase Postgres databases."
+        type="info"
         showIcon
         style={{ marginBottom: '16px' }}
       />
       <Paragraph>
-        <strong>pgbench</strong> is PostgreSQL's built-in benchmarking tool that provides industry-standard database performance testing.
-        It simulates realistic database workloads by running multiple concurrent client sessions against your Lakebase Postgres database.
+        This approach uses Python's psycopg2 and SQLAlchemy libraries to create custom concurrency tests.
       </Paragraph>
 
-      <Title level={4}>pgbench vs psycopg Framework Comparison</Title>
-
-      <Row gutter={16} style={{ marginBottom: '16px' }}>
-        <Col span={12}>
-          <Card title="pgbench (Native PostgreSQL)" size="small">
-            <h4>Advantages:</h4>
-            <ul>
-              <li><strong>Industry Standard:</strong> Official PostgreSQL benchmarking tool</li>
-              <li><strong>Realistic Simulation:</strong> Mimics actual client behavior with proper connection handling</li>
-              <li><strong>Built-in Metrics:</strong> TPS, latency percentiles, connection statistics</li>
-              <li><strong>Low Overhead:</strong> Minimal Python overhead, direct C implementation</li>
-              <li><strong>Scalable:</strong> Can simulate hundreds of concurrent clients efficiently</li>
-              <li><strong>Standardized Results:</strong> Comparable with other PostgreSQL benchmarks</li>
-            </ul>
-            <h4>Disadvantages:</h4>
-            <ul>
-              <li><strong>Local Only:</strong> Requires PostgreSQL installation on local machine</li>
-              <li><strong>Limited Customization:</strong> Fixed transaction patterns, limited query flexibility</li>
-              <li><strong>Setup Complexity:</strong> Requires pgbench installation and configuration</li>
-              <li><strong>No Python Integration:</strong> Cannot easily integrate with Python workflows</li>
-            </ul>
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card title="psycopg Framework (Python)" size="small">
-            <h4>Advantages:</h4>
-            <ul>
-              <li><strong>Cloud Compatible:</strong> Runs on Databricks and any Python environment</li>
-              <li><strong>Full Customization:</strong> Complete control over queries and test scenarios</li>
-              <li><strong>Python Integration:</strong> Easy integration with existing Python codebase</li>
-              <li><strong>Flexible Metrics:</strong> Custom performance metrics and reporting</li>
-              <li><strong>Complex Scenarios:</strong> Support for multi-step transactions and business logic</li>
-              <li><strong>Easy Deployment:</strong> Can be packaged as Databricks jobs</li>
-            </ul>
-            <h4>Disadvantages:</h4>
-            <ul>
-              <li><strong>Python Overhead:</strong> Additional latency from Python interpreter</li>
-              <li><strong>Connection Management:</strong> Manual connection pooling and error handling</li>
-              <li><strong>Less Realistic:</strong> May not perfectly simulate real client behavior</li>
-              <li><strong>Custom Implementation:</strong> Requires more code to achieve similar results</li>
-            </ul>
-          </Card>
-        </Col>
-      </Row>
+      <Paragraph>
+        <ul style={{ marginBottom: 0 }}>
+          <li><strong>Asyncio-Based Concurrency:</strong> Uses Python asyncio with semaphore-based concurrency control to execute multiple queries simultaneously</li>
+          <li><strong>Connection Pool Management:</strong> SQLAlchemy async engine with dynamic pool sizing (base pool + overflow) based on concurrency level</li>
+          <li><strong>Parameterized Query Support:</strong> Processes SQL files with PARAMETERS and EXEC_COUNT comments for comprehensive test scenarios</li>
+          <li><strong>Performance Metrics:</strong> Tracks execution times, throughput, latency percentiles (P95, P99), and success rates</li>
+          <li><strong>Resource Management:</strong> Prevents database overload through controlled concurrency and automatic connection reuse</li>
+          <li><strong>Error Isolation:</strong> Individual query failures don't affect other concurrent executions</li>
+        </ul>
+      </Paragraph>
 
       <Steps current={currentStep} items={steps} style={{ marginBottom: '24px' }} />
 
@@ -329,14 +239,13 @@ const ConcurrencyTesting: React.FC = () => {
           instance_name: "lakebase-accelerator-instance",
           database_name: "databricks_postgres",
           concurrency_level: 10,
-          pgbench_clients: 8,
-          pgbench_jobs: 8,
-          pgbench_duration: 30,
-          pgbench_progress_interval: 5,
-          pgbench_protocol: "prepared",
-          pgbench_per_statement_latency: true,
-          pgbench_detailed_logging: false,
-          pgbench_connect_per_transaction: false
+          DB_POOL_SIZE: 5,
+          DB_MAX_OVERFLOW: 10,
+          DB_POOL_TIMEOUT: 30,
+          DB_COMMAND_TIMEOUT: 60,
+          DB_POOL_RECYCLE_INTERVAL: 3600,
+          DB_POOL_PRE_PING: true,
+          DB_SSL_MODE: "require"
         }}
       >
         {/* Hidden form fields that are always rendered */}
@@ -355,29 +264,26 @@ const ConcurrencyTesting: React.FC = () => {
         <Form.Item name="concurrency_level" style={{ display: 'none' }}>
           <InputNumber />
         </Form.Item>
-        <Form.Item name="pgbench_clients" style={{ display: 'none' }}>
+        <Form.Item name="DB_POOL_SIZE" style={{ display: 'none' }}>
           <InputNumber />
         </Form.Item>
-        <Form.Item name="pgbench_jobs" style={{ display: 'none' }}>
+        <Form.Item name="DB_MAX_OVERFLOW" style={{ display: 'none' }}>
           <InputNumber />
         </Form.Item>
-        <Form.Item name="pgbench_duration" style={{ display: 'none' }}>
+        <Form.Item name="DB_POOL_TIMEOUT" style={{ display: 'none' }}>
           <InputNumber />
         </Form.Item>
-        <Form.Item name="pgbench_progress_interval" style={{ display: 'none' }}>
+        <Form.Item name="DB_COMMAND_TIMEOUT" style={{ display: 'none' }}>
           <InputNumber />
         </Form.Item>
-        <Form.Item name="pgbench_protocol" style={{ display: 'none' }}>
+        <Form.Item name="DB_POOL_RECYCLE_INTERVAL" style={{ display: 'none' }}>
+          <InputNumber />
+        </Form.Item>
+        <Form.Item name="DB_POOL_PRE_PING" style={{ display: 'none' }}>
+          <Switch />
+        </Form.Item>
+        <Form.Item name="DB_SSL_MODE" style={{ display: 'none' }}>
           <Select />
-        </Form.Item>
-        <Form.Item name="pgbench_per_statement_latency" style={{ display: 'none' }}>
-          <Switch />
-        </Form.Item>
-        <Form.Item name="pgbench_detailed_logging" style={{ display: 'none' }}>
-          <Switch />
-        </Form.Item>
-        <Form.Item name="pgbench_connect_per_transaction" style={{ display: 'none' }}>
-          <Switch />
         </Form.Item>
 
         {/* Step 1: Connection Configuration */}
@@ -389,7 +295,7 @@ const ConcurrencyTesting: React.FC = () => {
                   label={
                     <span>
                       Databricks Profile Name{' '}
-                      <Tooltip title="Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
+                      <Tooltip title="Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL.">
                         <InfoCircleOutlined />
                       </Tooltip>
                     </span>
@@ -455,63 +361,85 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
             </Row>
 
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="Concurrent Connections"
+                  name="concurrency_level"
+                  rules={[
+                    { required: true, message: 'Please enter concurrency level' },
+                    { type: 'number', min: 1, max: 1000, message: 'Must be between 1 and 1000' }
+                  ]}
+                >
+                  <InputNumber
+                    min={1}
+                    max={1000}
+                    style={{ width: '100%' }}
+                    suffix={
+                      <Tooltip title="Number of concurrent connections to test">
+                        <InfoCircleOutlined />
+                      </Tooltip>
+                    }
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
 
-
-            <Divider>pgbench Benchmark Settings</Divider>
+            <Divider>Connection Pool Settings</Divider>
 
             <Row gutter={16}>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Number of concurrent database sessions (Recommended: 8-50, Max: 100)
+                  Keep pool size ≤ CPU cores × 2–3
                 </Text>
                 <Form.Item
                   label={
                     <span>
-                      Clients (-c)
-                      <Tooltip title="Number of concurrent database clients/connections for pgbench test. Higher values simulate more users but may overwhelm the system. Recommended: 8-50 for most tests, 100+ for stress testing.">
+                      Pool Size
+                      <Tooltip title="Number of persistent connections in the pool. Keep pool size ≤ CPU cores on the Postgres server × 2–3.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
                   }
-                  name="pgbench_clients"
-                >
-                  <InputNumber min={1} max={1000} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Worker threads (should be ≤ clients, Recommended: 4-8)
-                </Text>
-                <Form.Item
-                  label={
-                    <span>
-                      Jobs (-j)
-                      <Tooltip title="Number of worker threads on client machine that manage the clients. Should be ≤ clients and typically match your CPU cores. Recommended: 4-8 for most systems, or match your CPU core count.">
-                        <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  name="pgbench_jobs"
+                  name="DB_POOL_SIZE"
                 >
                   <InputNumber min={1} max={100} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Test duration in seconds (Recommended: 30-60 for quick tests)
+                  Set to about equal to or 2× pool size
                 </Text>
                 <Form.Item
                   label={
                     <span>
-                      Duration (-T)
-                      <Tooltip title="How long to run the benchmark test. Longer tests provide more stable results but take more time. Recommended: 30-60 seconds for quick tests, 300+ seconds for production-like testing.">
+                      Max Overflow
+                      <Tooltip title="Extra connections allowed when pool is busy. Set to about equal to or 2× pool size.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
                   }
-                  name="pgbench_duration"
+                  name="DB_MAX_OVERFLOW"
                 >
-                  <InputNumber min={1} max={3600} style={{ width: '100%' }} />
+                  <InputNumber min={0} max={100} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                  30–60s for background jobs/analytics
+                </Text>
+                <Form.Item
+                  label={
+                    <span>
+                      Pool Timeout (s)
+                      <Tooltip title="Wait time for free connection in seconds. For background jobs/analytics, keep longer (30–60s).">
+                        <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
+                      </Tooltip>
+                    </span>
+                  }
+                  name="DB_POOL_TIMEOUT"
+                >
+                  <InputNumber min={5} max={300} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>
@@ -519,105 +447,82 @@ const ConcurrencyTesting: React.FC = () => {
             <Row gutter={16}>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Progress report interval (Recommended: 5-10 seconds)
+                  30–60s for reporting/batch jobs
                 </Text>
                 <Form.Item
                   label={
                     <span>
-                      Progress (-P)
-                      <Tooltip title="How often to show progress updates during the test. More frequent updates provide better monitoring but add overhead. Recommended: 5-10 seconds for most tests, 1-2 seconds for short tests.">
+                      Command Timeout (s)
+                      <Tooltip title="Max query execution time in seconds. 30–60 seconds for reporting or background batch jobs.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
                   }
-                  name="pgbench_progress_interval"
+                  name="DB_COMMAND_TIMEOUT"
                 >
-                  <InputNumber min={1} max={60} style={{ width: '100%' }} />
+                  <InputNumber min={10} max={3600} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Query protocol mode (Recommended: Prepared)
+                  Default 3600s (1 hour) is good
                 </Text>
                 <Form.Item
                   label={
                     <span>
-                      Protocol (-M)
-                      <Tooltip title="Query execution protocol. Prepared is most efficient for repeated queries, Extended is good for complex queries, Simple is basic but slower. Recommended: Prepared for most use cases.">
+                      Recycle Interval (s)
+                      <Tooltip title="Connection recycle interval in seconds. Default 3600s (1 hour) is good.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
                   }
-                  name="pgbench_protocol"
+                  name="DB_POOL_RECYCLE_INTERVAL"
                 >
-                  <Select style={{ width: '100%' }}>
-                    <Option value="prepared">Prepared</Option>
-                    <Option value="extended">Extended</Option>
-                    <Option value="simple">Simple</Option>
-                  </Select>
+                  <InputNumber min={300} max={86400} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                  Enable to validate connections
+                </Text>
+                <Form.Item
+                  label={
+                    <span>
+                      Pre-ping
+                      <Tooltip title="Validate connections before use to ensure they're still active.">
+                        <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
+                      </Tooltip>
+                    </span>
+                  }
+                  name="DB_POOL_PRE_PING"
+                  valuePropName="checked"
+                >
+                  <Switch />
                 </Form.Item>
               </Col>
             </Row>
 
-            <Row gutter={16}>
-              <Col span={8}>
-                <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Per-statement latency reporting (Recommended: ON)
-                </Text>
-                <Form.Item
-                  label={
-                    <span>
-                      Latency Stats (-r)
-                      <Tooltip title="Show detailed per-statement latency statistics at the end of the test. Provides min/max/avg latency for each query type. Recommended: ON for detailed analysis, OFF for basic throughput testing.">
-                        <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  name="pgbench_per_statement_latency"
-                  valuePropName="checked"
-                >
-                  <Switch />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Detailed transaction logging (Recommended: OFF, use ON for debugging)
-                </Text>
-                <Form.Item
-                  label={
-                    <span>
-                      Log Details (-l)
-                      <Tooltip title="Enable detailed per-transaction logging to a file for in-depth analysis. Creates detailed logs but may impact performance. Recommended: ON for debugging, OFF for performance testing.">
-                        <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  name="pgbench_detailed_logging"
-                  valuePropName="checked"
-                >
-                  <Switch />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  New connection per transaction (Recommended: OFF)
-                </Text>
-                <Form.Item
-                  label={
-                    <span>
-                      Connect Mode (-C)
-                      <Tooltip title="Establish a new database connection for each transaction instead of reusing connections. Simulates real-world scenarios but adds significant overhead. Recommended: OFF for performance testing, ON for connection stress testing.">
-                        <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
-                      </Tooltip>
-                    </span>
-                  }
-                  name="pgbench_connect_per_transaction"
-                  valuePropName="checked"
-                >
-                  <Switch />
-                </Form.Item>
-              </Col>
-            </Row>
+            <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+              'require' for secure connections
+            </Text>
+            <Form.Item
+              label={
+                <span>
+                  SSL Mode
+                  <Tooltip title="SSL connection mode. 'require' is recommended for security.">
+                    <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
+                  </Tooltip>
+                </span>
+              }
+              name="DB_SSL_MODE"
+            >
+              <Select>
+                <Option value="require">Require</Option>
+                <Option value="prefer">Prefer</Option>
+                <Option value="allow">Allow</Option>
+                <Option value="disable">Disable</Option>
+              </Select>
+            </Form.Item>
 
             <Form.Item>
               <Button
@@ -653,19 +558,7 @@ const ConcurrencyTesting: React.FC = () => {
 
               {/* Uploaded Files Display */}
               <div style={{ marginTop: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <Title level={4} style={{ margin: 0 }}>Uploaded Files</Title>
-                  {uploadedFiles.length > 0 && (
-                    <Button
-                      size="small"
-                      danger
-                      onClick={handleClearAllFiles}
-                      title="Clear all files"
-                    >
-                      Clear All
-                    </Button>
-                  )}
-                </div>
+                <Title level={4}>Uploaded Files</Title>
                 {uploadedFiles.length === 0 ? (
                   <Alert
                     message="No files uploaded yet"
@@ -685,16 +578,8 @@ const ConcurrencyTesting: React.FC = () => {
                               Parameters: {file.parameter_count} | Saved to: {file.saved_path}
                             </Text>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div>
                             <Tag color="blue">{file.parameter_count} params</Tag>
-                            <Button
-                              type="text"
-                              danger
-                              size="small"
-                              icon={<DeleteOutlined />}
-                              onClick={() => handleDeleteFile(index, file.saved_path)}
-                              title="Delete file"
-                            />
                           </div>
                         </div>
                       </Card>
@@ -710,15 +595,13 @@ const ConcurrencyTesting: React.FC = () => {
                 style={{ marginTop: '16px', backgroundColor: '#fafafa' }}
               >
                 <Alert
-                  message="pgbench SQL File Format"
+                  message="Required SQL File Format"
                   description={
                     <div>
-                      <p><strong>⚠️ IMPORTANT:</strong> Use pgbench format with these features:</p>
+                      <p><strong>⚠️ IMPORTANT:</strong> Your SQL files must include these comments at the top:</p>
                       <ul style={{ marginBottom: '8px' }}>
-                        <li><code>\set variable_name random(min, max)</code> for random parameters</li>
-                        <li><code>:variable_name</code> for parameter placeholders (colon notation)</li>
-                        <li>No special comments needed - pgbench handles execution counts via configuration</li>
-                        <li>Each file will be weighted equally unless specified in backend</li>
+                        <li><code>-- PARAMETERS: [[param1, param2], [param3, param4]]</code> (if using parameters)</li>
+                        <li><code>-- EXEC_COUNT: 10</code> (number of executions per scenario)</li>
                       </ul>
                     </div>
                   }
@@ -728,9 +611,9 @@ const ConcurrencyTesting: React.FC = () => {
 
                 <Row gutter={16}>
                   <Col span={12}>
-                    <Title level={5}>Example 1: Point Query</Title>
+                    <Title level={5}>Example 1: Simple Query (No Parameters)</Title>
                     <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
-                      File: point_query.sql
+                      File: simple_query_example.sql
                     </Text>
                     <pre style={{
                       backgroundColor: '#f5f5f5',
@@ -740,20 +623,19 @@ const ConcurrencyTesting: React.FC = () => {
                       marginBottom: '8px',
                       overflow: 'auto'
                     }}>
-                      {`\\set customer_sk random(1, 1000000)
+                      {`-- EXEC_COUNT: 5
 
-SELECT * FROM customer
-WHERE c_customer_sk = :customer_sk;`}
+SELECT COUNT(*) as total_customers FROM customer;`}
                     </pre>
                     <Text type="secondary" style={{ fontSize: '11px' }}>
-                      Random customer lookup by primary key using pgbench \\set
+                      No parameters needed - just specify EXEC_COUNT
                     </Text>
                   </Col>
 
                   <Col span={12}>
-                    <Title level={5}>Example 2: Range Query</Title>
+                    <Title level={5}>Example 2: Query with Parameters</Title>
                     <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
-                      File: range_query.sql
+                      File: customer_flag.sql
                     </Text>
                     <pre style={{
                       backgroundColor: '#f5f5f5',
@@ -763,22 +645,22 @@ WHERE c_customer_sk = :customer_sk;`}
                       marginBottom: '8px',
                       overflow: 'auto'
                     }}>
-                      {`\\set customer_sk random(1, 1000000)
+                      {`-- PARAMETERS: [["N"], ["Y"]]
+-- EXEC_COUNT: 1
 
-SELECT * FROM customer
-WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
+SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`}
                     </pre>
                     <Text type="secondary" style={{ fontSize: '11px' }}>
-                      Range query with random start point and fixed range size
+                      Parameters: flag values "N" and "Y" for preferred customer flag
                     </Text>
                   </Col>
                 </Row>
 
                 <Row gutter={16} style={{ marginTop: '16px' }}>
                   <Col span={24}>
-                    <Title level={5}>Example 3: Aggregation Query</Title>
+                    <Title level={5}>Example 3: Complex Query with Multiple Parameters</Title>
                     <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
-                      File: agg_query.sql
+                      File: customer_lookup_example.sql
                     </Text>
                     <pre style={{
                       backgroundColor: '#f5f5f5',
@@ -788,10 +670,16 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
                       marginBottom: '8px',
                       overflow: 'auto'
                     }}>
-                      {`SELECT COUNT(*) as total_customers FROM customer;`}
+                      {`-- PARAMETERS: [[1, "AAAAAAAABAAAAAAA", 100], [2, "AAAAAAAACAAAAAAA", 50], [3, "AAAAAAAADAAAAAAA", 200], [4, "AAAAAAAAEAAAAAAA", 1000]]
+-- EXEC_COUNT: 40
+
+SELECT * FROM customer 
+WHERE c_customer_sk = %s 
+  AND c_customer_id = %s 
+LIMIT %s;`}
                     </pre>
                     <Text type="secondary" style={{ fontSize: '11px' }}>
-                      Simple aggregation query without parameters for baseline performance
+                      Parameters: customer_sk (integer), customer_id (string), limit (integer) - 4 different scenarios
                     </Text>
                   </Col>
                 </Row>
@@ -833,25 +721,17 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
                 </Col>
                 <Col span={6}>
                   <Card size="small">
-                    <Text strong>pgbench Clients</Text>
+                    <Text strong>Concurrency Level</Text>
                     <div style={{ fontSize: '24px', color: '#fa8c16' }}>
-                      {form.getFieldValue('pgbench_clients') || 8}
+                      {form.getFieldValue('concurrency_level') || 10}
                     </div>
                   </Card>
                 </Col>
                 <Col span={6}>
                   <Card size="small">
-                    <Text strong>Test Duration</Text>
+                    <Text strong>Available Connection Pool</Text>
                     <div style={{ fontSize: '24px', color: '#722ed1' }}>
-                      {form.getFieldValue('pgbench_duration') || 30}s
-                    </div>
-                  </Card>
-                </Col>
-                <Col span={6}>
-                  <Card size="small">
-                    <Text strong>Protocol Mode</Text>
-                    <div style={{ fontSize: '20px', color: '#52c41a', textTransform: 'capitalize' }}>
-                      {form.getFieldValue('pgbench_protocol') || 'prepared'}
+                      {(form.getFieldValue('DB_POOL_SIZE') || 5) + (form.getFieldValue('DB_MAX_OVERFLOW') || 10)}
                     </div>
                   </Card>
                 </Col>
@@ -861,12 +741,7 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
             {isTestRunning && (
               <Alert
                 message="Test Running"
-                description={
-                  <div>
-                    <div><strong>Step 1/2:</strong> Running pgbench benchmark...</div>
-                    <div><strong>Step 2/2:</strong> Parsing pgbench log files and computing metrics (may take time with many clients).</div>
-                  </div>
-                }
+                description="Executing concurrency tests. Please wait..."
                 type="info"
                 showIcon
                 style={{ marginBottom: '24px' }}
@@ -912,36 +787,30 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
 
             {testResults && (
               <div style={{ marginBottom: '24px' }}>
-                <Title level={4}>pgbench Test Results</Title>
+                <Title level={4}>Concurrency Test Results</Title>
 
                 {/* High-level Test Information */}
                 <Card style={{ marginBottom: '16px' }}>
                   <Row gutter={16}>
                     <Col span={12}>
                       <div style={{ marginBottom: '8px' }}>
-                        <Text strong>pgbench Clients:</Text>
+                        <Text strong>Concurrency Level:</Text>
                         <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#1890ff' }}>
-                          {testResults.pgbench_config?.clients || 'N/A'}
-                        </Text>
-                      </div>
-                      <div style={{ marginBottom: '8px' }}>
-                        <Text strong>Test Duration:</Text>
-                        <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#722ed1' }}>
-                          {testResults.total_duration_seconds ? testResults.total_duration_seconds.toFixed(1) + 's' : 'N/A'}
+                          {testResults.concurrency_level || 'N/A'}
                         </Text>
                       </div>
                     </Col>
                     <Col span={12}>
                       <div style={{ marginBottom: '8px' }}>
-                        <Text strong>Queries Tested:</Text>
+                        <Text strong>Total Queries:</Text>
                         <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#52c41a' }}>
-                          {testResults.queries_tested || 'N/A'}
+                          {testResults.total_queries_executed || 'N/A'}
                         </Text>
                       </div>
                       <div style={{ marginBottom: '8px' }}>
-                        <Text strong>Protocol Mode:</Text>
-                        <Text style={{ marginLeft: '8px', fontSize: '16px', color: '#fa8c16', textTransform: 'capitalize' }}>
-                          {testResults.pgbench_config?.protocol || 'N/A'}
+                        <Text strong>Success Rate:</Text>
+                        <Text style={{ marginLeft: '8px', fontSize: '16px', color: testResults.success_rate && testResults.success_rate > 0.95 ? '#52c41a' : '#fa8c16' }}>
+                          {testResults.success_rate ? (testResults.success_rate * 100).toFixed(1) + '%' : 'N/A'}
                         </Text>
                       </div>
                     </Col>
@@ -952,109 +821,129 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
                 <Row gutter={16} style={{ marginBottom: '16px' }}>
                   <Col span={6}>
                     <Card size="small">
-                      <Text strong>TPS</Text>
+                      <Text strong>Avg Execution Time</Text>
                       <div style={{ fontSize: '20px', color: '#1890ff', marginTop: '4px' }}>
-                        {testResults.tps ? testResults.tps.toFixed(2) : 'N/A'}
-                      </div>
-                    </Card>
-                  </Col>
-                  <Col span={6}>
-                    <Card size="small">
-                      <Text strong>Avg Latency</Text>
-                      <div style={{ fontSize: '20px', color: '#fa8c16', marginTop: '4px' }}>
-                        {testResults.average_latency_ms ? testResults.average_latency_ms.toFixed(2) + 'ms' : 'N/A'}
+                        {testResults.average_execution_time_ms ? testResults.average_execution_time_ms.toFixed(2) + 'ms' : 'N/A'}
                       </div>
                     </Card>
                   </Col>
                   <Col span={6}>
                     <Card size="small">
                       <Text strong>P95 Latency</Text>
-                      <div style={{ fontSize: '20px', color: '#f5222d', marginTop: '4px' }}>
-                        {testResults.latency_percentiles?.p95 ? testResults.latency_percentiles.p95.toFixed(2) + 'ms' : 'N/A'}
+                      <div style={{ fontSize: '20px', color: '#fa8c16', marginTop: '4px' }}>
+                        {testResults.p95_execution_time_ms ? testResults.p95_execution_time_ms.toFixed(2) + 'ms' : 'N/A'}
                       </div>
                     </Card>
                   </Col>
                   <Col span={6}>
                     <Card size="small">
                       <Text strong>P99 Latency</Text>
+                      <div style={{ fontSize: '20px', color: '#f5222d', marginTop: '4px' }}>
+                        {testResults.p99_execution_time_ms ? testResults.p99_execution_time_ms.toFixed(2) + 'ms' : 'N/A'}
+                      </div>
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Text strong>Throughput</Text>
                       <div style={{ fontSize: '20px', color: '#722ed1', marginTop: '4px' }}>
-                        {testResults.latency_percentiles?.p99 ? testResults.latency_percentiles.p99.toFixed(2) + 'ms' : 'N/A'}
+                        {testResults.throughput_queries_per_second ? testResults.throughput_queries_per_second.toFixed(2) + ' qps' : 'N/A'}
                       </div>
                     </Card>
                   </Col>
                 </Row>
 
-                {/* pgbench Raw Output */}
-                {testResults.execution_result && (
-                  <Card title="pgbench Execution Summary" style={{ marginBottom: '16px' }}>
-                    <Row gutter={16}>
-                      <Col span={12}>
-                        <div style={{ marginBottom: '16px' }}>
-                          <Text strong>Execution Details:</Text>
-                          <div style={{ marginTop: '8px', backgroundColor: '#f5f5f5', padding: '8px', borderRadius: '4px' }}>
-                            <Text type="secondary">Return Code:</Text>
-                            <Text style={{ marginLeft: '8px', color: testResults.execution_result.return_code === 0 ? '#52c41a' : '#f5222d' }}>
-                              {testResults.execution_result.return_code === 0 ? 'Success' : `Failed (${testResults.execution_result.return_code})`}
-                            </Text>
-                          </div>
-                        </div>
+                {/* Query-specific Results */}
+                {testResults.query_results && testResults.query_results.length > 0 && (
+                  <Card title="Query Execution Details" style={{ marginBottom: '16px' }}>
+                    {(() => {
+                      // Group results by query identifier
+                      const queryGroups = testResults.query_results.reduce((acc: any, result: any) => {
+                        if (!acc[result.query_identifier]) {
+                          acc[result.query_identifier] = [];
+                        }
+                        acc[result.query_identifier].push(result);
+                        return acc;
+                      }, {});
 
-                        {testResults.per_statement_stats && Object.keys(testResults.per_statement_stats).length > 0 && (
-                          <div>
-                            <Text strong>Per-Statement Statistics:</Text>
-                            <div style={{ marginTop: '8px' }}>
-                              {Object.entries(testResults.per_statement_stats).map(([statement, stats]: [string, any]) => (
-                                <div key={statement} style={{ marginBottom: '8px', backgroundColor: '#fafafa', padding: '8px', borderRadius: '4px' }}>
-                                  <Text type="secondary">{statement}:</Text>
-                                  <Text style={{ marginLeft: '8px', fontWeight: 'bold' }}>
-                                    {stats.average_latency_ms?.toFixed(2)}ms
-                                  </Text>
+                      return Object.entries(queryGroups).map(([queryId, results]: [string, any]) => {
+                        const successfulResults = results.filter((r: any) => r.success);
+                        const failedResults = results.filter((r: any) => !r.success);
+                        const avgDuration = successfulResults.length > 0
+                          ? successfulResults.reduce((sum: number, r: any) => sum + r.duration_ms, 0) / successfulResults.length
+                          : 0;
+                        const minDuration = successfulResults.length > 0
+                          ? Math.min(...successfulResults.map((r: any) => r.duration_ms))
+                          : 0;
+                        const maxDuration = successfulResults.length > 0
+                          ? Math.max(...successfulResults.map((r: any) => r.duration_ms))
+                          : 0;
+
+                        return (
+                          <Card
+                            key={queryId}
+                            size="small"
+                            style={{ marginBottom: '12px', backgroundColor: '#fafafa' }}
+                            title={
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text strong>{queryId}</Text>
+                                <div>
+                                  <Tag color="green">{successfulResults.length} successful</Tag>
+                                  {failedResults.length > 0 && <Tag color="red">{failedResults.length} failed</Tag>}
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </Col>
-
-                      <Col span={12}>
-                        {testResults.progress_reports && testResults.progress_reports.length > 0 && (
-                          <div>
-                            <Text strong>Progress Reports:</Text>
-                            <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-                              {testResults.progress_reports.map((report: any, index: number) => (
-                                <div key={index} style={{ marginBottom: '4px', fontSize: '12px', color: '#666' }}>
-                                  <Text>{report.time_seconds?.toFixed(1)}s: </Text>
-                                  <Text style={{ color: '#1890ff' }}>{report.tps?.toFixed(1)} TPS</Text>
-                                  {report.latency_ms && (
-                                    <Text style={{ color: '#fa8c16' }}>, {report.latency_ms?.toFixed(2)}ms latency</Text>
-                                  )}
+                              </div>
+                            }
+                          >
+                            <Row gutter={16}>
+                              <Col span={6}>
+                                <Text type="secondary">Total Executions:</Text>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
+                                  {results.length}
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                              </Col>
+                              <Col span={6}>
+                                <Text type="secondary">Avg Duration:</Text>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
+                                  {avgDuration.toFixed(2)}ms
+                                </div>
+                              </Col>
+                              <Col span={6}>
+                                <Text type="secondary">Min Duration:</Text>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#52c41a' }}>
+                                  {minDuration.toFixed(2)}ms
+                                </div>
+                              </Col>
+                              <Col span={6}>
+                                <Text type="secondary">Max Duration:</Text>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#f5222d' }}>
+                                  {maxDuration.toFixed(2)}ms
+                                </div>
+                              </Col>
+                            </Row>
 
-                      </Col>
-                    </Row>
-                  </Card>
-                )}
-
-                {/* Show raw pgbench output for debugging */}
-                {testResults.execution_result?.stdout && (
-                  <Card title="Raw pgbench Output" style={{ marginBottom: '16px' }} size="small">
-                    <div style={{ backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace', maxHeight: '300px', overflowY: 'auto' }}>
-                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                        {testResults.execution_result.stdout}
-                      </pre>
-                    </div>
-                    {testResults.execution_result.stderr && (
-                      <div style={{ marginTop: '8px', backgroundColor: '#fff2f0', padding: '8px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace' }}>
-                        <Text strong style={{ color: '#f5222d' }}>STDERR:</Text>
-                        <pre style={{ margin: 0, marginTop: '4px', whiteSpace: 'pre-wrap', color: '#f5222d' }}>
-                          {testResults.execution_result.stderr}
-                        </pre>
-                      </div>
-                    )}
+                            {/* Show parameter sets if available */}
+                            {(() => {
+                              const parameterSets = Array.from(new Set(results.map((r: any) => r.parameter_set_name)));
+                              if (parameterSets.length > 1) {
+                                return (
+                                  <div style={{ marginTop: '8px' }}>
+                                    <Text type="secondary">Parameter Sets:</Text>
+                                    <div style={{ marginTop: '4px' }}>
+                                      {parameterSets.map((paramSet: any) => (
+                                        <Tag key={paramSet} color="blue" style={{ marginRight: '4px' }}>
+                                          {paramSet}
+                                        </Tag>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </Card>
+                        );
+                      });
+                    })()}
                   </Card>
                 )}
 
@@ -1073,7 +962,7 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
                   loading={isTestRunning}
                   size="large"
                 >
-                  {isTestRunning ? 'Running pgbench Test...' : 'Run pgbench Test'}
+                  {isTestRunning ? 'Running Test...' : 'Run Concurrency Test'}
                 </Button>
               </Space>
             </div>
