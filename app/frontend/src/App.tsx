@@ -100,7 +100,7 @@ function App() {
             },
             {
               key: 'concurrency-databricks',
-              label: 'Concurrency Testing (Databricks)',
+              label: 'Concurrency Testing (psycopg)',
               children: <ConcurrencyTestingPsycopg />
             },
             {

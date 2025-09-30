@@ -262,9 +262,87 @@ const ConcurrencyTesting: React.FC = () => {
   return (
     <div style={{ padding: '24px' }}>
       <Title level={2}>pgbench Concurrency Testing</Title>
+      <Alert
+        message="Local Machine Required"
+        description="This pgbench testing method must be run on your local machine with postgres-client installed. To run on Databricks, required postgres-client CLI to be installed on Databricks cluster."
+        type="warning"
+        showIcon
+        style={{ marginBottom: '16px' }}
+      />
       <Paragraph>
-        Test the performance and concurrency of your Lakebase Postgres queries using pgbench with native PostgreSQL benchmarking, run on local machine. Do not use if running on Databricks
+        <strong>pgbench</strong> is PostgreSQL's built-in benchmarking tool that provides industry-standard database performance testing.
+        It simulates realistic database workloads by running multiple concurrent client sessions against your Lakebase Postgres database.
       </Paragraph>
+
+      <Title level={4}>pgbench vs psycopg Framework Comparison</Title>
+
+      <Row gutter={16} style={{ marginBottom: '16px' }}>
+        <Col span={12}>
+          <Card title="pgbench (Native PostgreSQL)" size="small">
+            <h4>Advantages:</h4>
+            <ul>
+              <li><strong>Industry Standard:</strong> Official PostgreSQL benchmarking tool</li>
+              <li><strong>Realistic Simulation:</strong> Mimics actual client behavior with proper connection handling</li>
+              <li><strong>Built-in Metrics:</strong> TPS, latency percentiles, connection statistics</li>
+              <li><strong>Low Overhead:</strong> Minimal Python overhead, direct C implementation</li>
+              <li><strong>Scalable:</strong> Can simulate hundreds of concurrent clients efficiently</li>
+              <li><strong>Standardized Results:</strong> Comparable with other PostgreSQL benchmarks</li>
+            </ul>
+            <h4>Disadvantages:</h4>
+            <ul>
+              <li><strong>Local Only:</strong> Requires PostgreSQL installation on local machine</li>
+              <li><strong>Limited Customization:</strong> Fixed transaction patterns, limited query flexibility</li>
+              <li><strong>Setup Complexity:</strong> Requires pgbench installation and configuration</li>
+              <li><strong>No Python Integration:</strong> Cannot easily integrate with Python workflows</li>
+            </ul>
+          </Card>
+        </Col>
+        <Col span={12}>
+          <Card title="psycopg Framework (Python)" size="small">
+            <h4>Advantages:</h4>
+            <ul>
+              <li><strong>Cloud Compatible:</strong> Runs on Databricks and any Python environment</li>
+              <li><strong>Full Customization:</strong> Complete control over queries and test scenarios</li>
+              <li><strong>Python Integration:</strong> Easy integration with existing Python codebase</li>
+              <li><strong>Flexible Metrics:</strong> Custom performance metrics and reporting</li>
+              <li><strong>Complex Scenarios:</strong> Support for multi-step transactions and business logic</li>
+              <li><strong>Easy Deployment:</strong> Can be packaged as Databricks jobs</li>
+            </ul>
+            <h4>Disadvantages:</h4>
+            <ul>
+              <li><strong>Python Overhead:</strong> Additional latency from Python interpreter</li>
+              <li><strong>Connection Management:</strong> Manual connection pooling and error handling</li>
+              <li><strong>Less Realistic:</strong> May not perfectly simulate real client behavior</li>
+              <li><strong>Custom Implementation:</strong> Requires more code to achieve similar results</li>
+            </ul>
+          </Card>
+        </Col>
+      </Row>
+
+      <Alert
+        message="When to Use"
+        description={
+          <div>
+            <p><strong>Use pgbench when:</strong></p>
+            <ul>
+              <li>You need industry-standard PostgreSQL performance benchmarks</li>
+              <li>Testing on your local development machine</li>
+              <li>Comparing performance across different PostgreSQL configurations</li>
+              <li>You want the most realistic client simulation</li>
+            </ul>
+            <p><strong>Use psycopg framework when:</strong></p>
+            <ul>
+              <li>Running tests on Databricks or cloud environments</li>
+              <li>You need custom test scenarios and business logic</li>
+              <li>Integrating with existing Python workflows</li>
+              <li>You need detailed custom metrics and reporting</li>
+            </ul>
+          </div>
+        }
+        type="info"
+        showIcon
+        style={{ marginBottom: '16px' }}
+      />
 
       <Steps current={currentStep} items={steps} style={{ marginBottom: '24px' }} />
 
@@ -273,7 +351,7 @@ const ConcurrencyTesting: React.FC = () => {
         layout="vertical"
         initialValues={{
           databricks_profile: "DEFAULT",
-          instance_name: "ahc-lakebase-instance",
+          instance_name: "lakebase-accelerator-instance",
           database_name: "databricks_postgres",
           concurrency_level: 10,
           pgbench_clients: 8,
@@ -402,7 +480,7 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
             </Row>
 
-          
+
 
             <Divider>pgbench Benchmark Settings</Divider>
 

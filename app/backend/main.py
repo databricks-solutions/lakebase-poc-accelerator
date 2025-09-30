@@ -20,7 +20,7 @@ import yaml
 
 # Import the cost estimator and table generator functions from services
 from services.lakebase_cost_estimator import estimate_cost_from_config
-from services.generate_synced_tables import generate_synced_tables_from_config
+from services.generate_synced_tables import generate_synced_tables_from_config, generate_synced_tables_yaml_from_config
 
 # Import concurrency testing modules
 from models.query_models import ConcurrencyTestRequest, ConcurrencyTestReport, SimpleQueryConfig, PgbenchTestReport
@@ -195,7 +195,14 @@ async def generate_databricks_config(request: WorkloadConfigRequest):
             }
         }
 
-        return JSONResponse(content=databricks_config)
+        # Convert to YAML string
+        yaml_content = yaml.dump(databricks_config, default_flow_style=False, sort_keys=False, indent=2)
+
+        return JSONResponse(content={
+            'yaml_content': yaml_content,
+            'filename': 'databricks.yml',
+            'description': 'Main bundle configuration'
+        })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating databricks config: {str(e)}")
@@ -249,10 +256,18 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
             'database_name': request.database_name
         }
         
-        # Call the table generator directly
+        # Call the table generator to get YAML string
+        yaml_content = generate_synced_tables_yaml_from_config(workload_data)
+        
+        # Also get the dictionary version for the deploy flow
         synced_tables_config = generate_synced_tables_from_config(workload_data)
         
-        return JSONResponse(content=synced_tables_config)
+        return JSONResponse(content={
+            'yaml_content': yaml_content,
+            'filename': 'synced_delta_tables.yml',
+            'description': 'Table sync configurations',
+            'config_data': synced_tables_config  # Keep for deploy flow
+        })
 
     except Exception as e:
         print(f"Error generating synced tables: {str(e)}")
@@ -302,7 +317,7 @@ async def deploy_to_databricks(request: DeploymentRequest):
         return result
 
     except Exception as e:
-        logger.error(f"Deployment failed: {str(e)}", exc_info=True)
+        print(f"Deployment failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
 
 @app.get("/api/deploy/progress/{deployment_id}")

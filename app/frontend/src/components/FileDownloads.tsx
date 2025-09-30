@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Button, Space, Typography, Row, Col, Descriptions } from 'antd';
+import { Card, Button, Space, Typography, Row, Col } from 'antd';
 import { DownloadOutlined, FileTextOutlined, CloudOutlined, DatabaseOutlined, SettingOutlined } from '@ant-design/icons';
 import yaml from 'js-yaml';
 
@@ -35,19 +35,22 @@ const FileDownloads: React.FC<Props> = ({ configs }) => {
 
   const downloadSyncedTables = () => {
     if (!configs.synced_tables) return;
-    const yamlContent = yaml.dump(configs.synced_tables, { indent: 2 });
+    // Check if we have yaml_content directly, otherwise convert from config_data
+    const yamlContent = configs.synced_tables.yaml_content || yaml.dump(configs.synced_tables.config_data || configs.synced_tables, { indent: 2 });
     downloadFile(yamlContent, 'synced_delta_tables.yml', 'text/yaml');
   };
 
   const downloadDatabricksConfig = () => {
     if (!configs.databricks_config) return;
-    const yamlContent = yaml.dump(configs.databricks_config, { indent: 2 });
+    // Check if we have yaml_content directly, otherwise convert from config
+    const yamlContent = configs.databricks_config.yaml_content || yaml.dump(configs.databricks_config, { indent: 2 });
     downloadFile(yamlContent, 'databricks.yml', 'text/yaml');
   };
 
   const downloadLakebaseInstance = () => {
     if (!configs.lakebase_instance) return;
-    const yamlContent = yaml.dump(configs.lakebase_instance, { indent: 2 });
+    // Check if we have yaml_content directly, otherwise convert from config
+    const yamlContent = configs.lakebase_instance.yaml_content || yaml.dump(configs.lakebase_instance, { indent: 2 });
     downloadFile(yamlContent, 'lakebase_instance.yml', 'text/yaml');
   };
 

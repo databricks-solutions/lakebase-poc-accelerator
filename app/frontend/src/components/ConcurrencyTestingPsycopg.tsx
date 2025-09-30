@@ -205,14 +205,27 @@ const ConcurrencyTesting: React.FC = () => {
 
   return (
     <div style={{ padding: '24px' }}>
-      <Title level={2}>Concurrency Testing</Title>
+      <Title level={2}>Concurrency Testing (psycopg an SQLAlchemy)</Title>
+
+      <Alert
+        message="Cloud Compatible"
+        description="This psycopg framework testing method can be run on Databricks, local machines, or any Python environment. It provides flexible, customizable concurrency testing for Lakebase Postgres databases."
+        type="info"
+        showIcon
+        style={{ marginBottom: '16px' }}
+      />
       <Paragraph>
-        Test the performance and concurrency of your Lakebase Postgres queries with multiple concurrent connections using psycopg and sqlalchemy.
-        <ul style={{ marginTop: '12px', marginBottom: 0 }}>
-          <li><strong>Concurrent Load Simulation:</strong> Executes multiple queries simultaneously to simulate real-world database load</li>
-          <li><strong>Performance Metrics:</strong> Measures execution times, throughput, and latency percentiles (P95, P99)</li>
-          <li><strong>Connection Pool Testing:</strong> Validates database performance under realistic connection pool pressure</li>
-        </ul>
+        This approach uses Python's psycopg2 and SQLAlchemy libraries to create custom concurrency tests.
+      </Paragraph>
+
+      <Paragraph>
+          <ul style={{ marginBottom: 0 }}>
+            <li><strong>Concurrent Load Simulation:</strong> Executes multiple queries simultaneously to simulate real-world database load</li>
+            <li><strong>Performance Metrics:</strong> Measures execution times, throughput, and latency percentiles (P95, P99)</li>
+            <li><strong>Connection Pool Testing:</strong> Validates database performance under realistic connection pool pressure</li>
+            <li><strong>Custom Scenarios:</strong> Support for complex multi-step transactions and business logic testing</li>
+            <li><strong>Cloud Deployment:</strong> Can be packaged as Databricks jobs for automated testing</li>
+          </ul>
       </Paragraph>
 
       <Steps current={currentStep} items={steps} style={{ marginBottom: '24px' }} />
@@ -222,7 +235,7 @@ const ConcurrencyTesting: React.FC = () => {
         layout="vertical"
         initialValues={{
           databricks_profile: "DEFAULT",
-          instance_name: "ahc-lakebase-instance",
+          instance_name: "lakebase-accelerator-instance",
           database_name: "databricks_postgres",
           concurrency_level: 10,
           DB_POOL_SIZE: 5,
