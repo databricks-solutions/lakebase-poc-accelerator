@@ -319,31 +319,6 @@ const ConcurrencyTesting: React.FC = () => {
         </Col>
       </Row>
 
-      <Alert
-        message="When to Use"
-        description={
-          <div>
-            <p><strong>Use pgbench when:</strong></p>
-            <ul>
-              <li>You need industry-standard PostgreSQL performance benchmarks</li>
-              <li>Testing on your local development machine</li>
-              <li>Comparing performance across different PostgreSQL configurations</li>
-              <li>You want the most realistic client simulation</li>
-            </ul>
-            <p><strong>Use psycopg framework when:</strong></p>
-            <ul>
-              <li>Running tests on Databricks or cloud environments</li>
-              <li>You need custom test scenarios and business logic</li>
-              <li>Integrating with existing Python workflows</li>
-              <li>You need detailed custom metrics and reporting</li>
-            </ul>
-          </div>
-        }
-        type="info"
-        showIcon
-        style={{ marginBottom: '16px' }}
-      />
-
       <Steps current={currentStep} items={steps} style={{ marginBottom: '24px' }} />
 
       <Form
@@ -360,7 +335,7 @@ const ConcurrencyTesting: React.FC = () => {
           pgbench_progress_interval: 5,
           pgbench_protocol: "prepared",
           pgbench_per_statement_latency: true,
-          pgbench_detailed_logging: true,
+          pgbench_detailed_logging: false,
           pgbench_connect_per_transaction: false
         }}
       >
@@ -411,20 +386,20 @@ const ConcurrencyTesting: React.FC = () => {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label="Databricks Profile Name"
+                  label={
+                    <span>
+                      Databricks Profile Name{' '}
+                      <Tooltip title="Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
+                        <InfoCircleOutlined />
+                      </Tooltip>
+                    </span>
+                  }
                   name="databricks_profile"
                   rules={[
                     { required: true, message: 'Please enter Databricks CLI profile name' }
                   ]}
                 >
-                  <Input
-                    placeholder="DEFAULT"
-                    suffix={
-                      <Tooltip title="Enter your Databricks CLI profile name (e.g., DEFAULT, DEV, PROD)">
-                        <InfoCircleOutlined />
-                      </Tooltip>
-                    }
-                  />
+                  <Input placeholder="DEFAULT" />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -487,7 +462,7 @@ const ConcurrencyTesting: React.FC = () => {
             <Row gutter={16}>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Number of concurrent database sessions (Recommended: 8-50)
+                  Number of concurrent database sessions (Recommended: 8-50, Max: 100)
                 </Text>
                 <Form.Item
                   label={
@@ -511,7 +486,7 @@ const ConcurrencyTesting: React.FC = () => {
                   label={
                     <span>
                       Jobs (-j)
-                      <Tooltip title="Number of worker threads that manage the clients. Should be ≤ clients and typically match your CPU cores. Recommended: 4-8 for most systems, or match your CPU core count.">
+                      <Tooltip title="Number of worker threads on client machine that manage the clients. Should be ≤ clients and typically match your CPU cores. Recommended: 4-8 for most systems, or match your CPU core count.">
                         <InfoCircleOutlined style={{ marginLeft: 8, color: '#1890ff' }} />
                       </Tooltip>
                     </span>
@@ -606,7 +581,7 @@ const ConcurrencyTesting: React.FC = () => {
               </Col>
               <Col span={8}>
                 <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
-                  Detailed transaction logging (Recommended: ON for debugging)
+                  Detailed transaction logging (Recommended: OFF, use ON for debugging)
                 </Text>
                 <Form.Item
                   label={
@@ -886,7 +861,12 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
             {isTestRunning && (
               <Alert
                 message="Test Running"
-                description="Executing concurrency tests. Please wait..."
+                description={
+                  <div>
+                    <div><strong>Step 1/2:</strong> Running pgbench benchmark...</div>
+                    <div><strong>Step 2/2:</strong> Parsing pgbench log files and computing metrics (may take time with many clients).</div>
+                  </div>
+                }
                 type="info"
                 showIcon
                 style={{ marginBottom: '24px' }}

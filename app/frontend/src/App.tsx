@@ -95,7 +95,7 @@ function App() {
             },
             {
               key: 'concurrency',
-              label: 'Concurrency Testing',
+              label: 'Concurrency Testing (pgbench)',
               children: <ConcurrencyTesting />
             },
             {

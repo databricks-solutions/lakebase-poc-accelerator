@@ -205,7 +205,7 @@ const ConcurrencyTesting: React.FC = () => {
 
   return (
     <div style={{ padding: '24px' }}>
-      <Title level={2}>Concurrency Testing (psycopg an SQLAlchemy)</Title>
+      <Title level={2}>Concurrency Testing (psycopg and SQLAlchemy)</Title>
 
       <Alert
         message="Cloud Compatible"
@@ -219,13 +219,14 @@ const ConcurrencyTesting: React.FC = () => {
       </Paragraph>
 
       <Paragraph>
-          <ul style={{ marginBottom: 0 }}>
-            <li><strong>Concurrent Load Simulation:</strong> Executes multiple queries simultaneously to simulate real-world database load</li>
-            <li><strong>Performance Metrics:</strong> Measures execution times, throughput, and latency percentiles (P95, P99)</li>
-            <li><strong>Connection Pool Testing:</strong> Validates database performance under realistic connection pool pressure</li>
-            <li><strong>Custom Scenarios:</strong> Support for complex multi-step transactions and business logic testing</li>
-            <li><strong>Cloud Deployment:</strong> Can be packaged as Databricks jobs for automated testing</li>
-          </ul>
+        <ul style={{ marginBottom: 0 }}>
+          <li><strong>Asyncio-Based Concurrency:</strong> Uses Python asyncio with semaphore-based concurrency control to execute multiple queries simultaneously</li>
+          <li><strong>Connection Pool Management:</strong> SQLAlchemy async engine with dynamic pool sizing (base pool + overflow) based on concurrency level</li>
+          <li><strong>Parameterized Query Support:</strong> Processes SQL files with PARAMETERS and EXEC_COUNT comments for comprehensive test scenarios</li>
+          <li><strong>Performance Metrics:</strong> Tracks execution times, throughput, latency percentiles (P95, P99), and success rates</li>
+          <li><strong>Resource Management:</strong> Prevents database overload through controlled concurrency and automatic connection reuse</li>
+          <li><strong>Error Isolation:</strong> Individual query failures don't affect other concurrent executions</li>
+        </ul>
       </Paragraph>
 
       <Steps current={currentStep} items={steps} style={{ marginBottom: '24px' }} />
@@ -291,20 +292,20 @@ const ConcurrencyTesting: React.FC = () => {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label="Databricks Profile Name"
+                  label={
+                    <span>
+                      Databricks Profile Name{' '}
+                      <Tooltip title="Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL.">
+                        <InfoCircleOutlined />
+                      </Tooltip>
+                    </span>
+                  }
                   name="databricks_profile"
                   rules={[
                     { required: true, message: 'Please enter Databricks CLI profile name' }
                   ]}
                 >
-                  <Input
-                    placeholder="DEFAULT"
-                    suffix={
-                      <Tooltip title="Enter your Databricks CLI profile name (e.g., DEFAULT, DEV, PROD)">
-                        <InfoCircleOutlined />
-                      </Tooltip>
-                    }
-                  />
+                  <Input placeholder="DEFAULT" />
                 </Form.Item>
               </Col>
               <Col span={12}>
