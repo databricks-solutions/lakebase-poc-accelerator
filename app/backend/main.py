@@ -471,7 +471,7 @@ async def execute_concurrency_test(test_request: ConcurrencyTestRequest):
 @app.post("/api/concurrency-test/upload-query")
 async def upload_query_file(file: UploadFile = File(...)):
     """
-    Upload and parse a SQL query file, saving it to app/queries/ folder.
+    Upload and parse a SQL query file, saving it to app/queries_psycopg/ folder.
     
     Args:
         file: SQL file to upload
@@ -492,8 +492,8 @@ async def upload_query_file(file: UploadFile = File(...)):
         query_identifier = file.filename.replace('.sql', '')
         validation_result = SimpleParameterParser.validate_query_format(query_content)
         
-        # Save file to app/queries/ folder
-        queries_dir = Path(__file__).parent.parent / "queries"
+        # Save file to app/queries_psycopg/ folder
+        queries_dir = Path(__file__).parent.parent / "queries_psycopg"
         queries_dir.mkdir(exist_ok=True)
         
         file_path = queries_dir / file.filename
@@ -515,7 +515,7 @@ async def upload_query_file(file: UploadFile = File(...)):
 @app.post("/api/concurrency-test/run-uploaded-tests")
 async def run_uploaded_tests(test_request: dict):
     """
-    Run concurrency tests using uploaded SQL files from app/queries/ folder.
+    Run concurrency tests using uploaded SQL files from app/queries_psycopg/ folder.
     
     Args:
         test_request: Test configuration with databricks_profile, instance_name, database_name, concurrency_level
@@ -547,14 +547,14 @@ async def run_uploaded_tests(test_request: dict):
         if not workspace_url:
             raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
         
-        # Get all SQL files from app/queries/ folder
-        queries_dir = Path(__file__).parent.parent / "queries"
+        # Get all SQL files from app/queries_psycopg/ folder
+        queries_dir = Path(__file__).parent.parent / "queries_psycopg"
         if not queries_dir.exists():
-            raise HTTPException(status_code=404, detail="No queries folder found")
+            raise HTTPException(status_code=404, detail="No queries_psycopg folder found")
         
         sql_files = list(queries_dir.glob("*.sql"))
         if not sql_files:
-            raise HTTPException(status_code=404, detail="No SQL files found in queries folder")
+            raise HTTPException(status_code=404, detail="No SQL files found in queries_psycopg folder")
         
         # Parse each SQL file and prepare queries
         execution_queries = []

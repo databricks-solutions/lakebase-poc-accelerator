@@ -7,6 +7,7 @@ import LakebaseOverview from './components/LakebaseOverview';
 import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
 import ConcurrencyTesting from './components/ConcurrencyTesting';
+import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import TBDTab from './components/TBDTab';
 import DatabricksLogo from './components/DatabricksLogo';
 import { WorkloadConfig, CostEstimationResult } from './types';
@@ -52,9 +53,9 @@ function App() {
     setTimeout(() => {
       const resultsElement = document.getElementById('cost-results-section');
       if (resultsElement) {
-        resultsElement.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'start' 
+        resultsElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
         });
       }
     }, 100);
@@ -70,10 +71,10 @@ function App() {
           </Title>
         </div>
       </Header>
-      
+
       <Content style={{ padding: '0', background: '#fafafa' }}>
-        <Tabs 
-          activeKey={activeTab} 
+        <Tabs
+          activeKey={activeTab}
           onChange={setActiveTab}
           className="databricks-tabs"
           items={[
@@ -96,6 +97,11 @@ function App() {
               key: 'concurrency',
               label: 'Concurrency Testing',
               children: <ConcurrencyTesting />
+            },
+            {
+              key: 'concurrency-databricks',
+              label: 'Concurrency Testing (Databricks)',
+              children: <ConcurrencyTestingPsycopg />
             },
             {
               key: 'tbd',
