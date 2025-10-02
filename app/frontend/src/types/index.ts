@@ -40,6 +40,8 @@ export interface WorkloadConfig {
   lakebase_instance_name: string;
   uc_catalog_name: string;
   database_name: string;
+  storage_catalog: string;
+  storage_schema: string;
 }
 
 export interface CostBreakdown {

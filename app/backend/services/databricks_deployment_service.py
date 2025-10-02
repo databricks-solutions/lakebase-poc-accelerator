@@ -402,8 +402,8 @@ class DatabricksDeploymentService:
                         primary_key_columns=primary_keys,
                         scheduling_policy=scheduling_policy,
                         new_pipeline_spec=NewPipelineSpec(
-                            storage_catalog="main",
-                            storage_schema="default"
+                            storage_catalog=config.get('storage_catalog', 'main'),
+                            storage_schema=config.get('storage_schema', 'default')
                         )
                     )
 

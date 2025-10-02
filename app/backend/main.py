@@ -91,6 +91,8 @@ class WorkloadConfigRequest(BaseModel):
     lakebase_instance_name: str = Field("lakebase-accelerator-instance", description="Name for the Lakebase instance")
     uc_catalog_name: str = Field("lakebase-accelerator-catalog", description="Name for the UC catalog")
     database_name: str = Field("databricks_postgres", description="Name for the database")
+    storage_catalog: str = Field("main", description="Unity Catalog for storing synced table data during processing")
+    storage_schema: str = Field("default", description="Schema within storage catalog for synced table data")
     recommended_cu: int = Field(1, description="Recommended CU from cost estimation")
 
 class CostEstimationRequest(BaseModel):
@@ -253,7 +255,9 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
             'delta_synchronization': request.delta_synchronization.model_dump(),
             'uc_catalog_name': request.uc_catalog_name,
             'lakebase_instance_name': request.lakebase_instance_name,
-            'database_name': request.database_name
+            'database_name': request.database_name,
+            'storage_catalog': request.storage_catalog,
+            'storage_schema': request.storage_schema
         }
         
         # Call the table generator to get YAML string
@@ -300,6 +304,8 @@ async def deploy_to_databricks(request: DeploymentRequest):
             'lakebase_instance_name': request.workload_config.lakebase_instance_name,
             'database_name': request.workload_config.database_name,
             'uc_catalog_name': request.workload_config.uc_catalog_name,
+            'storage_catalog': request.workload_config.storage_catalog,
+            'storage_schema': request.workload_config.storage_schema,
             'recommended_cu': request.workload_config.recommended_cu,
             'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
             'tables': request.tables

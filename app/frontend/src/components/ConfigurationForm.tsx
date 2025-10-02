@@ -10,8 +10,7 @@ import {
   Select,
   Table,
   message,
-  Tooltip,
-  Alert
+  Tooltip
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { WorkloadConfig, TableToSync } from '../types';
@@ -91,7 +90,9 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       databricks_profile: values.databricks_profile || 'DEFAULT',
       lakebase_instance_name: values.lakebase_instance_name || 'lakebase-accelerator-instance',
       uc_catalog_name: values.uc_catalog_name || 'lakebase-accelerator-catalog',
-      database_name: values.database_name || 'databricks_postgres'
+      database_name: values.database_name || 'databricks_postgres',
+      storage_catalog: values.storage_catalog || 'main',
+      storage_schema: values.storage_schema || 'default'
     };
 
     onSubmit(config);
@@ -224,7 +225,9 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         databricks_profile: 'DEFAULT',
         lakebase_instance_name: 'lakebase-accelerator-instance',
         uc_catalog_name: 'lakebase_accelerator_catalog',
-        database_name: 'databricks_postgres'
+        database_name: 'databricks_postgres',
+        storage_catalog: 'main',
+        storage_schema: 'default'
       }}
     >
       {/* Database Instance Configuration */}
@@ -546,6 +549,40 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               name="database_name"
             >
               <Input placeholder="databricks_postgres" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label={
+                <span>
+                  Storage Catalog{' '}
+                  <Tooltip title="Unity Catalog where synced table data will be stored during processing">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
+              name="storage_catalog"
+              rules={[{ required: true, message: 'Required field' }]}
+            >
+              <Input placeholder="main" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label={
+                <span>
+                  Storage Schema{' '}
+                  <Tooltip title="Schema within the storage catalog where synced table data will be stored during processing">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
+              name="storage_schema"
+              rules={[{ required: true, message: 'Required field' }]}
+            >
+              <Input placeholder="default" />
             </Form.Item>
           </Col>
         </Row>

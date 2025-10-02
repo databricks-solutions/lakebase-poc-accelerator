@@ -37,6 +37,8 @@ def generate_synced_tables_from_config(config_data: dict) -> dict:
     tables_to_sync = config_data.get('delta_synchronization', {}).get('tables_to_sync', [])
     database_instance_name = config_data.get('lakebase_instance_name'.replace('-', '_'))
     catalog_name = config_data.get('uc_catalog_name')
+    storage_catalog = config_data.get('storage_catalog', 'main')
+    storage_schema = config_data.get('storage_schema', 'default')
     
     if not tables_to_sync:
         return {
@@ -71,8 +73,8 @@ def generate_synced_tables_from_config(config_data: dict) -> dict:
                 'scheduling_policy': scheduling_policy,
                 'primary_key_columns': primary_keys,
                 'new_pipeline_spec': {
-                    'storage_catalog': 'main',
-                    'storage_schema': 'default'
+                    'storage_catalog': storage_catalog,
+                    'storage_schema': storage_schema
                 }
             }
         }
@@ -106,6 +108,8 @@ def generate_synced_tables_yaml_from_config(config_data: dict) -> str:
     # Extract tables to sync from delta_synchronization section
     tables_to_sync = config_data.get('delta_synchronization', {}).get('tables_to_sync', [])
     catalog_name = config_data.get('uc_catalog_name')
+    storage_catalog = config_data.get('storage_catalog', 'main')
+    storage_schema = config_data.get('storage_schema', 'default')
     
     if not tables_to_sync:
         return yaml.dump({
@@ -140,8 +144,8 @@ def generate_synced_tables_yaml_from_config(config_data: dict) -> str:
                 'scheduling_policy': scheduling_policy,
                 'primary_key_columns': primary_keys,
                 'new_pipeline_spec': {
-                    'storage_catalog': 'main',
-                    'storage_schema': 'default'
+                    'storage_catalog': storage_catalog,
+                    'storage_schema': storage_schema
                 }
             }
         }

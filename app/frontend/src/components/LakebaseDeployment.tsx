@@ -284,8 +284,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         style={{ marginBottom: '24px' }}
       >
         <Paragraph>
-          Choose your preferred deployment method: automatic deployment using the Python SDK for a seamless experience,
-          or manual deployment using the Databricks CLI for more control.
+          <li>Choose your preferred deployment method: automatic deployment using the Python SDK for a seamless experience,
+          or manual deployment using the Databricks CLI and Databricks Asset Bundle for more control.</li>
+          <li>To generate deployment information, update the Databricks configuration section and run <strong>Generate Cost Estimate</strong> on the <strong>Lakebase Calculator</strong> page.</li>
         </Paragraph>
       </Card>
 
@@ -332,8 +333,54 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               style={{ marginBottom: '16px' }}
             />
 
+            {/* Combined Important Information */}
+            <Alert
+              message="Important Deployment Information"
+              description={
+                <div>
+                  <div style={{ marginBottom: '16px' }}>
+                    <h4 style={{ margin: '0 0 8px 0', color: '#1890ff' }}>🔐 Required Unity Catalog Permissions</h4>
+                    <p><strong>To create Lakebase instances and sync Delta tables, you need:</strong></p>
+                    <ul style={{ marginBottom: '8px' }}>
+                      <li><strong>Database Instance Management:</strong> refer to <a href="https://docs.databricks.com/aws/en/security/auth/access-control/#database-instance-acls" target="_blank" rel="noopener noreferrer">Database instance ACLs</a></li>
+                      <li><strong>Unity Catalog Access:</strong> <code>CREATE CATALOG, USE CATALOG</code> and <code>CREATE SCHEMA</code> permissions on the target catalog</li>
+                      <li><strong>Delta Table Access:</strong> <code>SELECT</code> permission on source Delta tables to be synced</li>
+                      <li><strong>Pipeline Storage Access:</strong> <code>USE SCHEMA</code> and <code>CREATE TABLE</code> permissions on the storage catalog and schema for the Delta table Lakeflow synced pipelines</li>
+                    </ul>
+                    <p><strong>Note:</strong> If resources already exist, you need <code>USE</code> permissions to view and access them.</p>
+                  </div>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <h4 style={{ margin: '0 0 8px 0', color: '#ff4d4f' }}>⚠️ Sync Mode Cannot Be Changed After Creation</h4>
+                    <p><strong>Table sync mode is permanent once set.</strong></p>
+                    <p>To change sync mode (SNAPSHOT, TRIGGERED, CONTINUOUS), you must:</p>
+                    <ol style={{ marginBottom: '8px' }}>
+                      <li>Delete the existing synced table</li>
+                      <li>Recreate it with the new sync mode</li>
+                    </ol>
+                    <p>Choose your sync mode carefully during initial configuration.</p>
+                  </div>
+
+                  <div>
+                    <h4 style={{ margin: '0 0 8px 0', color: '#52c41a' }}>🚀 Deployment Behavior</h4>
+                    <p><strong>This deployment will:</strong></p>
+                    <ul style={{ marginBottom: '8px' }}>
+                      <li><strong>Create new resources</strong> if they don't exist (Lakebase instance, catalog, synced tables)</li>
+                      <li><strong>Return existing instance information</strong> if the instance is already available (provided you have sufficient permissions)</li>
+                    </ul>
+                    <p><strong>Note:</strong> The deployment process checks for existing resources first and only creates new ones when necessary. Update to existing assets is not supported.</p>
+                  </div>
+                </div>
+              }
+              type="info"
+              showIcon
+              className="databricks-alert"
+              style={{ marginBottom: '16px' }}
+            />
+
             {/* Deployment Summary */}
             <Card size="small" title="Deployment Summary" style={{ marginBottom: '16px', backgroundColor: '#fafafa' }}>
+
               <Row gutter={[16, 8]}>
                 <Col span={12}>
                   <Text strong>Databricks Workspace:</Text>
@@ -360,12 +407,23 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   <br />
                   <Text>{(generatedConfigs as any)?.workload_config?.database_name || 'databricks_postgres'}</Text>
                 </Col>
+                <Col span={12}>
+                  <Text strong>Storage Catalog:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.storage_catalog || 'main'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Storage Schema:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.storage_schema || 'default'}</Text>
+                </Col>
                 <Col span={24}>
                   <Text strong>Tables to Sync:</Text>
                   <br />
                   {(() => {
                     // Try multiple possible paths for tables data
-                    const tables = (generatedConfigs as any)?.synced_tables?.synced_tables ||
+                    const tables = (generatedConfigs as any)?.synced_tables?.config_data?.synced_tables ||
+                      (generatedConfigs as any)?.synced_tables?.synced_tables ||
                       (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
                       (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
                       (generatedConfigs as any)?.tables ||
@@ -382,14 +440,20 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                       <div>
                         <Text>{tables.length} table{tables.length !== 1 ? 's' : ''}</Text>
                         <div style={{ marginTop: '8px' }}>
-                          {tables.slice(0, 3).map((table: any, index: number) => (
-                            <Tag key={index} style={{ marginBottom: '4px' }}>
-                              {table.table_name || table.name || `Table ${index + 1}`}
-                            </Tag>
-                          ))}
-                          {tables.length > 3 && (
-                            <Tag>+{tables.length - 3} more</Tag>
-                          )}
+                          {tables.map((table: any, index: number) => {
+                            const tableName = table.table_name || table.name || `Table ${index + 1}`;
+                            const syncMode = table.scheduling_policy || table.sync_policy || 'SNAPSHOT';
+                            return (
+                              <div key={index} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Tag style={{ marginBottom: '4px' }}>
+                                  {tableName}
+                                </Tag>
+                                <Tag color="blue" style={{ marginBottom: '4px' }}>
+                                  {syncMode}
+                                </Tag>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -423,6 +487,38 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                 </Button>
               </Col>
             </Row>
+
+            {/* Post-Deployment Information */}
+            <Alert
+              message="After Deployment: Check Actual Table Sizes"
+              description={
+                <div>
+                  <p>Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size of tables and indexes in your database:</p>
+                  <div style={{
+                    backgroundColor: '#f5f5f5',
+                    padding: '12px',
+                    borderRadius: '4px',
+                    margin: '8px 0',
+                    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                    fontSize: '12px',
+                    overflow: 'auto'
+                  }}>
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                      {`SELECT 
+  pg_total_relation_size(pi.inhrelid::regclass) as size,
+  pc.relname 
+FROM pg_inherits pi 
+JOIN pg_class pc ON pi.inhparent = pc.oid;`}
+                    </pre>
+                  </div>
+                  <p><strong>Note:</strong> This query will show the total size (including indexes) for each table in your Lakebase database. Run this query in Query Editor in Databricks when connected to the Lakebase database.</p>
+                </div>
+              }
+              type="info"
+              showIcon
+              className="databricks-alert"
+              style={{ marginTop: '16px' }}
+            />
           </Card>
 
           {/* Manual Deployment Section */}
