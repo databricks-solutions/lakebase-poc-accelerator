@@ -7,6 +7,7 @@ import LakebaseOverview from './components/LakebaseOverview';
 import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
 import ConcurrencyTesting from './components/ConcurrencyTesting';
+import PgbenchDatabricks from './components/PgbenchDatabricks';
 import TBDTab from './components/TBDTab';
 import DatabricksLogo from './components/DatabricksLogo';
 import { WorkloadConfig, CostEstimationResult } from './types';
@@ -96,6 +97,11 @@ function App() {
               key: 'concurrency',
               label: 'Concurrency Testing',
               children: <ConcurrencyTesting />
+            },
+            {
+              key: 'pgbench-databricks',
+              label: 'Pgbench in Databricks',
+              children: <PgbenchDatabricks />
             },
             {
               key: 'tbd',

@@ -36,31 +36,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount the backend API
-app.mount("/api", backend_app)
+# Always include backend routes first (but not the root route)
+app.include_router(backend_app.router)
 
-# Serve static files from the built frontend
-frontend_build_path = Path(__file__).parent / "build"
-if frontend_build_path.exists():
-    app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
+# Serve static frontend if available
+# Try multiple possible locations for the build directory
+possible_build_paths = [
+    Path(__file__).parent / "build",
+    Path.cwd() / "build", 
+    Path("/app/python/source_code/build"),  # Common Databricks path
+    Path("/app/python/source_code/app/frontend/build")  # Alternative path
+]
+
+frontend_build_path = None
+for path in possible_build_paths:
+    print(f"DEBUG: Checking build path: {path} - exists: {path.exists()}")
+    if path.exists():
+        frontend_build_path = path
+        break
+
+print(f"DEBUG: Selected build path: {frontend_build_path}")
+
+if frontend_build_path and frontend_build_path.exists():
+    print(f"DEBUG: Setting up frontend serving with build path: {frontend_build_path}")
+    print(f"DEBUG: Static directory exists: {(frontend_build_path / 'static').exists()}")
+    print(f"DEBUG: Index.html exists: {(frontend_build_path / 'index.html').exists()}")
     
+    app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
+
     @app.get("/")
     async def serve_frontend():
-        """Serve the React frontend"""
+        print(f"DEBUG: Serving frontend from: {frontend_build_path / 'index.html'}")
         return FileResponse(str(frontend_build_path / "index.html"))
-    
+
     @app.get("/{path:path}")
     async def serve_frontend_routes(path: str):
-        """Serve React routes (SPA)"""
-        # Check if it's an API route
-        if path.startswith("api/"):
-            return {"error": "API route not found"}
-        
-        # Serve index.html for all other routes (React Router)
+        print(f"DEBUG: Serving frontend route '{path}' from: {frontend_build_path / 'index.html'}")
         return FileResponse(str(frontend_build_path / "index.html"))
+    
+    print("DEBUG: Frontend routes configured successfully")
 else:
+    print(f"DEBUG: Build path not found or doesn't exist. Using backend-only mode.")
+    
     @app.get("/")
     async def root():
+        print("DEBUG: Serving backend-only root route")
         return {
             "message": "Lakebase Accelerator API",
             "status": "Backend only - Frontend not built",

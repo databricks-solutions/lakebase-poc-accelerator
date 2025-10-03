@@ -12,14 +12,34 @@ from datetime import timedelta
 from typing import Dict, Any, List, Optional, Callable
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.errors import DatabricksError
-from databricks.sdk.service.database import (
-    DatabaseInstance,
-    DatabaseCatalog,
-    SyncedDatabaseTable,
-    SyncedTableSpec,
-    NewPipelineSpec,
-    SyncedTableSchedulingPolicy
-)
+
+# Import database service classes with error handling
+try:
+    from databricks.sdk.service.database import (
+        DatabaseInstance,
+        DatabaseCatalog,
+        SyncedDatabaseTable,
+        SyncedTableSpec,
+        NewPipelineSpec,
+        SyncedTableSchedulingPolicy
+    )
+    DATABASE_SERVICE_AVAILABLE = True
+except ImportError as e:
+    # Create logger here since it's not defined yet
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(f"Databricks SDK database classes not available: {e}")
+    logger.warning("Database deployment features will be disabled")
+    
+    # Create dummy classes to prevent import errors
+    class DatabaseInstance: pass
+    class DatabaseCatalog: pass
+    class SyncedDatabaseTable: pass
+    class SyncedTableSpec: pass
+    class NewPipelineSpec: pass
+    class SyncedTableSchedulingPolicy: pass
+    
+    DATABASE_SERVICE_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +113,14 @@ class DatabricksDeploymentService:
         Returns:
             Deployment result with status and details
         """
+        # Check if database service is available
+        if not DATABASE_SERVICE_AVAILABLE:
+            return {
+                "status": "failed",
+                "error": "Database service not available. Please update databricks-sdk to version 0.30.0 or later.",
+                "details": "The deployment service requires databricks-sdk database service classes."
+            }
+            
         try:
             # Initialize progress tracking
             self._progress = DeploymentProgress()

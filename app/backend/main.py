@@ -30,6 +30,7 @@ from services.oauth_service import DatabricksOAuthService
 from services.query_executor import QueryExecutorService
 from services.metrics_service import ConcurrencyMetricsService
 from services.databricks_deployment_service import DatabricksDeploymentService, DeploymentProgress
+from services.databricks_jobs_service import DatabricksJobsService
 from utils.parameter_parser import SimpleParameterParser
 
 app = FastAPI(
@@ -95,8 +96,8 @@ class DeploymentRequest(BaseModel):
     databricks_profile_name: Optional[str] = Field(None, description="Databricks profile name for authentication")
     tables: List[Dict[str, Any]] = Field(default_factory=list, description="Tables to sync")
 
-@app.get("/")
-async def root():
+@app.get("/api")
+async def api_root():
     return {"message": "Databricks Lakebase Accelerator API"}
 
 @app.get("/health")
@@ -487,11 +488,12 @@ async def upload_query_file(file: UploadFile = File(...)):
         query_identifier = file.filename.replace('.sql', '')
         validation_result = SimpleParameterParser.validate_query_format(query_content)
         
-        # Save file to app/queries/ folder
-        queries_dir = Path(__file__).parent.parent / "queries"
-        queries_dir.mkdir(exist_ok=True)
+        # Save file to temp directory
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
+        temp_dir.mkdir(exist_ok=True)
         
-        file_path = queries_dir / file.filename
+        file_path = temp_dir / file.filename
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(query_content)
         
@@ -542,12 +544,14 @@ async def run_uploaded_tests(test_request: dict):
         if not workspace_url:
             raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
         
-        # Get all SQL files from app/queries/ folder
-        queries_dir = Path(__file__).parent.parent / "queries"
-        if not queries_dir.exists():
+        # Get all SQL files from temp directory
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
+        
+        if not temp_dir.exists():
             raise HTTPException(status_code=404, detail="No queries folder found")
         
-        sql_files = list(queries_dir.glob("*.sql"))
+        sql_files = list(temp_dir.glob("*.sql"))
         if not sql_files:
             raise HTTPException(status_code=404, detail="No SQL files found in queries folder")
         
@@ -718,12 +722,13 @@ async def delete_pgbench_query_file(request: dict):
         if not file_path:
             raise HTTPException(status_code=400, detail="file_path is required")
 
-        # Ensure the file is in the queries directory for security
-        queries_dir = Path(__file__).parent.parent / "queries"
+        # Ensure the file is in the temp queries directory for security
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
         file_to_delete = Path(file_path)
 
-        # Security check: ensure the file is within the queries directory
-        if not str(file_to_delete).startswith(str(queries_dir)):
+        # Security check: ensure the file is within the temp queries directory
+        if not str(file_to_delete).startswith(str(temp_dir)):
             raise HTTPException(status_code=400, detail="Invalid file path")
 
         if file_to_delete.exists():
@@ -761,13 +766,21 @@ async def upload_pgbench_query_file(file: UploadFile = File(...)):
         # Count pgbench variables (lines starting with \set)
         variable_count = len([line for line in query_content.split('\n') if line.strip().startswith('\\set')])
 
-        # Save file to app/queries/ folder
-        queries_dir = Path(__file__).parent.parent / "queries"
-        queries_dir.mkdir(exist_ok=True)
-
-        file_path = queries_dir / file.filename
+        # Save file to temporary storage (Databricks Apps can't write to workspace directly)
+        import tempfile
+        import os
+        
+        # Use system temp directory
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
+        temp_dir.mkdir(exist_ok=True)
+        
+        file_path = temp_dir / file.filename
+        print(f"DEBUG: Saving to temp path: {file_path}")
+        
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(query_content)
+        
+        print(f"DEBUG: File saved successfully to {file_path}")
 
         return {
             "query_identifier": query_identifier,
@@ -862,12 +875,18 @@ async def run_pgbench_uploaded_tests(test_request: dict):
         if not workspace_url:
             raise HTTPException(status_code=400, detail="workspace_url is required")
 
-        # Get all SQL files from app/queries/ folder
-        queries_dir = Path(__file__).parent.parent / "queries"
-        if not queries_dir.exists():
+        # Get all SQL files from temp directory
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
+        print(f"DEBUG: Looking for queries in temp_dir: {temp_dir}")
+        print(f"DEBUG: temp_dir exists: {temp_dir.exists()}")
+        
+        if not temp_dir.exists():
             raise HTTPException(status_code=404, detail="No queries folder found")
 
-        sql_files = list(queries_dir.glob("*.sql"))
+        sql_files = list(temp_dir.glob("*.sql"))
+        print(f"DEBUG: Found {len(sql_files)} SQL files: {[f.name for f in sql_files]}")
+        
         if not sql_files:
             raise HTTPException(status_code=404, detail="No SQL files found in queries folder")
 
@@ -955,6 +974,147 @@ async def get_pgbench_test_status():
             "service_status": "error",
             "error": str(e)
         }
+
+# Databricks Jobs API Endpoints
+
+class JobSubmissionRequest(BaseModel):
+    lakebase_instance_name: str = Field(..., description="Lakebase instance name")
+    database_name: str = Field("databricks_postgres", description="Database name")
+    cluster_id: str = Field(..., description="Databricks cluster ID")
+    pgbench_config: Dict[str, Any] = Field(..., description="pgbench configuration")
+    query_configs: List[Dict[str, Any]] = Field(..., description="Query configurations")
+
+@app.get("/api/databricks/clusters")
+async def get_databricks_clusters():
+    """
+    Get list of available Databricks clusters
+    
+    Returns:
+        List of cluster information
+    """
+    try:
+        print("CLUSTER_API: Starting cluster retrieval")
+        jobs_service = DatabricksJobsService()
+        
+        print("CLUSTER_API: Calling get_clusters()")
+        clusters = jobs_service.get_clusters()
+        
+        print(f"CLUSTER_API: Retrieved {len(clusters)} clusters")
+        if clusters:
+            for i, cluster in enumerate(clusters[:3]):
+                print(f"CLUSTER_API: Cluster {i+1}: {cluster.get('cluster_name', 'Unknown')}")
+            
+            # Log the exact JSON structure being returned
+            import json
+            print(f"CLUSTER_API: Sample cluster JSON: {json.dumps(clusters[0], indent=2)}")
+        else:
+            print("CLUSTER_API: No clusters found - returning empty list")
+        
+        return clusters
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"CLUSTER_API: Exception occurred: {error_msg}")
+        
+        # Always return empty list to prevent frontend issues
+        print("CLUSTER_API: Returning empty list due to error")
+        return []
+
+@app.get("/api/databricks/clusters/static")
+async def get_static_clusters():
+    """
+    Return a static list of clusters for testing when dynamic API fails
+    """
+    print("STATIC_CLUSTERS: Returning static cluster list")
+    return [
+        {
+            "cluster_id": "static-shared-apj",
+            "cluster_name": "Shared Autoscaling APJ (Static)",
+            "state": "RUNNING",
+            "node_type_id": "Standard_L8s",
+            "num_workers": 2,
+            "spark_version": "14.3.x-cpu-ml-scala2.12",
+            "driver_node_type_id": "Standard_L16s"
+        },
+        {
+            "cluster_id": "static-shared-emea", 
+            "cluster_name": "Shared Autoscaling EMEA (Static)",
+            "state": "TERMINATED",
+            "node_type_id": "Standard_L8s",
+            "num_workers": 0,
+            "spark_version": "14.3.x-cpu-ml-scala2.12",
+            "driver_node_type_id": "Standard_L16s"
+        }
+    ]
+
+@app.post("/api/databricks/submit-pgbench-job")
+async def submit_pgbench_job(request: JobSubmissionRequest):
+    """
+    Submit a pgbench job to Databricks
+    
+    Args:
+        request: Job submission configuration
+        
+    Returns:
+        Job submission result with job_id and run_id
+    """
+    try:
+        jobs_service = DatabricksJobsService()
+        
+        result = jobs_service.submit_pgbench_job(
+            lakebase_instance_name=request.lakebase_instance_name,
+            database_name=request.database_name,
+            cluster_id=request.cluster_id,
+            pgbench_config=request.pgbench_config,
+            query_configs=request.query_configs
+        )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to submit job: {str(e)}")
+
+@app.get("/api/databricks/job-status/{run_id}")
+async def get_job_status(run_id: str):
+    """
+    Get status of a Databricks job run
+    
+    Args:
+        run_id: Job run ID
+        
+    Returns:
+        Job status information
+    """
+    try:
+        jobs_service = DatabricksJobsService()
+        status = jobs_service.get_run_status(run_id)
+        return status
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get job status: {str(e)}")
+
+@app.delete("/api/databricks/job/{job_id}")
+async def delete_databricks_job(job_id: str):
+    """
+    Delete a Databricks job
+    
+    Args:
+        job_id: Job ID to delete
+        
+    Returns:
+        Success message
+    """
+    try:
+        jobs_service = DatabricksJobsService()
+        success = jobs_service.delete_job(job_id)
+        
+        if success:
+            return {"message": f"Job {job_id} deleted successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete job")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete job: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
