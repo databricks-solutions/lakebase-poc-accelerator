@@ -154,87 +154,68 @@ class DatabricksJobsService:
             logger.error(f"Failed to create directory {directory_path}: {e}")
             raise
 
-    def _create_pgbench_notebook_content(self) -> str:
-        """Create pgbench notebook content programmatically as a fallback"""
-        notebook_content = {
-            "cells": [
-                {
+
+    def _convert_databricks_to_jupyter(self, databricks_content: str) -> str:
+        """Convert Databricks notebook source format to Jupyter notebook JSON format"""
+        import json
+        import re
+        
+        lines = databricks_content.split('\n')
+        cells = []
+        current_cell = None
+        current_source = []
+        
+        for line in lines:
+            if line.strip() == "# Databricks notebook source":
+                continue
+            elif line.startswith("# COMMAND ----------"):
+                # End current cell and start new one
+                if current_cell is not None:
+                    current_cell["source"] = current_source
+                    cells.append(current_cell)
+                current_cell = None
+                current_source = []
+            elif line.startswith("# MAGIC %md"):
+                # Start markdown cell
+                if current_cell is not None:
+                    current_cell["source"] = current_source
+                    cells.append(current_cell)
+                current_cell = {
                     "cell_type": "markdown",
                     "metadata": {},
-                    "source": [
-                        "# Pgbench Test Notebook\n",
-                        "This notebook runs pgbench tests against a Lakebase Postgres instance."
-                    ]
-                },
-                {
-                    "cell_type": "code",
-                    "execution_count": None,
-                    "metadata": {},
-                    "outputs": [],
-                    "source": [
-                        "# Get parameters from Databricks job\n",
-                        "lakebase_instance_name = dbutils.widgets.get('lakebase_instance_name')\n",
-                        "database_name = dbutils.widgets.get('database_name')\n",
-                        "pgbench_config = dbutils.widgets.get('pgbench_config')\n",
-                        "query_configs = dbutils.widgets.get('query_configs')\n",
-                        "\n",
-                        "print(f'Lakebase Instance: {lakebase_instance_name}')\n",
-                        "print(f'Database: {database_name}')\n",
-                        "print(f'Pgbench Config: {pgbench_config}')\n",
-                        "print(f'Query Configs: {query_configs}')"
-                    ]
-                },
-                {
-                    "cell_type": "code",
-                    "execution_count": None,
-                    "metadata": {},
-                    "outputs": [],
-                    "source": [
-                        "import json\n",
-                        "import time\n",
-                        "import subprocess\n",
-                        "import os\n",
-                        "\n",
-                        "# Parse configurations\n",
-                        "pgbench_config = json.loads(pgbench_config)\n",
-                        "query_configs = json.loads(query_configs)\n",
-                        "\n",
-                        "print('Configuration loaded successfully')\n",
-                        "print(f'Pgbench clients: {pgbench_config.get(\"pgbench_clients\", 1)}')\n",
-                        "print(f'Number of queries: {len(query_configs)}')"
-                    ]
-                },
-                {
-                    "cell_type": "code",
-                    "execution_count": None,
-                    "metadata": {},
-                    "outputs": [],
-                    "source": [
-                        "# Mock pgbench execution for now\n",
-                        "print('Starting pgbench test...')\n",
-                        "print(f'Testing against {lakebase_instance_name}.{database_name}')\n",
-                        "\n",
-                        "# Simulate test execution\n",
-                        "import time\n",
-                        "time.sleep(5)\n",
-                        "\n",
-                        "# Mock results\n",
-                        "results = {\n",
-                        "    'status': 'completed',\n",
-                        "    'transactions_processed': 1000,\n",
-                        "    'tps': 100.0,\n",
-                        "    'latency_avg': 10.5,\n",
-                        "    'duration': 10\n",
-                        "}\n",
-                        "\n",
-                        "print('Pgbench test completed!')\n",
-                        "print(f'Results: {json.dumps(results, indent=2)}')\n",
-                        "\n",
-                        "# Return results for job monitoring\n",
-                        "dbutils.jobs.taskValues.set(key='pgbench_results', value=json.dumps(results))"
-                    ]
+                    "source": []
                 }
-            ],
+                current_source = []
+                # Add the markdown content (remove # MAGIC prefix)
+                md_content = line.replace("# MAGIC %md", "").strip()
+                if md_content:
+                    current_source.append(md_content + "\n")
+            elif line.startswith("# MAGIC"):
+                # Continue markdown cell
+                if current_cell and current_cell["cell_type"] == "markdown":
+                    md_content = line.replace("# MAGIC", "").strip()
+                    current_source.append(md_content + "\n")
+            else:
+                # Code cell content
+                if current_cell is None:
+                    current_cell = {
+                        "cell_type": "code",
+                        "execution_count": None,
+                        "metadata": {},
+                        "outputs": [],
+                        "source": []
+                    }
+                    current_source = []
+                current_source.append(line + "\n")
+        
+        # Add final cell
+        if current_cell is not None:
+            current_cell["source"] = current_source
+            cells.append(current_cell)
+        
+        # Create Jupyter notebook structure
+        notebook = {
+            "cells": cells,
             "metadata": {
                 "kernelspec": {
                     "display_name": "Python 3",
@@ -250,7 +231,7 @@ class DatabricksJobsService:
             "nbformat_minor": 4
         }
         
-        return json.dumps(notebook_content, indent=2)
+        return json.dumps(notebook, indent=2)
 
     def _get_current_service_principal(self) -> str:
         """Get the current service principal ID"""
@@ -370,6 +351,76 @@ class DatabricksJobsService:
             logger.error(f"Failed to upload notebook: {e}")
             raise
     
+    def _upload_init_script(self, job_name: str) -> str:
+        """
+        Upload the pgbench init script to the workspace.
+        Returns the workspace path to the uploaded script.
+        """
+        try:
+            import os
+            client = self._get_client()
+            
+            # Find the init.sh script
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(current_dir)
+            
+            possible_paths = [
+                os.path.join(parent_dir, "notebooks", "init.sh"),
+                os.path.join(os.getcwd(), "app", "notebooks", "init.sh"),
+                "/app/python/source_code/app/notebooks/init.sh",
+            ]
+            
+            init_script_path = None
+            for path in possible_paths:
+                logger.info(f"INIT_SCRIPT: Checking path: {path}")
+                if os.path.exists(path):
+                    init_script_path = path
+                    logger.info(f"INIT_SCRIPT: Found init script at: {path}")
+                    break
+            
+            if not init_script_path:
+                raise FileNotFoundError(f"Could not find init.sh. Tried: {possible_paths}")
+            
+            # Read the init script
+            with open(init_script_path, 'r') as f:
+                init_script_content = f.read()
+            
+            logger.info(f"INIT_SCRIPT: Read {len(init_script_content)} bytes from init.sh")
+            
+            # Upload to workspace as a plain file (not notebook)
+            workspace_path = f"/Shared/pgbench_init/{job_name}/init.sh"
+            logger.info(f"INIT_SCRIPT: Uploading to workspace path: {workspace_path}")
+            
+            # Create directory if it doesn't exist
+            directory_path = os.path.dirname(workspace_path)
+            if directory_path:
+                self._create_workspace_directory(directory_path)
+            
+            # Upload script using the import API with AUTO format
+            # This allows Databricks to detect it's a plain file, not a notebook
+            import base64
+            script_bytes = init_script_content.encode('utf-8')
+            script_base64 = base64.b64encode(script_bytes).decode('utf-8')
+            
+            # Use the REST API for more control over file import
+            response = client.api_client.do(
+                'POST',
+                '/api/2.0/workspace/import',
+                body={
+                    'path': workspace_path,
+                    'format': 'AUTO',
+                    'content': script_base64,
+                    'overwrite': True
+                }
+            )
+            
+            logger.info(f"INIT_SCRIPT: Successfully uploaded init script to {workspace_path}")
+            return workspace_path
+            
+        except Exception as e:
+            logger.error(f"Failed to upload init script: {str(e)}")
+            raise
+    
     def create_pgbench_job(self, 
                           job_name: str,
                           cluster_id: str,
@@ -432,33 +483,25 @@ class DatabricksJobsService:
                 logger.info(f"EXISTING_CLUSTER: Successfully created job: {job_id}")
                 
             else:
-                # No cluster ID provided - use job cluster approach
-                logger.info("JOB_CLUSTER: No cluster ID provided, creating dedicated job cluster")
+                # No cluster ID provided - create job cluster using REST API
+                logger.info("JOB_CLUSTER: No cluster ID provided, creating job cluster using REST API")
                 
-                # Get current service principal for job cluster
+                # Get service principal for single-user cluster
                 current_user = self._get_current_service_principal()
+                logger.info(f"JOB_CLUSTER: Using service principal: {current_user}")
                 
-                # Create job cluster specification
-                job_cluster_spec = {
-                    "spark_version": "13.3.x-scala2.12",
-                    "node_type_id": "i3.xlarge",
-                    "num_workers": 1,
-                    "data_security_mode": "SINGLE_USER",
-                    "single_user_name": current_user,
-                    "spark_conf": {
-                        "spark.databricks.cluster.profile": "singleNode",
-                        "spark.master": "local[*]"
-                    },
-                    "custom_tags": {
-                        "ResourceClass": "SingleNode",
-                        "pgbench_job": "true"
-                    }
-                }
+                # Upload init script to workspace
+                init_script_path = self._upload_init_script(job_name)
+                logger.info(f"JOB_CLUSTER: Init script uploaded to {init_script_path}")
                 
-                logger.info(f"JOB_CLUSTER: Creating job cluster for user: {current_user}")
+                # Use SDK's internal API client for REST call
+                # This automatically handles authentication (OAuth, service principal, PAT, etc.)
+                client = self._get_client()
                 
-                # Use direct API call to avoid SDK serialization issues
-                job_config = {
+                logger.info(f"JOB_CLUSTER: Using SDK API client for job creation")
+                
+                # Build job configuration for REST API
+                job_payload = {
                     "name": job_name,
                     "tasks": [
                         {
@@ -467,25 +510,45 @@ class DatabricksJobsService:
                                 "notebook_path": notebook_path,
                                 "base_parameters": base_parameters
                             },
-                            "job_cluster_key": "pgbench_auto_cluster",
+                            "new_cluster": {
+                                "spark_version": "13.3.x-scala2.12",
+                                "node_type_id": "Standard_DS3_v2",
+                                "num_workers": 0,
+                                "spark_conf": {
+                                    "spark.databricks.cluster.profile": "singleNode",
+                                    "spark.master": "local[*]"
+                                },
+                                "custom_tags": {
+                                    "ResourceClass": "SingleNode",
+                                    "pgbench_job": "true"
+                                },
+                                "data_security_mode": "SINGLE_USER",
+                                "single_user_name": current_user,
+                                "init_scripts": [
+                                    {
+                                        "workspace": {
+                                            "destination": init_script_path
+                                        }
+                                    }
+                                ]
+                            },
                             "timeout_seconds": 3600
-                        }
-                    ],
-                    "job_clusters": [
-                        {
-                            "job_cluster_key": "pgbench_auto_cluster",
-                            "new_cluster": job_cluster_spec
                         }
                     ],
                     "max_concurrent_runs": 1,
                     "timeout_seconds": 3600
                 }
                 
-                logger.info(f"JOB_CLUSTER: Job config: {job_config}")
+                logger.info(f"JOB_CLUSTER: Sending API request to create job with new_cluster")
                 
-                # Create job using direct API
-                job = client.jobs.create(**job_config)
-                job_id = str(job.job_id)
+                # Use SDK's internal API client which handles auth automatically
+                response = client.api_client.do(
+                    'POST',
+                    '/api/2.1/jobs/create',
+                    body=job_payload
+                )
+                
+                job_id = str(response.get("job_id"))
                 logger.info(f"JOB_CLUSTER: Successfully created job with auto cluster: {job_id}")
             
             logger.info(f"Successfully created job {job_id}: {job_name}")
@@ -670,7 +733,7 @@ class DatabricksJobsService:
     def submit_pgbench_job(self, 
                           lakebase_instance_name: str,
                           database_name: str,
-                          cluster_id: str,
+                          cluster_id: Optional[str],
                           pgbench_config: Dict[str, Any],
                           query_configs: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Submit a complete pgbench job
@@ -696,24 +759,33 @@ class DatabricksJobsService:
             # Read the parameterized notebook content
             import os
             current_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(current_dir)
+            grandparent_dir = os.path.dirname(parent_dir)
+            
+            print(f"NOTEBOOK_PATH: Current file directory: {current_dir}")
+            print(f"NOTEBOOK_PATH: Parent directory: {parent_dir}")
+            print(f"NOTEBOOK_PATH: Grandparent directory: {grandparent_dir}")
+            print(f"NOTEBOOK_PATH: Current working directory: {os.getcwd()}")
             
             # Try multiple possible notebook locations for different deployment environments
-            # Note: In Databricks deployment, .ipynb extension might be stripped
+            # PRIORITY: Look for original .ipynb files first (JSON format), then Databricks converted format
             possible_paths = [
-                # Local development path (with .ipynb)
+                # Original source .ipynb files (JSON format) - PRIORITY
                 os.path.join(current_dir, '..', '..', 'notebooks', 'pgbench_parameterized.ipynb'),
-                # Databricks deployment path (with .ipynb)
-                '/app/notebooks/pgbench_parameterized.ipynb',
-                # Alternative Databricks path (with .ipynb)
-                os.path.join('/app', 'notebooks', 'pgbench_parameterized.ipynb'),
-                # Root relative path (with .ipynb)
                 os.path.join(os.path.dirname(current_dir), '..', '..', 'notebooks', 'pgbench_parameterized.ipynb'),
-                # Databricks deployment paths WITHOUT .ipynb extension (deployment strips extension)
+                '/app/notebooks/pgbench_parameterized.ipynb',
+                os.path.join('/app', 'notebooks', 'pgbench_parameterized.ipynb'),
+                # Databricks converted format (will be converted to JSON) - FALLBACK
                 os.path.join(current_dir, '..', '..', 'notebooks', 'pgbench_parameterized'),
+                os.path.join(os.path.dirname(current_dir), '..', '..', 'notebooks', 'pgbench_parameterized'),
                 '/app/notebooks/pgbench_parameterized',
-                os.path.join('/app', 'notebooks', 'pgbench_parameterized'),
-                os.path.join(os.path.dirname(current_dir), '..', '..', 'notebooks', 'pgbench_parameterized')
+                os.path.join('/app', 'notebooks', 'pgbench_parameterized')
             ]
+            
+            print(f"NOTEBOOK_PATH: Will try {len(possible_paths)} possible paths:")
+            for i, path in enumerate(possible_paths, 1):
+                abs_path = os.path.abspath(path)
+                print(f"NOTEBOOK_PATH: Path {i}: {path} -> {abs_path}")
             
             notebook_path_local = None
             for path in possible_paths:
@@ -753,23 +825,44 @@ class DatabricksJobsService:
                     f"Directory listings:\n{listings_text}"
                 )
             
-            # Try to read the notebook file, with fallback to creating programmatically
+            # Read the notebook file - no validation needed, just use as-is
             try:
+                print(f"NOTEBOOK: Reading from path: {notebook_path_local}")
                 with open(notebook_path_local, 'r') as f:
                     notebook_content = f.read()
                 
-                # Validate that it's proper JSON (notebook format)
+                print(f"NOTEBOOK: Successfully read notebook file from: {notebook_path_local}")
+                print(f"NOTEBOOK: File length: {len(notebook_content)} characters")
+                print(f"NOTEBOOK: First 200 chars: {notebook_content[:200]}")
+                print(f"NOTEBOOK: Last 100 chars: {notebook_content[-100:]}")
+                
+                # Basic validation - check if it looks like a notebook
+                if len(notebook_content.strip()) == 0:
+                    raise ValueError("Notebook file is empty")
+                
+                # Check if it starts with typical notebook structure
                 import json
                 try:
-                    json.loads(notebook_content)
-                    print(f"NOTEBOOK: Successfully validated JSON format")
-                except json.JSONDecodeError:
-                    print(f"NOTEBOOK: File is not valid JSON, will create programmatically")
-                    raise ValueError("Not valid JSON")
+                    parsed = json.loads(notebook_content)
+                    print(f"NOTEBOOK: Valid JSON structure")
+                    if 'cells' in parsed:
+                        print(f"NOTEBOOK: Contains {len(parsed['cells'])} cells")
+                    if 'nbformat' in parsed:
+                        print(f"NOTEBOOK: Notebook format version: {parsed['nbformat']}")
+                    else:
+                        print(f"NOTEBOOK: WARNING - No nbformat field found")
+                except json.JSONDecodeError as e:
+                    print(f"NOTEBOOK: File is in Databricks source format, not JSON: {e}")
+                    print(f"NOTEBOOK: Converting from Databricks format to Jupyter notebook format")
                     
-            except (ValueError, json.JSONDecodeError):
-                print(f"NOTEBOOK: Creating notebook content programmatically")
-                notebook_content = self._create_pgbench_notebook_content()
+                    # Convert Databricks source format to Jupyter notebook JSON
+                    notebook_content = self._convert_databricks_to_jupyter(notebook_content)
+                    print(f"NOTEBOOK: Converted to Jupyter format, new length: {len(notebook_content)}")
+                    
+            except (FileNotFoundError, ValueError) as e:
+                print(f"NOTEBOOK ERROR: Failed to read notebook file: {e}")
+                print(f"NOTEBOOK ERROR: Cannot proceed without the actual pgbench_parameterized.ipynb")
+                raise Exception(f"Failed to load pgbench notebook: {e}. Cannot create job without the actual notebook file.")
             
             # Upload notebook to workspace
             self.upload_notebook(notebook_path, notebook_content)

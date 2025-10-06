@@ -288,8 +288,7 @@ class DatabricksDeploymentService:
                 name=instance_name,
                 capacity=capacity,
                 enable_readable_secondaries=cu_count > 1,  # Enable if more than 1 CU
-                retention_window_in_days=7,  # Default retention
-                enable_pg_native_login=True  # Enable PostgreSQL native login
+                retention_window_in_days=7  # Default retention
             )
 
             instance_waiter = self._workspace_client.database.create_database_instance(database_instance)

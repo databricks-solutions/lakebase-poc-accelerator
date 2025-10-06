@@ -7,6 +7,7 @@ Provides API endpoints for cost estimation, table generation, and configuration 
 import os
 import sys
 import json
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -17,6 +18,9 @@ import asyncio
 from typing import AsyncGenerator
 import json
 import yaml
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Import the cost estimator and table generator functions from services
 from services.lakebase_cost_estimator import estimate_cost_from_config
@@ -104,7 +108,7 @@ async def api_root():
 async def health_check():
     return {"status": "healthy", "service": "lakebase-accelerator-api"}
 
-@app.post("/estimate-cost")
+@app.post("/api/estimate-cost")
 async def estimate_cost(request: CostEstimationRequest):
     """
     Estimate Lakebase costs based on workload configuration.
@@ -159,7 +163,7 @@ async def estimate_cost(request: CostEstimationRequest):
 
 
 
-@app.post("/generate-databricks-config")
+@app.post("/api/generate-databricks-config")
 async def generate_databricks_config(request: WorkloadConfigRequest):
     """
     Generate databricks.yml configuration file.
@@ -195,7 +199,7 @@ async def generate_databricks_config(request: WorkloadConfigRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating databricks config: {str(e)}")
 
-@app.post("/generate-lakebase-instance")
+@app.post("/api/generate-lakebase-instance")
 async def generate_lakebase_instance(request: WorkloadConfigRequest):
     """
     Generate lakebase instance configuration file.
@@ -228,7 +232,7 @@ async def generate_lakebase_instance(request: WorkloadConfigRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating lakebase instance config: {str(e)}")
 
-@app.post("/generate-synced-tables")
+@app.post("/api/generate-synced-tables")
 async def generate_synced_tables(request: WorkloadConfigRequest):
     """
     Generate synced tables configuration from workload config.
@@ -254,7 +258,7 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
         print(f"Error generating synced tables: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating synced tables: {str(e)}")
 
-@app.post("/deploy")
+@app.post("/api/deploy")
 async def deploy_to_databricks(request: DeploymentRequest):
     """
     Deploy Lakebase instance directly using Databricks SDK.
@@ -301,7 +305,7 @@ async def deploy_to_databricks(request: DeploymentRequest):
         logger.error(f"Deployment failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
 
-@app.get("/deploy/progress/{deployment_id}")
+@app.get("/api/deploy/progress/{deployment_id}")
 async def get_deployment_progress(deployment_id: str):
     """
     Get current deployment progress for a specific deployment ID
@@ -311,7 +315,7 @@ async def get_deployment_progress(deployment_id: str):
 
     return deployment_progress_tracker[deployment_id]
 
-@app.get("/deploy/progress/{deployment_id}/stream")
+@app.get("/api/deploy/progress/{deployment_id}/stream")
 async def stream_deployment_progress(deployment_id: str):
     """
     Stream deployment progress updates using Server-Sent Events
@@ -706,7 +710,7 @@ async def get_concurrency_test_status():
 
 # pgbench Testing Endpoints
 
-@app.delete("/pgbench-test/delete-query")
+@app.delete("/api/pgbench-test/delete-query")
 async def delete_pgbench_query_file(request: dict):
     """
     Delete a pgbench query file from the app/queries/ folder.
@@ -740,7 +744,7 @@ async def delete_pgbench_query_file(request: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File deletion failed: {str(e)}")
 
-@app.post("/pgbench-test/upload-query")
+@app.post("/api/pgbench-test/upload-query")
 async def upload_pgbench_query_file(file: UploadFile = File(...)):
     """
     Upload and save a pgbench-format SQL query file to app/queries/ folder.
@@ -839,7 +843,7 @@ async def execute_pgbench_test(test_request: PgbenchTestRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pgbench test failed: {str(e)}")
 
-@app.post("/pgbench-test/run-uploaded-tests")
+@app.post("/api/pgbench-test/run-uploaded-tests")
 async def run_pgbench_uploaded_tests(test_request: dict):
     """
     Run pgbench tests using uploaded SQL files from app/queries/ folder.
@@ -980,7 +984,7 @@ async def get_pgbench_test_status():
 class JobSubmissionRequest(BaseModel):
     lakebase_instance_name: str = Field(..., description="Lakebase instance name")
     database_name: str = Field("databricks_postgres", description="Database name")
-    cluster_id: str = Field(..., description="Databricks cluster ID")
+    cluster_id: Optional[str] = Field(None, description="Databricks cluster ID (optional - will create job cluster if not provided)")
     pgbench_config: Dict[str, Any] = Field(..., description="pgbench configuration")
     query_configs: List[Dict[str, Any]] = Field(..., description="Query configurations")
 
