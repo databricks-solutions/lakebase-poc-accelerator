@@ -2,8 +2,17 @@
 
 This project is designed to streamline the testing and deployment of customer OLTP workloads to Lakebase, Databricks' managed Postgres solution. It is particularly focused on supporting reverse ETL use cases. The accelerator provides an easy way for users to evaluate Lakebase and quickly get started with their POC and testing needs.
 
+## Prerequesites
 
-## Environments Setup 
+- Python3.13
+- Databricks Workspace Requirements:
+   - Unity Catalog enabled: CREATE CATALOG, USE CATALOG, CREATE SCHEMA permission
+   - Lakebase Service: CREATE DATABASE INSTANCE, USE DATABASE INSTANCE permission
+   - Delta Tables: For source data synchronization
+   - Databricks SQL Warehouse: For table size calculations (optional but recommended)
+   - Databricks SDK: For programmatic workspace access
+
+## Environments Setup
 
 1. Setup Python virtual environment
 
