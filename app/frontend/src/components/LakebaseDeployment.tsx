@@ -52,9 +52,6 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploymentProgress, setDeploymentProgress] = useState<string>('');
   const [deploymentOutput, setDeploymentOutput] = useState<string>('');
   const [deploymentModalVisible, setDeploymentModalVisible] = useState(false);
-  const [deploymentId, setDeploymentId] = useState<string>('');
-  const [deploymentSteps, setDeploymentSteps] = useState<any[]>([]);
-  const [currentStep, setCurrentStep] = useState<number>(0);
 
   // Helper to build workspace monitor URL
   const getWorkspaceMonitorUrl = (fallback?: string): string | null => {
@@ -173,8 +170,6 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
       if (response.ok && result.success) {
         setDeploymentProgress('Deployment completed successfully!');
-        setDeploymentSteps(result.progress?.steps || []);
-        setCurrentStep(result.progress?.current_step || 0);
 
         let output = '✅ Deployment completed successfully!\n\n';
 
@@ -205,8 +200,6 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
       } else {
         setDeploymentProgress('Deployment failed!');
-        setDeploymentSteps(result.progress?.steps || []);
-        setCurrentStep(result.progress?.current_step || 0);
 
         let errorOutput = `❌ Deployment failed: ${result.message}\n\n`;
 
@@ -285,7 +278,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
       >
         <Paragraph>
           <li>Choose your preferred deployment method: automatic deployment using the Python SDK for a seamless experience,
-          or manual deployment using the Databricks CLI and Databricks Asset Bundle for more control.</li>
+            or manual deployment using the Databricks CLI and Databricks Asset Bundle for more control.</li>
           <li>To generate deployment information, update the Databricks configuration section and run <strong>Generate Cost Estimate</strong> on the <strong>Lakebase Calculator</strong> page.</li>
         </Paragraph>
       </Card>

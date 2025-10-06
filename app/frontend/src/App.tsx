@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Typography, Tabs, message } from 'antd';
+import { Layout, Typography, Tabs } from 'antd';
 import 'antd/dist/reset.css';
 import './App.css';
 
@@ -10,14 +10,11 @@ import ConcurrencyTesting from './components/ConcurrencyTesting';
 import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import TBDTab from './components/TBDTab';
 import DatabricksLogo from './components/DatabricksLogo';
-import { WorkloadConfig, CostEstimationResult } from './types';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
 
 function App() {
-  const [workloadConfig, setWorkloadConfig] = useState<WorkloadConfig | null>(null);
-  const [costReport, setCostReport] = useState<CostEstimationResult | null>(null);
   const [generatedConfigs, setGeneratedConfigs] = useState<any>({});
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -28,8 +25,6 @@ function App() {
       try {
         const configs = JSON.parse(savedConfigs);
         setGeneratedConfigs(configs);
-        setWorkloadConfig(configs.workload_config);
-        setCostReport(configs.cost_report);
       } catch (error) {
         console.error('Error loading saved configs:', error);
       }
@@ -45,8 +40,6 @@ function App() {
 
   const handleConfigGenerated = (configs: any) => {
     setGeneratedConfigs(configs);
-    setWorkloadConfig(configs.workload_config);
-    setCostReport(configs.cost_report);
     // Stay on calculator tab and scroll to results
     setActiveTab('calculator');
     // Scroll to results section after a brief delay to allow rendering

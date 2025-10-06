@@ -2,11 +2,9 @@ import React from 'react';
 import { Card, Typography, Row, Col, Tag, Alert, Divider, List, Statistic } from 'antd';
 import {
   CheckCircleOutlined,
-  ExclamationCircleOutlined,
   DatabaseOutlined,
   ThunderboltOutlined,
-  SyncOutlined,
-  InfoCircleOutlined
+  SyncOutlined
 } from '@ant-design/icons';
 
 const { Title, Paragraph, Text } = Typography;
@@ -175,7 +173,7 @@ const LakebaseOverview: React.FC = () => {
           </Col>
           <Col span={8}>
             <Statistic
-              title="Max Connections per Database"
+              title="Max Connections per Instance"
               value="1000"
               prefix={<SyncOutlined />}
             />
