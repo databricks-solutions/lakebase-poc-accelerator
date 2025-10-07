@@ -1,16 +1,25 @@
 # DATABRICKS LAKEBASE ACCELERATOR
 
-This project is designed to streamline the testing and migration of customer OLTP workloads to Lakebase, Databricks' managed Postgres solution. It is particularly focused on supporting reverse ETL use cases. The accelerator provides an easy way for users to evaluate Lakebase and quickly get started with their migration or testing needs.
+This project is designed to streamline the testing and deployment of customer OLTP workloads to Lakebase, Databricks' managed Postgres solution. It is particularly focused on supporting reverse ETL use cases. The accelerator provides an easy way for users to evaluate Lakebase and quickly get started with their POC and testing needs.
 
+## Prerequesites
 
-## Environments Setup 
+- Python3.13
+- Databricks Workspace Requirements:
+   - Unity Catalog enabled: CREATE CATALOG, USE CATALOG, CREATE SCHEMA permission
+   - Lakebase Service: CREATE DATABASE INSTANCE, USE DATABASE INSTANCE permission
+   - Delta Tables: For source data synchronization
+   - Databricks SQL Warehouse: For table size calculations (optional but recommended)
+   - Databricks SDK: For programmatic workspace access
+
+## Environments Setup
 
 1. Setup Python virtual environment
 
 ```
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r ../requirements.txt
+pip install -r requirements.txt
 ```
 
 2. Install the Databricks CLI from <https://docs.databricks.com/dev-tools/cli/databricks-cli.html>
@@ -60,6 +69,18 @@ $ brew update && brew upgrade databricks && databricks --version | cat
    ```bash
    $ databricks auth profiles
    ```
+
+## Install pgbench for concurrency testing
+pgbench comes bundled with PostgreSQL. Install PostgreSQL client tools:
+
+#### macOS:
+```bash
+# Install PostgreSQL (includes pgbench)
+brew install postgresql
+
+# Verify installation
+pgbench --version
+```
 
 ## Starting the Web Application
 

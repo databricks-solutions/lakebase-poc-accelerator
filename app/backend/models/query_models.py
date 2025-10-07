@@ -183,19 +183,6 @@ class PgbenchConfig(BaseModel):
             raise ValueError('Number of jobs cannot exceed number of clients')
         return v
 
-class PgbenchQueryConfig(BaseModel):
-    """Query configuration for pgbench execution."""
-    query_identifier: str = Field(..., min_length=1, max_length=100)
-    query_content: str = Field(..., min_length=1, description="SQL query in pgbench format")
-    weight: int = Field(default=1, ge=1, le=100, description="Relative weight for query execution")
-
-class PgbenchTestRequest(BaseModel):
-    """Request model for pgbench test execution."""
-    workspace_url: str
-    instance_name: str
-    database_name: str = "databricks_postgres"
-    pgbench_config: PgbenchConfig
-    queries: List[PgbenchQueryConfig]
 
 class PgbenchExecutionResult(BaseModel):
     """Raw execution result from pgbench subprocess."""

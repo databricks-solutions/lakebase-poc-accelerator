@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Typography, Tabs, message } from 'antd';
+import { Layout, Typography, Tabs } from 'antd';
 import 'antd/dist/reset.css';
 import './App.css';
 
@@ -7,17 +7,15 @@ import LakebaseOverview from './components/LakebaseOverview';
 import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
 import ConcurrencyTesting from './components/ConcurrencyTesting';
+import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import PgbenchDatabricks from './components/PgbenchDatabricks';
 import TBDTab from './components/TBDTab';
 import DatabricksLogo from './components/DatabricksLogo';
-import { WorkloadConfig, CostEstimationResult } from './types';
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
 
 function App() {
-  const [workloadConfig, setWorkloadConfig] = useState<WorkloadConfig | null>(null);
-  const [costReport, setCostReport] = useState<CostEstimationResult | null>(null);
   const [generatedConfigs, setGeneratedConfigs] = useState<any>({});
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -28,8 +26,6 @@ function App() {
       try {
         const configs = JSON.parse(savedConfigs);
         setGeneratedConfigs(configs);
-        setWorkloadConfig(configs.workload_config);
-        setCostReport(configs.cost_report);
       } catch (error) {
         console.error('Error loading saved configs:', error);
       }
@@ -45,17 +41,15 @@ function App() {
 
   const handleConfigGenerated = (configs: any) => {
     setGeneratedConfigs(configs);
-    setWorkloadConfig(configs.workload_config);
-    setCostReport(configs.cost_report);
     // Stay on calculator tab and scroll to results
     setActiveTab('calculator');
     // Scroll to results section after a brief delay to allow rendering
     setTimeout(() => {
       const resultsElement = document.getElementById('cost-results-section');
       if (resultsElement) {
-        resultsElement.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'start' 
+        resultsElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
         });
       }
     }, 100);
@@ -71,10 +65,10 @@ function App() {
           </Title>
         </div>
       </Header>
-      
+
       <Content style={{ padding: '0', background: '#fafafa' }}>
-        <Tabs 
-          activeKey={activeTab} 
+        <Tabs
+          activeKey={activeTab}
           onChange={setActiveTab}
           className="databricks-tabs"
           items={[
@@ -95,13 +89,18 @@ function App() {
             },
             {
               key: 'concurrency',
-              label: 'Concurrency Testing',
+              label: 'Concurrency Testing (pgbench)',
               children: <ConcurrencyTesting />
             },
             {
               key: 'pgbench-databricks',
               label: 'Pgbench in Databricks',
               children: <PgbenchDatabricks />
+            },
+            {
+              key: 'concurrency-databricks',
+              label: 'Concurrency Testing (psycopg)',
+              children: <ConcurrencyTestingPsycopg />
             },
             {
               key: 'tbd',

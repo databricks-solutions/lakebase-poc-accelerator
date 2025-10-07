@@ -543,7 +543,7 @@ def estimate_cost_from_config(config_data: Dict[str, Any], warehouse_http_path: 
                                 logger.info("Generated temporary access token for table size calculation")
 
                                 # Execute with a hard timeout so we never hang if the warehouse was deleted
-                                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                                with concurrent.futures.ThreadPoolExecutor(max_workers=len(tables_to_sync)) as executor:
                                     future = executor.submit(
                                         get_delta_table_sizes,
                                         tables_to_sync,
@@ -551,8 +551,8 @@ def estimate_cost_from_config(config_data: Dict[str, Any], warehouse_http_path: 
                                         warehouse_http_path,
                                         access_token,
                                     )
-                                    # Fail fast after 10 seconds to keep the UI responsive
-                                    table_sizes = future.result(timeout=10)
+                                    # Fail fast after 30 seconds to keep the UI responsive
+                                    table_sizes = future.result(timeout=30)
 
                                 # Clean up the temporary token after use
                                 try:

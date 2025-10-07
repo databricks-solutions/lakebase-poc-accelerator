@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  Card, 
-  Button, 
-  message, 
-  Typography, 
-  Row, 
-  Col, 
-  Alert, 
+import {
+  Card,
+  Button,
+  message,
+  Typography,
+  Row,
+  Col,
+  Alert,
   Divider,
   Space,
   Tag,
@@ -15,10 +15,10 @@ import {
   Input,
   Spin
 } from 'antd';
-import { 
-  RocketOutlined, 
-  DownloadOutlined, 
-  FileTextOutlined, 
+import {
+  RocketOutlined,
+  DownloadOutlined,
+  FileTextOutlined,
   CopyOutlined,
   CalculatorOutlined,
   EditOutlined,
@@ -52,10 +52,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploymentProgress, setDeploymentProgress] = useState<string>('');
   const [deploymentOutput, setDeploymentOutput] = useState<string>('');
   const [deploymentModalVisible, setDeploymentModalVisible] = useState(false);
-  const [deploymentId, setDeploymentId] = useState<string>('');
-  const [deploymentSteps, setDeploymentSteps] = useState<any[]>([]);
-  const [currentStep, setCurrentStep] = useState<number>(0);
-  
+
   // Helper to build workspace monitor URL
   const getWorkspaceMonitorUrl = (fallback?: string): string | null => {
     const cfg = (generatedConfigs as any)?.workload_config;
@@ -75,12 +72,22 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
     if (savedEdits[filename]) {
       return savedEdits[filename];
     }
-    
+
     // Otherwise return original content
     if (filename === 'databricks.yml') {
-      return JSON.stringify(generatedConfigs.databricks_config, null, 2);
+      const content = generatedConfigs.databricks_config;
+      if (content && content.yaml_content) {
+        return content.yaml_content;
+      } else {
+        return JSON.stringify(content, null, 2);
+      }
     } else if (filename === 'synced_delta_tables.yml') {
-      return JSON.stringify(generatedConfigs.synced_tables, null, 2);
+      const content = generatedConfigs.synced_tables;
+      if (content && content.yaml_content) {
+        return content.yaml_content;
+      } else {
+        return JSON.stringify(content, null, 2);
+      }
     } else if (filename === 'lakebase_instance.yml') {
       const content = generatedConfigs.lakebase_instance;
       if (content && content.yaml_content) {
@@ -114,7 +121,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
       ...prev,
       [selectedFile]: editedContent
     }));
-    
+
     message.success('Changes saved successfully!');
     setIsEditing(false);
   };
@@ -135,11 +142,12 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
       }
 
       // Extract tables from the configuration - try multiple possible paths
-      const tables = tablesConfig?.synced_tables ||
-                     workloadConfig?.delta_synchronization?.tables_to_sync ||
-                     workloadConfig?.delta_synchronization?.tables ||
-                     (generatedConfigs as any)?.tables ||
-                     [];
+      const tables = tablesConfig?.config_data?.synced_tables ||
+        tablesConfig?.synced_tables ||
+        workloadConfig?.delta_synchronization?.tables_to_sync ||
+        workloadConfig?.delta_synchronization?.tables ||
+        (generatedConfigs as any)?.tables ||
+        [];
 
       console.log('Debug - Deployment tables extraction:', { tablesConfig, workloadConfig, tables });
 
@@ -320,8 +328,6 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
       } else if (response.ok && result.success) {
         setDeploymentProgress('Deployment completed successfully!');
-        setDeploymentSteps(result.progress?.steps || []);
-        setCurrentStep(result.progress?.current_step || 0);
 
         let output = '✅ Deployment completed successfully!\n\n';
 
@@ -352,8 +358,6 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
       } else {
         setDeploymentProgress('Deployment failed!');
-        setDeploymentSteps(result.progress?.steps || []);
-        setCurrentStep(result.progress?.current_step || 0);
 
         let errorOutput = `❌ Deployment failed: ${result.message}\n\n`;
 
@@ -375,7 +379,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
   const handleDownloadFile = (filename: string, content: any) => {
     let fileContent;
-    
+
     // If we're currently viewing this file and it's being edited, use edited content
     if (selectedFile === filename && isEditing) {
       fileContent = editedContent;
@@ -389,7 +393,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
     } else {
       fileContent = JSON.stringify(content, null, 2);
     }
-    
+
     const blob = new Blob([fileContent], {
       type: 'text/yaml'
     });
@@ -431,8 +435,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         style={{ marginBottom: '24px' }}
       >
         <Paragraph>
-          Choose your preferred deployment method: automatic deployment using the Python SDK for a seamless experience,
-          or manual deployment using the Databricks CLI for more control.
+          <li>Choose your preferred deployment method: automatic deployment using the Python SDK for a seamless experience,
+            or manual deployment using the Databricks CLI and Databricks Asset Bundle for more control.</li>
+          <li>To generate deployment information, update the Databricks configuration section and run <strong>Generate Cost Estimate</strong> on the <strong>Lakebase Calculator</strong> page.</li>
         </Paragraph>
       </Card>
 
@@ -444,8 +449,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             <Paragraph type="secondary">
               Please use the Lakebase Calculator tab to generate cost estimates and configuration files first.
             </Paragraph>
-            <Button 
-              type="primary" 
+            <Button
+              type="primary"
               icon={<CalculatorOutlined />}
               className="databricks-primary-btn"
               onClick={() => message.info('Please use the Lakebase Calculator tab first')}
@@ -479,8 +484,54 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               style={{ marginBottom: '16px' }}
             />
 
+            {/* Combined Important Information */}
+            <Alert
+              message="Important Deployment Information"
+              description={
+                <div>
+                  <div style={{ marginBottom: '16px' }}>
+                    <h4 style={{ margin: '0 0 8px 0', color: '#1890ff' }}>🔐 Required Unity Catalog Permissions</h4>
+                    <p><strong>To create Lakebase instances and sync Delta tables, you need:</strong></p>
+                    <ul style={{ marginBottom: '8px' }}>
+                      <li><strong>Database Instance Management:</strong> refer to <a href="https://docs.databricks.com/aws/en/security/auth/access-control/#database-instance-acls" target="_blank" rel="noopener noreferrer">Database instance ACLs</a></li>
+                      <li><strong>Unity Catalog Access:</strong> <code>CREATE CATALOG, USE CATALOG</code> and <code>CREATE SCHEMA</code> permissions on the target catalog</li>
+                      <li><strong>Delta Table Access:</strong> <code>SELECT</code> permission on source Delta tables to be synced</li>
+                      <li><strong>Pipeline Storage Access:</strong> <code>USE SCHEMA</code> and <code>CREATE TABLE</code> permissions on the storage catalog and schema for the Delta table Lakeflow synced pipelines</li>
+                    </ul>
+                    <p><strong>Note:</strong> If resources already exist, you need <code>USE</code> permissions to view and access them.</p>
+                  </div>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <h4 style={{ margin: '0 0 8px 0', color: '#ff4d4f' }}>⚠️ Sync Mode Cannot Be Changed After Creation</h4>
+                    <p><strong>Table sync mode is permanent once set.</strong></p>
+                    <p>To change sync mode (SNAPSHOT, TRIGGERED, CONTINUOUS), you must:</p>
+                    <ol style={{ marginBottom: '8px' }}>
+                      <li>Delete the existing synced table</li>
+                      <li>Recreate it with the new sync mode</li>
+                    </ol>
+                    <p>Choose your sync mode carefully during initial configuration.</p>
+                  </div>
+
+                  <div>
+                    <h4 style={{ margin: '0 0 8px 0', color: '#52c41a' }}>🚀 Deployment Behavior</h4>
+                    <p><strong>This deployment will:</strong></p>
+                    <ul style={{ marginBottom: '8px' }}>
+                      <li><strong>Create new resources</strong> if they don't exist (Lakebase instance, catalog, synced tables)</li>
+                      <li><strong>Return existing instance information</strong> if the instance is already available (provided you have sufficient permissions)</li>
+                    </ul>
+                    <p><strong>Note:</strong> The deployment process checks for existing resources first and only creates new ones when necessary. Update to existing assets is not supported.</p>
+                  </div>
+                </div>
+              }
+              type="info"
+              showIcon
+              className="databricks-alert"
+              style={{ marginBottom: '16px' }}
+            />
+
             {/* Deployment Summary */}
             <Card size="small" title="Deployment Summary" style={{ marginBottom: '16px', backgroundColor: '#fafafa' }}>
+
               <Row gutter={[16, 8]}>
                 <Col span={12}>
                   <Text strong>Databricks Workspace:</Text>
@@ -507,16 +558,27 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   <br />
                   <Text>{(generatedConfigs as any)?.workload_config?.database_name || 'databricks_postgres'}</Text>
                 </Col>
+                <Col span={12}>
+                  <Text strong>Storage Catalog:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.storage_catalog || 'main'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Storage Schema:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.storage_schema || 'default'}</Text>
+                </Col>
                 <Col span={24}>
                   <Text strong>Tables to Sync:</Text>
                   <br />
                   {(() => {
                     // Try multiple possible paths for tables data
-                    const tables = (generatedConfigs as any)?.synced_tables?.synced_tables ||
-                                 (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
-                                 (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
-                                 (generatedConfigs as any)?.tables ||
-                                 [];
+                    const tables = (generatedConfigs as any)?.synced_tables?.config_data?.synced_tables ||
+                      (generatedConfigs as any)?.synced_tables?.synced_tables ||
+                      (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
+                      (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
+                      (generatedConfigs as any)?.tables ||
+                      [];
 
                     console.log('Debug - generatedConfigs:', generatedConfigs);
                     console.log('Debug - tables found:', tables);
@@ -529,14 +591,20 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                       <div>
                         <Text>{tables.length} table{tables.length !== 1 ? 's' : ''}</Text>
                         <div style={{ marginTop: '8px' }}>
-                          {tables.slice(0, 3).map((table: any, index: number) => (
-                            <Tag key={index} style={{ marginBottom: '4px' }}>
-                              {table.table_name || table.name || `Table ${index + 1}`}
-                            </Tag>
-                          ))}
-                          {tables.length > 3 && (
-                            <Tag>+{tables.length - 3} more</Tag>
-                          )}
+                          {tables.map((table: any, index: number) => {
+                            const tableName = table.table_name || table.name || `Table ${index + 1}`;
+                            const syncMode = table.scheduling_policy || table.sync_policy || 'SNAPSHOT';
+                            return (
+                              <div key={index} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Tag style={{ marginBottom: '4px' }}>
+                                  {tableName}
+                                </Tag>
+                                <Tag color="blue" style={{ marginBottom: '4px' }}>
+                                  {syncMode}
+                                </Tag>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -570,6 +638,38 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                 </Button>
               </Col>
             </Row>
+
+            {/* Post-Deployment Information */}
+            <Alert
+              message="After Deployment: Check Actual Table Sizes"
+              description={
+                <div>
+                  <p>Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size of tables and indexes in your database:</p>
+                  <div style={{
+                    backgroundColor: '#f5f5f5',
+                    padding: '12px',
+                    borderRadius: '4px',
+                    margin: '8px 0',
+                    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                    fontSize: '12px',
+                    overflow: 'auto'
+                  }}>
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                      {`SELECT 
+  pg_total_relation_size(pi.inhrelid::regclass) as size,
+  pc.relname 
+FROM pg_inherits pi 
+JOIN pg_class pc ON pi.inhparent = pc.oid;`}
+                    </pre>
+                  </div>
+                  <p><strong>Note:</strong> This query will show the total size (including indexes) for each table in your Lakebase database. Run this query in Query Editor in Databricks when connected to the Lakebase database.</p>
+                </div>
+              }
+              type="info"
+              showIcon
+              className="databricks-alert"
+              style={{ marginTop: '16px' }}
+            />
           </Card>
 
           {/* Manual Deployment Section */}
@@ -726,16 +826,16 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
           <Button key="close" onClick={() => setModalVisible(false)}>
             Close
           </Button>,
-          <Button 
-            key="edit" 
+          <Button
+            key="edit"
             icon={isEditing ? <CloseOutlined /> : <EditOutlined />}
             onClick={handleEditToggle}
           >
             {isEditing ? 'Cancel' : 'Edit'}
           </Button>,
           ...(isEditing ? [
-            <Button 
-              key="save" 
+            <Button
+              key="save"
               type="primary"
               icon={<SaveOutlined />}
               onClick={handleSaveChanges}
@@ -743,8 +843,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               Save
             </Button>
           ] : []),
-          <Button 
-            key="copy" 
+          <Button
+            key="copy"
             icon={<CopyOutlined />}
             onClick={() => {
               const contentToCopy = isEditing ? editedContent : getFileContent(selectedFile);
@@ -759,7 +859,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
           <TextArea
             value={editedContent}
             onChange={(e) => setEditedContent(e.target.value)}
-            style={{ 
+            style={{
               fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
               fontSize: '12px',
               minHeight: '400px',
@@ -768,9 +868,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             placeholder="Edit the configuration file..."
           />
         ) : (
-          <pre style={{ 
-            backgroundColor: '#f5f5f5', 
-            padding: '16px', 
+          <pre style={{
+            backgroundColor: '#f5f5f5',
+            padding: '16px',
             borderRadius: '4px',
             maxHeight: '400px',
             overflow: 'auto',
@@ -788,8 +888,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         onCancel={() => setDeploymentModalVisible(false)}
         width={800}
         footer={[
-          <Button 
-            key="close" 
+          <Button
+            key="close"
             onClick={() => setDeploymentModalVisible(false)}
             disabled={deploying}
           >
@@ -798,9 +898,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         ]}
       >
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
             marginBottom: '16px',
             padding: '12px',
             backgroundColor: '#f0f0f0',
@@ -809,19 +909,19 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             {deploying ? (
               <Spin size="small" style={{ marginRight: '8px' }} />
             ) : (
-              <div style={{ 
-                width: '16px', 
-                height: '16px', 
-                borderRadius: '50%', 
-                backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' : 
-                                deploymentProgress.includes('failed') ? '#ff4d4f' : 
-                                deploymentProgress.includes('downloaded successfully') ? '#52c41a' : '#1890ff',
+              <div style={{
+                width: '16px',
+                height: '16px',
+                borderRadius: '50%',
+                backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' :
+                  deploymentProgress.includes('failed') ? '#ff4d4f' :
+                    deploymentProgress.includes('downloaded successfully') ? '#52c41a' : '#1890ff',
                 marginRight: '8px'
               }} />
             )}
             <span style={{ fontWeight: 'bold' }}>{deploymentProgress}</span>
           </div>
-          
+
           {/* Monitor link */}
           {(() => {
             const url = getWorkspaceMonitorUrl();
@@ -836,9 +936,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
           {deploymentOutput && (
             <div>
               <h4>Deployment Output:</h4>
-              <pre style={{ 
-                backgroundColor: '#f5f5f5', 
-                padding: '12px', 
+              <pre style={{
+                backgroundColor: '#f5f5f5',
+                padding: '12px',
                 borderRadius: '4px',
                 maxHeight: '300px',
                 overflow: 'auto',

@@ -1,4 +1,6 @@
 export interface TableToSync {
+  // Stable identifier used for React keys to avoid duplicate-key warnings
+  id?: string;
   name: string;
   primary_keys: string[];
   scheduling_policy: 'SNAPSHOT' | 'TRIGGERED' | 'CONTINUOUS';
@@ -38,6 +40,8 @@ export interface WorkloadConfig {
   lakebase_instance_name: string;
   uc_catalog_name: string;
   database_name: string;
+  storage_catalog: string;
+  storage_schema: string;
 }
 
 export interface CostBreakdown {

@@ -330,8 +330,8 @@ class DatabricksDeploymentService:
 
         except DatabricksError as e:
             raise Exception(f"Failed to create database instance: {str(e)}")
-
-    async def _wait_for_instance_available(self, instance_name: str, timeout: int = 600):
+    # Wait for 20 minutes for the instance to become available
+    async def _wait_for_instance_available(self, instance_name: str, timeout: int = 1200):
         """Wait for database instance to become available"""
         start_time = asyncio.get_event_loop().time()
 
@@ -458,8 +458,8 @@ class DatabricksDeploymentService:
                         primary_key_columns=primary_keys,
                         scheduling_policy=scheduling_policy,
                         new_pipeline_spec=NewPipelineSpec(
-                            storage_catalog="main",
-                            storage_schema="default"
+                            storage_catalog=config.get('storage_catalog', 'main'),
+                            storage_schema=config.get('storage_schema', 'default')
                         )
                     )
 

@@ -10,8 +10,7 @@ import {
   Select,
   Table,
   message,
-  Tooltip,
-  Alert
+  Tooltip
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { WorkloadConfig, TableToSync } from '../types';
@@ -27,6 +26,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
   const [form] = Form.useForm();
   const [tables, setTables] = useState<TableToSync[]>([
     {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-0`,
       name: 'samples.tpcds_sf1.customer',
       primary_keys: ['c_customer_sk'],
       scheduling_policy: 'SNAPSHOT'
@@ -35,6 +35,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
 
   const addTable = () => {
     setTables([...tables, {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${tables.length}`,
       name: '',
       primary_keys: [],
       scheduling_policy: 'SNAPSHOT'
@@ -89,7 +90,9 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       databricks_profile_name: values.databricks_profile || 'DEFAULT',
       lakebase_instance_name: values.lakebase_instance_name || 'lakebase-accelerator-instance',
       uc_catalog_name: values.uc_catalog_name || 'lakebase-accelerator-catalog',
-      database_name: values.database_name || 'databricks_postgres'
+      database_name: values.database_name || 'databricks_postgres',
+      storage_catalog: values.storage_catalog || 'main',
+      storage_schema: values.storage_schema || 'default'
     };
 
     onSubmit(config);
@@ -97,7 +100,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
 
   const tableColumns = [
     {
-      title: 'Table Name',
+      title: 'Delta Table Name',
       dataIndex: 'name',
       render: (text: string, record: TableToSync, index: number) => (
         <Input
@@ -222,7 +225,9 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         databricks_profile: 'DEFAULT',
         lakebase_instance_name: 'lakebase-accelerator-instance',
         uc_catalog_name: 'lakebase_accelerator_catalog',
-        database_name: 'databricks_postgres'
+        database_name: 'databricks_postgres',
+        storage_catalog: 'main',
+        storage_schema: 'default'
       }}
     >
       {/* Database Instance Configuration */}
@@ -232,7 +237,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label={
                 <span>
-                  Bulk Writes/Second{' '}
+                  Bulk Writes rows/second{' '}
                   <Tooltip title="Writes for initial data loading and batch updates">
                     <InfoCircleOutlined />
                   </Tooltip>
@@ -248,7 +253,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label={
                 <span>
-                  Continuous Writes/Second{' '}
+                  Continuous Writes rows/second{' '}
                   <Tooltip title="Real-time writes for ongoing operations">
                     <InfoCircleOutlined />
                   </Tooltip>
@@ -264,7 +269,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label={
                 <span>
-                  Reads/Second{' '}
+                  Reads rows/second{' '}
                   <Tooltip title="Read operations for queries and lookups">
                     <InfoCircleOutlined />
                   </Tooltip>
@@ -441,13 +446,13 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       </Card>
 
       {/* Tables to Sync */}
-      <Card 
-        title="Tables to Sync" 
+      <Card
+        title="Tables to Sync"
         className="databricks-card"
         extra={
-          <Button 
-            type="dashed" 
-            onClick={addTable} 
+          <Button
+            type="dashed"
+            onClick={addTable}
             icon={<PlusOutlined />}
             className="databricks-secondary-btn"
           >
@@ -461,7 +466,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
           columns={tableColumns}
           dataSource={tables}
           pagination={false}
-          rowKey={(record) => `table-${record.name}`}
+          rowKey={(record) => (record.id ?? `table-${record.name}-${Math.random()}`)}
           size="small"
           className="databricks-table"
         />
@@ -506,7 +511,14 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item
-              label="Databricks Profile Name"
+              label={
+                <span>
+                  Databricks Profile Name{' '}
+                  <Tooltip title="Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
               name="databricks_profile"
               rules={[{ required: true, message: 'Required field' }]}
             >
@@ -540,13 +552,47 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             </Form.Item>
           </Col>
         </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label={
+                <span>
+                  Storage Catalog{' '}
+                  <Tooltip title="Unity Catalog where synced table data will be stored during processing">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
+              name="storage_catalog"
+              rules={[{ required: true, message: 'Required field' }]}
+            >
+              <Input placeholder="main" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              label={
+                <span>
+                  Storage Schema{' '}
+                  <Tooltip title="Schema within the storage catalog where synced table data will be stored during processing">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
+              name="storage_schema"
+              rules={[{ required: true, message: 'Required field' }]}
+            >
+              <Input placeholder="default" />
+            </Form.Item>
+          </Col>
+        </Row>
       </Card>
 
       <Form.Item>
-        <Button 
-          type="primary" 
-          htmlType="submit" 
-          loading={loading} 
+        <Button
+          type="primary"
+          htmlType="submit"
+          loading={loading}
           size="large"
           className="databricks-primary-btn"
           style={{ width: '200px' }}

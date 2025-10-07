@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 # Import the cost estimator and table generator functions from services
 from services.lakebase_cost_estimator import estimate_cost_from_config
-from services.generate_synced_tables import generate_synced_tables_from_config
+from services.generate_synced_tables import generate_synced_tables_from_config, generate_synced_tables_yaml_from_config
 
 # Import concurrency testing modules
-from models.query_models import ConcurrencyTestRequest, ConcurrencyTestReport, SimpleQueryConfig, PgbenchTestRequest, PgbenchTestReport
+from models.query_models import ConcurrencyTestRequest, ConcurrencyTestReport, SimpleQueryConfig, PgbenchTestReport
 from services.lakebase_connection_service import LakebaseConnectionService
 from services.pgbench_service import PgbenchService
 from services.oauth_service import DatabricksOAuthService
@@ -45,6 +45,12 @@ app = FastAPI(
 
 # Global progress tracker for deployment status
 deployment_progress_tracker = {}
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Databricks Apps."""
+    return {"status": "healthy", "service": "lakebase-accelerator-api"}
 
 # Configure CORS
 app.add_middleware(
@@ -90,6 +96,8 @@ class WorkloadConfigRequest(BaseModel):
     lakebase_instance_name: str = Field("lakebase-accelerator-instance", description="Name for the Lakebase instance")
     uc_catalog_name: str = Field("lakebase-accelerator-catalog", description="Name for the UC catalog")
     database_name: str = Field("databricks_postgres", description="Name for the database")
+    storage_catalog: str = Field("main", description="Unity Catalog for storing synced table data during processing")
+    storage_schema: str = Field("default", description="Schema within storage catalog for synced table data")
     recommended_cu: int = Field(1, description="Recommended CU from cost estimation")
     databricks_profile_name: Optional[str] = Field(None, description="Databricks profile name for authentication (localhost only)")
 
@@ -195,7 +203,14 @@ async def generate_databricks_config(request: WorkloadConfigRequest):
             }
         }
 
-        return JSONResponse(content=databricks_config)
+        # Convert to YAML string
+        yaml_content = yaml.dump(databricks_config, default_flow_style=False, sort_keys=False, indent=2)
+
+        return JSONResponse(content={
+            'yaml_content': yaml_content,
+            'filename': 'databricks.yml',
+            'description': 'Main bundle configuration'
+        })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating databricks config: {str(e)}")
@@ -238,7 +253,6 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
     """
     Generate synced tables configuration from workload config.
     """
-    print("Request in generate-synced-tables: ", request.model_dump())
     try:
         # Prepare workload data for the table generator
         workload_data = {
@@ -247,13 +261,23 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
             'delta_synchronization': request.delta_synchronization.model_dump(),
             'uc_catalog_name': request.uc_catalog_name,
             'lakebase_instance_name': request.lakebase_instance_name,
-            'database_name': request.database_name
+            'database_name': request.database_name,
+            'storage_catalog': request.storage_catalog,
+            'storage_schema': request.storage_schema
         }
         
-        # Call the table generator directly
+        # Call the table generator to get YAML string
+        yaml_content = generate_synced_tables_yaml_from_config(workload_data)
+        
+        # Also get the dictionary version for the deploy flow
         synced_tables_config = generate_synced_tables_from_config(workload_data)
         
-        return JSONResponse(content=synced_tables_config)
+        return JSONResponse(content={
+            'yaml_content': yaml_content,
+            'filename': 'synced_delta_tables.yml',
+            'description': 'Table sync configurations',
+            'config_data': synced_tables_config  # Keep for deploy flow
+        })
 
     except Exception as e:
         print(f"Error generating synced tables: {str(e)}")
@@ -314,16 +338,18 @@ async def deploy_to_databricks(request: DeploymentRequest):
 
                 deployment_service.set_progress_callback(progress_callback)
 
-                # Convert request to config dictionary
-                config = {
-                    'databricks_workspace_url': request.workload_config.databricks_workspace_url,
-                    'lakebase_instance_name': request.workload_config.lakebase_instance_name,
-                    'database_name': request.workload_config.database_name,
-                    'uc_catalog_name': request.workload_config.uc_catalog_name,
-                    'recommended_cu': request.workload_config.recommended_cu,
-                    'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
-                    'tables': request.tables
-                }
+        # Convert request to config dictionary
+        config = {
+            'databricks_workspace_url': request.workload_config.databricks_workspace_url,
+            'lakebase_instance_name': request.workload_config.lakebase_instance_name,
+            'database_name': request.workload_config.database_name,
+            'uc_catalog_name': request.workload_config.uc_catalog_name,
+            'storage_catalog': request.workload_config.storage_catalog,
+            'storage_schema': request.workload_config.storage_schema,
+            'recommended_cu': request.workload_config.recommended_cu,
+            'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
+            'tables': request.tables
+        }
 
                 # Deploy the instance
                 result = await deployment_service.deploy_lakebase_instance(
@@ -567,7 +593,7 @@ async def execute_concurrency_test(test_request: ConcurrencyTestRequest):
 @app.post("/api/concurrency-test/upload-query")
 async def upload_query_file(file: UploadFile = File(...)):
     """
-    Upload and parse a SQL query file, saving it to app/queries/ folder.
+    Upload and parse a SQL query file, saving it to app/queries_psycopg/ folder.
     
     Args:
         file: SQL file to upload
@@ -588,10 +614,9 @@ async def upload_query_file(file: UploadFile = File(...)):
         query_identifier = file.filename.replace('.sql', '')
         validation_result = SimpleParameterParser.validate_query_format(query_content)
         
-        # Save file to temp directory
-        import tempfile
-        temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
-        temp_dir.mkdir(exist_ok=True)
+        # Save file to app/queries_psycopg/ folder
+        queries_dir = Path(__file__).parent.parent / "queries_psycopg"
+        queries_dir.mkdir(exist_ok=True)
         
         file_path = temp_dir / file.filename
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -612,7 +637,7 @@ async def upload_query_file(file: UploadFile = File(...)):
 @app.post("/api/concurrency-test/run-uploaded-tests")
 async def run_uploaded_tests(test_request: dict):
     """
-    Run concurrency tests using uploaded SQL files from app/queries/ folder.
+    Run concurrency tests using uploaded SQL files from app/queries_psycopg/ folder.
     
     Args:
         test_request: Test configuration with databricks_profile, instance_name, database_name, concurrency_level
@@ -644,16 +669,14 @@ async def run_uploaded_tests(test_request: dict):
         if not workspace_url:
             raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
         
-        # Get all SQL files from temp directory
-        import tempfile
-        temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
-        
-        if not temp_dir.exists():
-            raise HTTPException(status_code=404, detail="No queries folder found")
+        # Get all SQL files from app/queries_psycopg/ folder
+        queries_dir = Path(__file__).parent.parent / "queries_psycopg"
+        if not queries_dir.exists():
+            raise HTTPException(status_code=404, detail="No queries_psycopg folder found")
         
         sql_files = list(temp_dir.glob("*.sql"))
         if not sql_files:
-            raise HTTPException(status_code=404, detail="No SQL files found in queries folder")
+            raise HTTPException(status_code=404, detail="No SQL files found in queries_psycopg folder")
         
         # Parse each SQL file and prepare queries
         execution_queries = []
@@ -894,51 +917,6 @@ async def upload_pgbench_query_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"File upload failed: {str(e)}")
 
-@app.post("/api/pgbench-test/execute")
-async def execute_pgbench_test(test_request: PgbenchTestRequest):
-    """
-    Execute pgbench test against Lakebase instance using uploaded queries.
-
-    Args:
-        test_request: Complete pgbench test configuration
-
-    Returns:
-        PgbenchTestReport with test results and metrics
-    """
-    try:
-        # Initialize pgbench service
-        pgbench_service = PgbenchService()
-
-        # Initialize connection
-        connection_initialized = await pgbench_service.initialize_connection(
-            workspace_url=test_request.workspace_url,
-            instance_name=test_request.instance_name,
-            database=test_request.database_name
-        )
-
-        if not connection_initialized:
-            raise HTTPException(status_code=500, detail="Failed to initialize pgbench connection")
-
-        # Convert query configs to format expected by pgbench service
-        queries_with_weights = []
-        for query_config in test_request.queries:
-            queries_with_weights.append({
-                "query_identifier": query_config.query_identifier,
-                "query_content": query_config.query_content,
-                "weight": query_config.weight
-            })
-
-        # Execute pgbench test
-        report = await pgbench_service.execute_pgbench_test(
-            queries=queries_with_weights,
-            pgbench_config=test_request.pgbench_config.model_dump()
-        )
-
-        return report
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"pgbench test failed: {str(e)}")
-
 @app.post("/api/pgbench-test/run-uploaded-tests")
 async def run_pgbench_uploaded_tests(test_request: dict):
     """
@@ -1064,7 +1042,6 @@ async def get_pgbench_test_status():
             "pgbench_available": True,
             "available_endpoints": [
                 "/api/pgbench-test/upload-query",
-                "/api/pgbench-test/execute",
                 "/api/pgbench-test/run-uploaded-tests"
             ]
         }
