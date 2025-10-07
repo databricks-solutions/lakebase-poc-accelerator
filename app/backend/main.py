@@ -91,6 +91,7 @@ class WorkloadConfigRequest(BaseModel):
     uc_catalog_name: str = Field("lakebase-accelerator-catalog", description="Name for the UC catalog")
     database_name: str = Field("databricks_postgres", description="Name for the database")
     recommended_cu: int = Field(1, description="Recommended CU from cost estimation")
+    databricks_profile_name: Optional[str] = Field(None, description="Databricks profile name for authentication (localhost only)")
 
 class CostEstimationRequest(BaseModel):
     workload_config: WorkloadConfigRequest

@@ -86,7 +86,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
       },
       databricks_workspace_url: values.databricks_workspace_url,
       warehouse_http_path: values.warehouse_http_path,
-      databricks_profile: values.databricks_profile || 'DEFAULT',
+      databricks_profile_name: values.databricks_profile || 'DEFAULT',
       lakebase_instance_name: values.lakebase_instance_name || 'lakebase-accelerator-instance',
       uc_catalog_name: values.uc_catalog_name || 'lakebase-accelerator-catalog',
       database_name: values.database_name || 'databricks_postgres'

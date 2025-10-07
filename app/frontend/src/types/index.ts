@@ -33,8 +33,8 @@ export interface WorkloadConfig {
   delta_synchronization: DeltaSynchronizationConfig;
   databricks_workspace_url: string;
   warehouse_http_path: string;
-  // Optional: support profile-based auth to Databricks SDK
-  databricks_profile?: string;
+  // Optional: support profile-based auth to Databricks SDK (localhost only)
+  databricks_profile_name?: string;
   lakebase_instance_name: string;
   uc_catalog_name: string;
   database_name: string;

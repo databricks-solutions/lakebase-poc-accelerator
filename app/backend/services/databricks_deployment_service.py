@@ -138,6 +138,10 @@ class DatabricksDeploymentService:
             # Step 1: Initialize Databricks connection
             self._progress.start_step(0, "Connecting to Databricks workspace...")
             self._update_progress()
+            
+            logger.info(f"DEBUG DEPLOY: About to initialize client with profile='{profile}'")
+            logger.info(f"DEBUG DEPLOY: workspace_url from config: '{config.get('databricks_workspace_url')}'")
+            
             await self._initialize_client(config.get('databricks_workspace_url'), profile)
             self._progress.complete_step(0, "Successfully connected to Databricks")
             self._update_progress()
@@ -218,20 +222,35 @@ class DatabricksDeploymentService:
     async def _initialize_client(self, workspace_url: Optional[str], profile: Optional[str]):
         """Initialize Databricks workspace client"""
         try:
-            # Try environment variables first (for local development)
+            # Priority: profile > workspace_url > environment variables > default
             import os
-            host = os.getenv('DATABRICKS_HOST')
-            token = os.getenv('DATABRICKS_TOKEN')
             
-            if host and token:
-                logger.info("Using environment variables for Databricks authentication")
-                self._workspace_client = WorkspaceClient(host=host, token=token)
+            logger.info(f"DEBUG: _initialize_client called with profile='{profile}', workspace_url='{workspace_url}'")
+            
+            if profile:
+                # User specified a profile - use it (highest priority)
+                logger.info(f"Using Databricks profile: {profile}")
+                if workspace_url:
+                    self._workspace_client = WorkspaceClient(profile=profile, host=workspace_url)
+                else:
+                    self._workspace_client = WorkspaceClient(profile=profile)
             elif workspace_url:
+                # Workspace URL provided but no profile
                 logger.info(f"Using workspace URL: {workspace_url}")
-                self._workspace_client = WorkspaceClient(profile=profile, host=workspace_url) if profile else WorkspaceClient(host=workspace_url)
+                self._workspace_client = WorkspaceClient(host=workspace_url)
             else:
-                logger.info(f"Using {'profile: ' + profile if profile else 'default authentication'}")
-                self._workspace_client = WorkspaceClient(profile=profile) if profile else WorkspaceClient()
+                # No profile or workspace URL - try environment variables
+                host = os.getenv('DATABRICKS_HOST')
+                token = os.getenv('DATABRICKS_TOKEN')
+                
+                # Only use env vars if token is not a placeholder
+                if host and token and token != 'your_token_here':
+                    logger.info("Using environment variables for Databricks authentication")
+                    self._workspace_client = WorkspaceClient(host=host, token=token)
+                else:
+                    # Fall back to default authentication (CLI config)
+                    logger.info("Using default Databricks authentication")
+                    self._workspace_client = WorkspaceClient()
 
             # Test connection
             current_user = self._workspace_client.current_user.me()

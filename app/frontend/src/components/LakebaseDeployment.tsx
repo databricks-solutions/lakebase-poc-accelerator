@@ -143,11 +143,16 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
       console.log('Debug - Deployment tables extraction:', { tablesConfig, workloadConfig, tables });
 
+      // Extract databricks_profile_name from workloadConfig or use null for Databricks Apps
+      const profileName = workloadConfig?.databricks_profile_name || null;
+      
       const deploymentRequest = {
         workload_config: workloadConfig,
-        databricks_profile_name: null, // Using default profile/environment variables
+        databricks_profile_name: profileName,
         tables: tables
       };
+      
+      console.log('Debug - Using profile:', profileName);
 
       // Call the new deployment API
       const response = await fetch('/api/deploy', {
