@@ -218,9 +218,19 @@ class DatabricksDeploymentService:
     async def _initialize_client(self, workspace_url: Optional[str], profile: Optional[str]):
         """Initialize Databricks workspace client"""
         try:
-            if workspace_url:
+            # Try environment variables first (for local development)
+            import os
+            host = os.getenv('DATABRICKS_HOST')
+            token = os.getenv('DATABRICKS_TOKEN')
+            
+            if host and token:
+                logger.info("Using environment variables for Databricks authentication")
+                self._workspace_client = WorkspaceClient(host=host, token=token)
+            elif workspace_url:
+                logger.info(f"Using workspace URL: {workspace_url}")
                 self._workspace_client = WorkspaceClient(profile=profile, host=workspace_url) if profile else WorkspaceClient(host=workspace_url)
             else:
+                logger.info(f"Using {'profile: ' + profile if profile else 'default authentication'}")
                 self._workspace_client = WorkspaceClient(profile=profile) if profile else WorkspaceClient()
 
             # Test connection

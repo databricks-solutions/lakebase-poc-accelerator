@@ -158,9 +158,162 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         body: JSON.stringify(deploymentRequest)
       });
 
-      const result = await response.json();
+      // Handle non-JSON responses (e.g., HTML error pages, plain text errors)
+      let result;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        result = await response.json();
+      } else {
+        // Response is not JSON, likely an error page
+        const textResponse = await response.text();
+        throw new Error(`Server returned non-JSON response (${response.status}): ${textResponse.substring(0, 200)}...`);
+      }
 
-      if (response.ok && result.success) {
+      // Check if deployment started successfully
+      if (response.ok && result.success && result.deployment_id) {
+        const deploymentId = result.deployment_id;
+        // Capture form values for use in timeout message
+        const workspaceUrl = workloadConfig.databricks_workspace_url?.replace(/^https?:\/\//, '') || 'your-workspace';
+        const instanceName = workloadConfig.lakebase_instance_name || 'your-instance';
+        
+        setDeploymentProgress('Deployment in progress...');
+        setDeploymentOutput('🚀 Deployment started. Monitoring progress...\n\n');
+
+        // Poll for deployment progress every 2 seconds with retry logic
+        const startTime = Date.now();
+        let consecutiveErrors = 0;
+        const maxConsecutiveErrors = 5;
+        let timeoutMode = false;
+        
+        const pollInterval = setInterval(async () => {
+          try {
+            const progressResponse = await fetch(`/api/deploy/progress/${deploymentId}`, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json'
+              }
+            });
+            
+            // Handle 504 Gateway Timeout gracefully - don't stop polling
+            if (progressResponse.status === 504) {
+              console.log('Gateway timeout on progress poll, will retry...');
+              consecutiveErrors++;
+              if (consecutiveErrors >= maxConsecutiveErrors && !timeoutMode) {
+                // Switch to timeout mode instead of failing
+                timeoutMode = true;
+                setDeploymentProgress('⚠️ Progress monitoring unavailable due to gateway timeouts');
+                setDeploymentOutput(
+                  `⚠️ Unable to monitor deployment progress due to gateway limitations.\n\n` +
+                  `Your deployment is running in the background.\n\n` +
+                  `Please check your Databricks workspace to monitor status:\n` +
+                  `https://${workspaceUrl}/compute/database-instances/${instanceName}\n\n` +
+                  `The deployment typically takes 5-10 minutes to complete.`
+                );
+                // Keep polling but don't show errors
+                consecutiveErrors = 0; // Reset to continue polling
+              }
+              return; // Skip this poll cycle, try again next time
+            }
+            
+            if (!progressResponse.ok) {
+              throw new Error(`Failed to fetch progress: ${progressResponse.status}`);
+            }
+
+            // Reset error counter on successful response
+            consecutiveErrors = 0;
+            
+            // If we were in timeout mode but now got a response, switch back
+            if (timeoutMode) {
+              timeoutMode = false;
+            }
+            
+            const progress = await progressResponse.json();
+            const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+
+            // Update progress display
+            setDeploymentProgress(`${progress.message || 'Deploying...'} (${elapsedTime}s)`);
+            setDeploymentSteps(progress.steps || []);
+            setCurrentStep(progress.current_step || 0);
+
+            // Build output message
+            let output = `🚀 Deployment Progress (${elapsedTime}s elapsed)\n\n`;
+            output += `Status: ${progress.status}\n`;
+            output += `Step: ${progress.current_step}/${progress.total_steps}\n\n`;
+
+            if (progress.steps) {
+              output += 'Steps:\n';
+              progress.steps.forEach((step: any, index: number) => {
+                const icon = step.status === 'completed' ? '✅' : step.status === 'failed' ? '❌' : '⏳';
+                output += `  ${icon} ${index + 1}. ${step.name}: ${step.status}\n`;
+              });
+              output += '\n';
+            }
+
+            setDeploymentOutput(output);
+
+            // Check if deployment completed or failed
+            if (progress.status === 'completed') {
+              clearInterval(pollInterval);
+              setDeploymentProgress('Deployment completed successfully!');
+
+              let finalOutput = output + '\n✅ Deployment completed successfully!\n\n';
+
+              // Add result details if available
+              if (progress.result) {
+                const res = progress.result;
+                if (res.instance) {
+                  finalOutput += `📊 Database Instance Details:\n`;
+                  finalOutput += `  • Name: ${res.instance.name}\n`;
+                  finalOutput += `  • ID: ${res.instance.id || 'Provisioning...'}\n`;
+                  finalOutput += `  • Host: ${res.instance.host || 'Provisioning...'}\n`;
+                  finalOutput += `  • Port: ${res.instance.port || '5432'}\n`;
+                  finalOutput += `  • State: ${res.instance.state || 'Unknown'}\n`;
+                  finalOutput += `  • Capacity: ${res.instance.capacity || 'N/A'}\n\n`;
+                }
+
+                if (res.catalog) {
+                  finalOutput += `📁 Unity Catalog:\n`;
+                  finalOutput += `  • Name: ${res.catalog.name}\n\n`;
+                }
+
+                if (res.tables && res.tables.length > 0) {
+                  finalOutput += `📋 Synced Tables:\n`;
+                  res.tables.forEach((table: any) => {
+                    finalOutput += `  • ${table.name} (${table.status})\n`;
+                  });
+                }
+              }
+
+              setDeploymentOutput(finalOutput);
+              message.success('Lakebase instance deployed successfully!');
+
+            } else if (progress.status === 'failed') {
+              clearInterval(pollInterval);
+              setDeploymentProgress('Deployment failed!');
+
+              let errorOutput = output + '\n❌ Deployment failed!\n\n';
+              if (progress.error_message) {
+                errorOutput += `Error: ${progress.error_message}\n\n`;
+              }
+
+              setDeploymentOutput(errorOutput);
+              message.error('Deployment failed. Check the output for details.');
+            }
+
+            // Safety timeout: stop polling after 10 minutes
+            if (elapsedTime > 600) {
+              clearInterval(pollInterval);
+              setDeploymentProgress('Deployment timeout - please check workspace manually');
+              message.warning('Deployment is taking longer than expected. Please check your Databricks workspace.');
+            }
+
+          } catch (pollError) {
+            console.error('Error polling deployment progress:', pollError);
+            // Don't stop polling on individual errors, but log them
+          }
+        }, 2000); // Poll every 2 seconds
+
+      } else if (response.ok && result.success) {
         setDeploymentProgress('Deployment completed successfully!');
         setDeploymentSteps(result.progress?.steps || []);
         setCurrentStep(result.progress?.current_step || 0);

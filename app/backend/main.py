@@ -262,7 +262,7 @@ async def generate_synced_tables(request: WorkloadConfigRequest):
 async def deploy_to_databricks(request: DeploymentRequest):
     """
     Deploy Lakebase instance directly using Databricks SDK.
-    Creates database instance, catalog, and synced tables.
+    Returns immediately with deployment_id, deployment runs in background.
     """
     try:
         import uuid
@@ -270,50 +270,145 @@ async def deploy_to_databricks(request: DeploymentRequest):
         # Generate unique deployment ID
         deployment_id = str(uuid.uuid4())
 
-        # Initialize deployment service
-        deployment_service = DatabricksDeploymentService()
-
-        # Set up progress tracking
-        def progress_callback(progress: DeploymentProgress):
-            deployment_progress_tracker[deployment_id] = progress.__dict__
-
-        deployment_service.set_progress_callback(progress_callback)
-
-        # Convert request to config dictionary
-        config = {
-            'databricks_workspace_url': request.workload_config.databricks_workspace_url,
-            'lakebase_instance_name': request.workload_config.lakebase_instance_name,
-            'database_name': request.workload_config.database_name,
-            'uc_catalog_name': request.workload_config.uc_catalog_name,
-            'recommended_cu': request.workload_config.recommended_cu,
-            'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
-            'tables': request.tables
+        # Initialize progress tracker with pending status
+        deployment_progress_tracker[deployment_id] = {
+            'status': 'pending',
+            'message': 'Deployment starting...',
+            'current_step': 0,
+            'total_steps': 5,
+            'steps': [
+                {'name': 'Initialize', 'status': 'pending'},
+                {'name': 'Database Instance', 'status': 'pending'},
+                {'name': 'Database Catalog', 'status': 'pending'},
+                {'name': 'Synced Tables', 'status': 'pending'},
+                {'name': 'Finalize', 'status': 'pending'}
+            ]
         }
 
-        # Deploy the instance
-        result = await deployment_service.deploy_lakebase_instance(
-            config=config,
-            profile=request.databricks_profile_name
-        )
+        # Start deployment in background task
+        async def run_deployment():
+            try:
+                # Initialize deployment service
+                deployment_service = DatabricksDeploymentService()
 
-        # Add deployment ID to result
-        result['deployment_id'] = deployment_id
+                # Set up progress tracking
+                def progress_callback(progress: DeploymentProgress):
+                    # Create JSON-serializable progress dict (avoid circular references)
+                    deployment_progress_tracker[deployment_id] = {
+                        'status': progress.status,
+                        'message': progress.steps[progress.current_step]['details'] if progress.current_step < len(progress.steps) else 'Processing...',
+                        'current_step': progress.current_step,
+                        'total_steps': progress.total_steps,
+                        'error_message': progress.error_message,
+                        'steps': [
+                            {
+                                'name': step.get('description', ''),
+                                'status': step.get('status', 'pending'),
+                                'details': step.get('details', ''),
+                                'error': step.get('error', None)
+                            }
+                            for step in progress.steps
+                        ]
+                    }
 
-        return result
+                deployment_service.set_progress_callback(progress_callback)
+
+                # Convert request to config dictionary
+                config = {
+                    'databricks_workspace_url': request.workload_config.databricks_workspace_url,
+                    'lakebase_instance_name': request.workload_config.lakebase_instance_name,
+                    'database_name': request.workload_config.database_name,
+                    'uc_catalog_name': request.workload_config.uc_catalog_name,
+                    'recommended_cu': request.workload_config.recommended_cu,
+                    'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
+                    'tables': request.tables
+                }
+
+                # Deploy the instance
+                result = await deployment_service.deploy_lakebase_instance(
+                    config=config,
+                    profile=request.databricks_profile_name
+                )
+
+                # Update progress tracker with final result (JSON-serializable only)
+                if deployment_id in deployment_progress_tracker:
+                    # Check if deployment was successful
+                    is_successful = result.get('success', False)
+                    deployment_progress_tracker[deployment_id].update({
+                        'status': 'completed' if is_successful else 'failed',
+                        'message': result.get('message', 'Deployment completed' if is_successful else 'Deployment failed'),
+                        'error_message': None if is_successful else result.get('message'),
+                        'result': {
+                            'success': result.get('success'),
+                            'message': result.get('message'),
+                            'instance': result.get('instance'),
+                            'catalog': result.get('catalog'),
+                            'tables': result.get('tables')
+                        }
+                    })
+
+            except Exception as e:
+                logger.error(f"Background deployment failed: {str(e)}", exc_info=True)
+                # Update progress tracker with error
+                if deployment_id in deployment_progress_tracker:
+                    deployment_progress_tracker[deployment_id].update({
+                        'status': 'failed',
+                        'error_message': str(e)
+                    })
+
+        # Create background task (non-blocking)
+        asyncio.create_task(run_deployment())
+
+        # Return immediately with deployment ID
+        return {
+            'success': True,
+            'deployment_id': deployment_id,
+            'message': 'Deployment started. Poll /api/deploy/progress/{deployment_id} for status.'
+        }
 
     except Exception as e:
-        logger.error(f"Deployment failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
+        logger.error(f"Failed to start deployment: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to start deployment: {str(e)}")
 
 @app.get("/api/deploy/progress/{deployment_id}")
 async def get_deployment_progress(deployment_id: str):
     """
     Get current deployment progress for a specific deployment ID
     """
-    if deployment_id not in deployment_progress_tracker:
-        raise HTTPException(status_code=404, detail="Deployment not found")
+    try:
+        if deployment_id not in deployment_progress_tracker:
+            # Return a minimal pending status instead of 404 for better UX
+            return {
+                'status': 'pending',
+                'message': 'Deployment initializing...',
+                'current_step': 0,
+                'total_steps': 5,
+                'steps': []
+            }
 
-    return deployment_progress_tracker[deployment_id]
+        # Return current progress
+        progress = deployment_progress_tracker[deployment_id]
+        
+        # Ensure response is JSON-serializable
+        return {
+            'status': progress.get('status', 'pending'),
+            'message': progress.get('message', 'Processing...'),
+            'current_step': progress.get('current_step', 0),
+            'total_steps': progress.get('total_steps', 5),
+            'error_message': progress.get('error_message'),
+            'steps': progress.get('steps', []),
+            'result': progress.get('result')
+        }
+    except Exception as e:
+        logger.error(f"Error getting deployment progress: {str(e)}")
+        # Return error status instead of crashing
+        return {
+            'status': 'error',
+            'message': f'Error retrieving progress: {str(e)}',
+            'current_step': 0,
+            'total_steps': 5,
+            'steps': []
+        }
 
 @app.get("/api/deploy/progress/{deployment_id}/stream")
 async def stream_deployment_progress(deployment_id: str):

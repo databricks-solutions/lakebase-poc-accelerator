@@ -511,8 +511,8 @@ class DatabricksJobsService:
                                 "base_parameters": base_parameters
                             },
                             "new_cluster": {
-                                "spark_version": "13.3.x-scala2.12",
-                                "node_type_id": "Standard_DS3_v2",
+                                "spark_version": "14.3.x-scala2.12",
+                                "node_type_id": "Standard_E8_v3",
                                 "num_workers": 0,
                                 "spark_conf": {
                                     "spark.databricks.cluster.profile": "singleNode",
