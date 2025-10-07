@@ -1081,7 +1081,8 @@ class JobSubmissionRequest(BaseModel):
     database_name: str = Field("databricks_postgres", description="Database name")
     cluster_id: Optional[str] = Field(None, description="Databricks cluster ID (optional - will create job cluster if not provided)")
     pgbench_config: Dict[str, Any] = Field(..., description="pgbench configuration")
-    query_configs: List[Dict[str, Any]] = Field(..., description="Query configurations")
+    query_configs: Optional[List[Dict[str, Any]]] = Field(None, description="Query configurations (for upload approach)")
+    query_workspace_path: Optional[str] = Field(None, description="Workspace path to queries folder (for workspace approach)")
 
 @app.get("/api/databricks/clusters")
 async def get_databricks_clusters():
@@ -1165,7 +1166,8 @@ async def submit_pgbench_job(request: JobSubmissionRequest):
             database_name=request.database_name,
             cluster_id=request.cluster_id,
             pgbench_config=request.pgbench_config,
-            query_configs=request.query_configs
+            query_configs=request.query_configs,
+            query_workspace_path=request.query_workspace_path
         )
         
         return result

@@ -735,18 +735,24 @@ class DatabricksJobsService:
                           database_name: str,
                           cluster_id: Optional[str],
                           pgbench_config: Dict[str, Any],
-                          query_configs: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Submit a complete pgbench job
+                          query_configs: Optional[List[Dict[str, Any]]] = None,
+                          query_workspace_path: Optional[str] = None) -> Dict[str, Any]:
+        """Submit a complete pgbench job with hybrid query source support
         
         Args:
             lakebase_instance_name: Name of Lakebase instance
             database_name: Database name
-            cluster_id: Cluster ID to run on
+            cluster_id: Cluster ID to run on (None for auto job cluster)
             pgbench_config: pgbench configuration parameters
-            query_configs: List of query configurations
+            query_configs: List of query configurations (for upload approach)
+            query_workspace_path: Workspace path to queries folder (for workspace approach)
             
         Returns:
-            Dictionary with job_id and run_id
+            Dictionary with job_id, run_id, and workspace URLs
+            
+        Note:
+            Either query_configs OR query_workspace_path must be provided.
+            If query_configs size > 8KB, queries are automatically uploaded to workspace.
         """
         try:
             # Generate unique job name
@@ -867,13 +873,69 @@ class DatabricksJobsService:
             # Upload notebook to workspace
             self.upload_notebook(notebook_path, notebook_content)
             
-            # Prepare job parameters
+            # Prepare job parameters - handle both query sources
             parameters = {
                 "lakebase_instance_name": lakebase_instance_name,
                 "database_name": database_name,
-                "query_config": json.dumps(query_configs),
                 **pgbench_config
             }
+            
+            # Validate that at least one query source is provided
+            if not query_configs and not query_workspace_path:
+                raise ValueError("Either query_configs or query_workspace_path must be provided")
+            
+            if query_workspace_path:
+                # Approach 2: User provided workspace path
+                logger.info(f"QUERY_SOURCE: Using workspace path: {query_workspace_path}")
+                
+                # Validate path exists and is accessible
+                try:
+                    client = self._get_client()
+                    client.workspace.get_status(query_workspace_path)
+                    logger.info(f"QUERY_SOURCE: Workspace path validated successfully")
+                except Exception as e:
+                    raise Exception(f"Cannot access workspace path '{query_workspace_path}': {str(e)}. "
+                                  f"Please ensure the path exists and the app service principal has read access.")
+                
+                parameters["query_workspace_path"] = query_workspace_path
+                parameters["query_source"] = "workspace"
+                
+            else:
+                # Approach 1: Uploaded queries - use hybrid size-based strategy
+                query_json = json.dumps(query_configs)
+                query_size_kb = len(query_json) / 1024
+                
+                logger.info(f"QUERY_SOURCE: Uploaded queries, size: {query_size_kb:.2f} KB")
+                
+                # 8KB threshold (safe margin below 10KB limit)
+                if len(query_json) > 8000:
+                    # Large query set - upload to workspace
+                    logger.info(f"QUERY_SOURCE: Query size exceeds 8KB, uploading to workspace")
+                    
+                    queries_workspace_path = f"/Shared/pgbench_queries/{job_name}/queries.json"
+                    
+                    # Create parent directory
+                    queries_dir = f"/Shared/pgbench_queries/{job_name}"
+                    self._create_workspace_directory(queries_dir)
+                    
+                    # Upload queries as JSON file
+                    client = self._get_client()
+                    client.workspace.upload(
+                        path=queries_workspace_path,
+                        content=query_json.encode('utf-8'),
+                        format=ImportFormat.AUTO,
+                        overwrite=True
+                    )
+                    
+                    logger.info(f"QUERY_SOURCE: Uploaded queries to {queries_workspace_path}")
+                    
+                    parameters["query_config_path"] = queries_workspace_path
+                    parameters["query_source"] = "workspace_file"
+                else:
+                    # Small query set - pass inline as parameter
+                    logger.info(f"QUERY_SOURCE: Query size OK, passing as inline parameter")
+                    parameters["query_config"] = query_json
+                    parameters["query_source"] = "inline"
             
             # Create and run the job
             job_id = self.create_pgbench_job(job_name, cluster_id, notebook_path, parameters)
