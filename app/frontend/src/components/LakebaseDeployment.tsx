@@ -52,6 +52,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploymentProgress, setDeploymentProgress] = useState<string>('');
   const [deploymentOutput, setDeploymentOutput] = useState<string>('');
   const [deploymentModalVisible, setDeploymentModalVisible] = useState(false);
+  const [deploymentSteps, setDeploymentSteps] = useState<any[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
 
   // Helper to build workspace monitor URL
   const getWorkspaceMonitorUrl = (fallback?: string): string | null => {
@@ -153,13 +155,13 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
       // Extract databricks_profile_name from workloadConfig or use null for Databricks Apps
       const profileName = workloadConfig?.databricks_profile_name || null;
-      
+
       const deploymentRequest = {
         workload_config: workloadConfig,
         databricks_profile_name: profileName,
         tables: tables
       };
-      
+
       console.log('Debug - Using profile:', profileName);
 
       // Call the new deployment API
@@ -188,7 +190,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         // Capture form values for use in timeout message
         const workspaceUrl = workloadConfig.databricks_workspace_url?.replace(/^https?:\/\//, '') || 'your-workspace';
         const instanceName = workloadConfig.lakebase_instance_name || 'your-instance';
-        
+
         setDeploymentProgress('Deployment in progress...');
         setDeploymentOutput('🚀 Deployment started. Monitoring progress...\n\n');
 
@@ -197,7 +199,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         let consecutiveErrors = 0;
         const maxConsecutiveErrors = 5;
         let timeoutMode = false;
-        
+
         const pollInterval = setInterval(async () => {
           try {
             const progressResponse = await fetch(`/api/deploy/progress/${deploymentId}`, {
@@ -206,7 +208,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                 'Accept': 'application/json'
               }
             });
-            
+
             // Handle 504 Gateway Timeout gracefully - don't stop polling
             if (progressResponse.status === 504) {
               console.log('Gateway timeout on progress poll, will retry...');
@@ -227,19 +229,19 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               }
               return; // Skip this poll cycle, try again next time
             }
-            
+
             if (!progressResponse.ok) {
               throw new Error(`Failed to fetch progress: ${progressResponse.status}`);
             }
 
             // Reset error counter on successful response
             consecutiveErrors = 0;
-            
+
             // If we were in timeout mode but now got a response, switch back
             if (timeoutMode) {
               timeoutMode = false;
             }
-            
+
             const progress = await progressResponse.json();
             const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
 

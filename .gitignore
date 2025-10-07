@@ -1,6 +1,6 @@
 .databricks/
-build/
 dist/
+build/
 __pycache__/
 *.egg-info
 .venv/

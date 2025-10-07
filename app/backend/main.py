@@ -335,21 +335,21 @@ async def deploy_to_databricks(request: DeploymentRequest):
                             for step in progress.steps
                         ]
                     }
-
+            
                 deployment_service.set_progress_callback(progress_callback)
 
-        # Convert request to config dictionary
-        config = {
-            'databricks_workspace_url': request.workload_config.databricks_workspace_url,
-            'lakebase_instance_name': request.workload_config.lakebase_instance_name,
-            'database_name': request.workload_config.database_name,
-            'uc_catalog_name': request.workload_config.uc_catalog_name,
-            'storage_catalog': request.workload_config.storage_catalog,
-            'storage_schema': request.workload_config.storage_schema,
-            'recommended_cu': request.workload_config.recommended_cu,
-            'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
-            'tables': request.tables
-        }
+                # Convert request to config dictionary
+                config = {
+                    'databricks_workspace_url': request.workload_config.databricks_workspace_url,
+                    'lakebase_instance_name': request.workload_config.lakebase_instance_name,
+                    'database_name': request.workload_config.database_name,
+                    'uc_catalog_name': request.workload_config.uc_catalog_name,
+                    'storage_catalog': request.workload_config.storage_catalog,
+                    'storage_schema': request.workload_config.storage_schema,
+                    'recommended_cu': request.workload_config.recommended_cu,
+                    'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
+                    'tables': request.tables
+                }
 
                 # Deploy the instance
                 result = await deployment_service.deploy_lakebase_instance(

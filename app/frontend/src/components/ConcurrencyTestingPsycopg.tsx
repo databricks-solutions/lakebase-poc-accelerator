@@ -31,7 +31,7 @@ const { Option } = Select;
 const { Title, Text, Paragraph } = Typography;
 
 
-const ConcurrencyTesting: React.FC = () => {
+const ConcurrencyTestingPsycopg: React.FC = () => {
   const [form] = Form.useForm();
   const [currentStep, setCurrentStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{
@@ -974,4 +974,4 @@ LIMIT %s;`}
   );
 };
 
-export default ConcurrencyTesting;
+export default ConcurrencyTestingPsycopg;
