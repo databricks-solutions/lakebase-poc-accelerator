@@ -198,7 +198,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         const startTime = Date.now();
         let consecutiveErrors = 0;
         const maxConsecutiveErrors = 5;
-        let timeoutMode = false;
+        let timeoutWarningShown = false;
 
         const pollInterval = setInterval(async () => {
           try {
@@ -213,19 +213,10 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             if (progressResponse.status === 504) {
               console.log('Gateway timeout on progress poll, will retry...');
               consecutiveErrors++;
-              if (consecutiveErrors >= maxConsecutiveErrors && !timeoutMode) {
-                // Switch to timeout mode instead of failing
-                timeoutMode = true;
-                setDeploymentProgress('⚠️ Progress monitoring unavailable due to gateway timeouts');
-                setDeploymentOutput(
-                  `⚠️ Unable to monitor deployment progress due to gateway limitations.\n\n` +
-                  `Your deployment is running in the background.\n\n` +
-                  `Please check your Databricks workspace to monitor status:\n` +
-                  `https://${workspaceUrl}/compute/database-instances/${instanceName}\n\n` +
-                  `The deployment typically takes 5-10 minutes to complete.`
-                );
-                // Keep polling but don't show errors
-                consecutiveErrors = 0; // Reset to continue polling
+              if (consecutiveErrors >= maxConsecutiveErrors && !timeoutWarningShown) {
+                // Show warning but continue to display progress when available
+                timeoutWarningShown = true;
+                console.log('Entering resilient mode - will show progress when available');
               }
               return; // Skip this poll cycle, try again next time
             }
@@ -237,23 +228,31 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             // Reset error counter on successful response
             consecutiveErrors = 0;
 
-            // If we were in timeout mode but now got a response, switch back
-            if (timeoutMode) {
-              timeoutMode = false;
-            }
-
             const progress = await progressResponse.json();
             const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
 
-            // Update progress display
-            setDeploymentProgress(`${progress.message || 'Deploying...'} (${elapsedTime}s)`);
+            // Update progress display (include warning if we've had timeouts)
+            const progressMsg = `${progress.message || 'Deploying...'} (${elapsedTime}s)`;
+            const displayMsg = timeoutWarningShown 
+              ? `${progressMsg} ⚠️ (Intermittent connectivity issues)` 
+              : progressMsg;
+            setDeploymentProgress(displayMsg);
             setDeploymentSteps(progress.steps || []);
             setCurrentStep(progress.current_step || 0);
 
             // Build output message
             let output = `🚀 Deployment Progress (${elapsedTime}s elapsed)\n\n`;
+            if (timeoutWarningShown) {
+              output += `⚠️ Note: Experiencing intermittent gateway timeouts. Progress updates may be delayed but monitoring continues.\n`;
+              output += `Monitor workspace: https://${workspaceUrl}/compute/database-instances/${instanceName}\n\n`;
+            }
             output += `Status: ${progress.status}\n`;
             output += `Step: ${progress.current_step}/${progress.total_steps}\n\n`;
+            
+            // Add helpful note about deployment time
+            if (progress.current_step === 1 && progress.status === 'in_progress') {
+              output += `ℹ️ Note: Database instance creation typically takes 15-30 minutes.\n\n`;
+            }
 
             if (progress.steps) {
               output += 'Steps:\n';

@@ -322,8 +322,10 @@ class DatabricksDeploymentService:
 
             instance_waiter = self._workspace_client.database.create_database_instance(database_instance)
 
-            # Wait for instance to be ready
-            instance = instance_waiter.result(timeout=timedelta(minutes=5))
+            # Wait for instance to be ready (database instances can take 15-30 minutes to start)
+            self._progress.update_step(1, "Creating new instance, this may take 15-30 minutes...")
+            self._update_progress()
+            instance = instance_waiter.result(timeout=timedelta(minutes=30))
 
             logger.info(f"Created database instance: {instance.name}")
             return instance
