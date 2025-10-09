@@ -4,7 +4,7 @@ bundle:
 
 # Include app deployment configuration
 include:
-  - app/resources/app_deployment.yml
+  - resources/app_deployment.yml
 
 # Deployment targets
 targets:
@@ -13,18 +13,21 @@ targets:
     mode: development
     default: true
     workspace:
+      host: https://adb-984752964297111.11.azuredatabricks.net
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
   
   # Test environment
   test:
     mode: development
     workspace:
+      host: https://company-test.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
   
   # Production environment
   prod:
     mode: production
     workspace:
+      host: https://company-prod.cloud.databricks.com
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     # In production, don't add prefixes to resource names
     run_as:

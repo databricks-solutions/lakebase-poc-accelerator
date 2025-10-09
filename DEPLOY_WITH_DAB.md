@@ -1,10 +1,10 @@
-# Deploy Lakebase Accelerator with Databricks Asset Bundles
+# Deploy Lakebase Accelerator App with Databricks Asset Bundles
 
 Simple guide to deploy your Lakebase POC Accelerator app using DAB.
 
 ## Prerequisites
 
-- Databricks CLI installed and authenticated
+- Databricks CLI installed and authenticated, follow instruction in [README.md](README.md)
 - Node.js and npm installed
 
 ---
@@ -33,17 +33,33 @@ cd ../..
 
 **Result:** You should now have a `build/` folder at the project root containing the compiled frontend.
 
+
 ---
 
-## Step 2: Configure App Name
+## Step 2: Configure variables
 
-Edit the app name in `app/resources/app_deployment.yml`:
+Edit the host name in `databricks.yml`:
+
+```yaml
+# Deployment targets
+targets:
+  # Development environment
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://company-test.cloud.databricks.com # Change to your Databricks workspace host
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+  
+```
+
+Edit the app name in `resources/app_deployment.yml`:
 
 ```yaml
 resources:
   apps:
     lakebase_accelerator_app:
-      name: ak4-lakebase-accelerator     # Change this to your desired app name
+      name: <your-app-name>     # Change this to your desired app name
       description: "Lakebase POC Accelerator"
       source_code_path: .
       permissions:
@@ -59,6 +75,7 @@ resources:
 
 Run these commands from the **project root**:
 
+
 ### Validate Bundle Configuration
 
 ```bash
@@ -72,8 +89,12 @@ This checks your configuration for errors. You should see:
 
 ### Deploy the Bundle
 
+**If `build` is specified in .gitignore. Remove `build` from .gitignore**
+
+Specify the target environment with --target flag (dev is default)
+
 ```bash
-databricks bundle deploy
+databricks bundle deploy --target dev
 ```
 
 This will:
@@ -83,7 +104,7 @@ This will:
 
 **Note:** The app will be created in STOPPED state.
 
-### Start the App
+### Start and Deploy Source Code to the App 
 
 ```bash
 databricks bundle run lakebase_accelerator_app
@@ -92,7 +113,7 @@ databricks bundle run lakebase_accelerator_app
 Or use the apps CLI:
 
 ```bash
-databricks apps start ak4-lakebase-accelerator
+databricks apps start <your-app-name>
 ```
 
 **Wait 3-5 minutes** for the app compute to start.
@@ -104,7 +125,7 @@ databricks apps start ak4-lakebase-accelerator
 Get the app URL:
 
 ```bash
-databricks apps get ak4-lakebase-accelerator
+databricks apps get <your-app-name>
 ```
 
 Or check in the UI:
@@ -126,7 +147,7 @@ databricks bundle deploy
 databricks bundle run lakebase_accelerator_app
 
 # 3. Get URL
-databricks apps get ak4-lakebase-accelerator
+databricks apps get <your-app-name>
 ```
 
 ---
@@ -135,24 +156,19 @@ databricks apps get ak4-lakebase-accelerator
 
 ### Check App Status
 ```bash
-databricks apps get ak4-lakebase-accelerator
-```
-
-### View App Logs
-```bash
-databricks apps logs ak4-lakebase-accelerator --follow
+databricks apps get <your-app-name>
 ```
 
 ### Start/Stop App
 ```bash
 # Start
-databricks apps start ak4-lakebase-accelerator
+databricks apps start <your-app-name>
 
 # Stop (to save costs)
-databricks apps stop ak4-lakebase-accelerator
+databricks apps stop <your-app-name>
 ```
 
-### Update Code
+### After Update Code
 ```bash
 # After making code changes:
 # 1. Rebuild frontend (if changed)
@@ -160,15 +176,11 @@ databricks apps stop ak4-lakebase-accelerator
 
 # 2. Redeploy
 databricks bundle deploy
+databricks bundle run lakebase_accelerator_app
 
 # 3. Restart app
-databricks apps stop ak4-lakebase-accelerator
-databricks apps start ak4-lakebase-accelerator
-```
-
-### List All Bundle Resources
-```bash
-databricks bundle resources list
+databricks apps stop <your-app-name>
+databricks apps start <your-app-name>
 ```
 
 ### Delete Everything
@@ -202,47 +214,28 @@ databricks bundle deploy --target prod
 ## Troubleshooting
 
 ### Error: "source_code_path must be set"
-Make sure `source_code_path: .` is set in `app/resources/app_deployment.yml`
+Make sure `source_code_path: .` is set in `resources/app_deployment.yml`
 
 ### Error: "app.yml not found"
 The `app.yml` file must be at the project root (same level as `databricks.yml`)
 
 ### Error: "build folder not found"
-Run `./npm-build.sh` to build the frontend first
-
-### App stuck in STARTING state
-This is normal. App startup takes 3-5 minutes. Check logs:
-```bash
-databricks apps logs ak4-lakebase-accelerator --follow
-```
-
-### App in ERROR state
-Check logs for details:
-```bash
-databricks apps logs ak4-lakebase-accelerator
-```
-
-Common issues:
-- Missing Python dependencies (check `requirements.txt`)
-- Missing `build/` folder
-- Syntax error in Python code
-
----
+Run `./npm-build.sh` to build the frontend first. **If `build` is specified in .gitignore, remove `build` from .gitignore**
 
 ## Project Structure
 
 ```
 lakebase-poc-accelerator/          ← Root (where you run commands)
 ├── databricks.yml                 ← Bundle configuration
+└── resources/
+│   └── app_deployment.yml         ← App resource definition
 ├── app.yml                        ← App runtime config (command, env vars)
 ├── requirements.txt               ← Python dependencies
 ├── build/                         ← Frontend build (created by npm-build.sh)
 ├── app/
 │   ├── backend/                   ← FastAPI backend
 │   ├── frontend/                  ← React source code
-│   ├── notebooks/                 ← Jupyter notebooks
-│   └── resources/
-│       └── app_deployment.yml     ← App resource definition
+│   ├── notebooks/                 ← Jupyter notebooks for pgbench run
 └── app.py                         ← Main FastAPI application
 ```
 
@@ -250,15 +243,13 @@ lakebase-poc-accelerator/          ← Root (where you run commands)
 
 ## What Gets Deployed
 
-When you run `databricks bundle deploy`, these files are uploaded:
+When you run `databricks bundle deploy`, these files are uploaded to `/Workspace/Users/<your-email>/.bundle/lakebase_accelerator/dev/files/`:
 
 ✅ `app.yml` - App configuration  
 ✅ `requirements.txt` - Python dependencies  
 ✅ `build/` - Compiled frontend  
 ✅ `app/` - All application code  
 ✅ `app.py` - Main application entry point  
-
-Uploaded to: `/Workspace/Users/<your-email>/.bundle/lakebase_accelerator/dev/files/`
 
 ---
 
@@ -269,24 +260,6 @@ BUILD → DEPLOY → START → RUNNING
   ↓       ↓        ↓        ↓
 npm    bundle   bundle    Access
 build  deploy   run       URL
-```
-
----
-
-## Summary
-
-**Three commands to deploy:**
-
-```bash
-./npm-build.sh                              # Build frontend
-databricks bundle deploy                     # Deploy app
-databricks bundle run lakebase_accelerator_app  # Start app
-```
-
-**Get your app URL:**
-
-```bash
-databricks apps get ak4-lakebase-accelerator
 ```
 
 🎉 Done!

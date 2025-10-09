@@ -4,7 +4,7 @@ This project is designed to streamline the testing and deployment of customer OL
 
 ## Prerequesites
 
-- Python3.13
+- Python3.11
 - Databricks Workspace Requirements:
    - Unity Catalog enabled: CREATE CATALOG, USE CATALOG, CREATE SCHEMA permission
    - Lakebase Service: CREATE DATABASE INSTANCE, USE DATABASE INSTANCE permission
@@ -17,9 +17,16 @@ This project is designed to streamline the testing and deployment of customer OL
 1. Setup Python virtual environment
 
 ```
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+# Install uv (if not already installed)
+pip install uv
+# or
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+Set up Python environment and install required packages
+```
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
 2. Install the Databricks CLI from <https://docs.databricks.com/dev-tools/cli/databricks-cli.html>
@@ -90,15 +97,11 @@ The project includes a full-stack web application for interactive workload confi
 - **📁 Manual Deployment**: Generate and download Databricks Asset Bundle files
 - **🧪 Concurrency Testing**: Upload and execute SQL queries for performance testing
 
-## Run on Databricks App
+## Option 1: Starting the Web Application on Databricks Apps
 
-1. On Databricks workspace, go to **Compute > Apps > Create app > Create custom app > provide app name and description > Click Create App**
-2. run `sh npm-build.sh` to create a new build folder for frontend
-3. remove build folder from .gitignore
-4. run `databricks sync . /Workspace/Users/<user-name>/<app-name> --full`
-5. run `databricks apps deploy <app-name> --source-code-path /Workspace/Users/<user-name>/<app-name>` to deploy the synced source code to app
+Follow instruction on [DEPLOY_WITH_DAB.md](./DEPLOY_WITH_DAB.md)
 
-## Starting the Web Application (self-hosted on local machine)
+## Option 2: Starting the Web Application (self-hosted on local machine)
 
 Ensure you have completed the [Environment Setup](#environments-setup) and authenticated with Databricks CLI.
 
@@ -115,6 +118,6 @@ The app will run on host: http://0.0.0.0:8000
 
 ### Authentication
 
-If self-host (on local machine), authentication is handled via your Databricks CLI profiles, as set up in the [Environment Setup](#environments-setup) section. The backend uses these CLI profiles to authenticate with the Databricks Python SDK (WorkspaceClient). No extra environment variables or config files are required. 
+If self-host on local machine, authentication is handled via your Databricks CLI profiles, as set up in the [Environment Setup](#environments-setup) section. The backend uses these CLI profiles to authenticate with the Databricks Python SDK (WorkspaceClient) using provided user credential.
 
-When running the app on Databricks, make sure the service principal assigned to the app has the following permissions: Database Instance Management (see Database instance ACLs), Unity Catalog privileges including CREATE CATALOG, USE CATALOG, and CREATE SCHEMA on the target catalog, SELECT on any source Delta tables to be synced, USE SCHEMA and CREATE TABLE on the storage catalog and schema for Lakeflow-synced Delta pipelines, databricks-superuser permission to query tables, and "Allow unrestricted cluster creation" enabled.
+When running the app on Databricks, the service principal assigned to the app will perform all the actions, hence it might need following permissions: Database Instance Management (see [Database instance ACLs](https://docs.databricks.com/aws/en/security/auth/access-control/#database-instance-acls)), Unity Catalog privileges including CREATE CATALOG, USE CATALOG, and CREATE SCHEMA on the target catalog, SELECT on any source Delta tables to be synced, USE SCHEMA and CREATE TABLE on the storage catalog and schema for Lakeflow-synced Delta pipelines, databricks-superuser permission to query tables, and "Allow unrestricted cluster creation" enabled.
