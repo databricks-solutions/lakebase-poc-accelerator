@@ -94,6 +94,70 @@ class DatabricksJobsService:
                 
         return self.client
     
+    def _detect_cloud_provider(self) -> str:
+        """Detect cloud provider (AWS, Azure, or GCP) from workspace URL
+        
+        Returns:
+            'aws', 'azure', or 'gcp'
+        """
+        try:
+            client = self._get_client()
+            
+            # First, try to get workspace URL from the client's config
+            import os
+            host = os.getenv('DATABRICKS_HOST') or self.workspace_url
+            
+            if not host:
+                # Try to get from client config
+                if hasattr(client, 'config') and hasattr(client.config, 'host'):
+                    host = client.config.host
+            
+            if host:
+                logger.info(f"DEBUG: Detecting cloud provider from host: {host}")
+                host_lower = host.lower()
+                
+                # Azure workspace URLs contain 'azuredatabricks.net'
+                if 'azuredatabricks.net' in host_lower or 'azure' in host_lower:
+                    logger.info("DEBUG: Detected Azure cloud provider")
+                    return 'azure'
+                
+                # GCP workspace URLs contain 'gcp.databricks.com'
+                if 'gcp.databricks.com' in host_lower:
+                    logger.info("DEBUG: Detected GCP cloud provider")
+                    return 'gcp'
+                
+                # AWS workspace URLs contain 'cloud.databricks.com', 'dbc-' patterns, or other AWS-specific patterns
+                if 'cloud.databricks.com' in host_lower or '.cloud.databricks.com' in host_lower:
+                    logger.info("DEBUG: Detected AWS cloud provider")
+                    return 'aws'
+            
+            # Default to Azure if we can't determine (for backward compatibility)
+            logger.warning("DEBUG: Could not detect cloud provider, defaulting to Azure")
+            return 'azure'
+            
+        except Exception as e:
+            logger.warning(f"DEBUG: Failed to detect cloud provider: {e}, defaulting to Azure")
+            return 'azure'
+    
+    def _get_node_type_for_cloud(self) -> str:
+        """Get appropriate node type based on cloud provider
+        
+        Returns:
+            Node type ID string for the detected cloud provider
+        """
+        cloud = self._detect_cloud_provider()
+        
+        # Map cloud providers to their appropriate instance types
+        node_types = {
+            'aws': 'r3.xlarge',
+            'azure': 'Standard_E8_v3',
+            'gcp': 'n1-highmem-4'  # GCP equivalent
+        }
+        
+        node_type = node_types.get(cloud, 'Standard_E8_v3')
+        logger.info(f"DEBUG: Selected node type '{node_type}' for cloud provider '{cloud}'")
+        return node_type
+    
     def get_clusters(self) -> List[Dict[str, Any]]:
         """Get list of available Databricks clusters
         
@@ -500,6 +564,9 @@ class DatabricksJobsService:
                 
                 logger.info(f"JOB_CLUSTER: Using SDK API client for job creation")
                 
+                # Get the appropriate node type for the cloud provider
+                node_type = self._get_node_type_for_cloud()
+                
                 # Build job configuration for REST API
                 job_payload = {
                     "name": job_name,
@@ -512,7 +579,7 @@ class DatabricksJobsService:
                             },
                             "new_cluster": {
                                 "spark_version": "14.3.x-scala2.12",
-                                "node_type_id": "Standard_E8_v3",
+                                "node_type_id": node_type,
                                 "num_workers": 0,
                                 "spark_conf": {
                                     "spark.databricks.cluster.profile": "singleNode",

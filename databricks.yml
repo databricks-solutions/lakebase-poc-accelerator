@@ -1,0 +1,31 @@
+bundle:
+  name: lakebase_accelerator
+  uuid: 5fec423c-234a-4869-a92b-766f76f6f70f
+
+# Include app deployment configuration
+include:
+  - app/resources/app_deployment.yml
+
+# Deployment targets
+targets:
+  # Development environment
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+  
+  # Test environment
+  test:
+    mode: development
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+  
+  # Production environment
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    # In production, don't add prefixes to resource names
+    run_as:
+      service_principal_name: ${var.service_principal_name}

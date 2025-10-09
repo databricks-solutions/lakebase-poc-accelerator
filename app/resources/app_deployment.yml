@@ -1,0 +1,15 @@
+resources:
+  apps:
+    lakebase_accelerator_app:
+      name: ak4-lakebase-accelerator
+      description: "Lakebase POC Accelerator - Interactive web app for Lakebase deployment and testing"
+      
+      # Source code path - points to the root directory containing app.yml, requirements.txt, etc.
+      # This is relative to the location of databricks.yml (which is at the project root)
+      source_code_path: ${workspace.file_path}
+      
+      # Permissions for the app
+      permissions:
+        - level: CAN_USE
+          group_name: users
+
