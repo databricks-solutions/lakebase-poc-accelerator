@@ -263,8 +263,9 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
           Concurrency Testing (psycopg)
         </Title>
         <Paragraph style={{ marginBottom: 0 }}>
-          Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.
-          This provides flexible, customizable concurrency testing with detailed performance metrics.
+          <li>Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.</li>
+          <li>This provides flexible, customizable concurrency testing with detailed performance metrics.</li>
+          <li>If running on Databricks Apps, ensure the app service principal has permission to access the database. In Databricks Workspace, navigate to your Lakebase Instance &gt; Permissions &gt; Add PostgreSQL Role, search for the App Service Principal, and grant it the databricks_superuser role.</li>
         </Paragraph>
       </div>
 

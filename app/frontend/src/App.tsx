@@ -6,10 +6,9 @@ import './App.css';
 import LakebaseOverview from './components/LakebaseOverview';
 import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
-import ConcurrencyTesting from './components/ConcurrencyTesting';
+import ConcurrencyTestingPgbench from './components/ConcurrencyTestingPgbench';
 import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import PgbenchDatabricks from './components/PgbenchDatabricks';
-import TBDTab from './components/TBDTab';
 import DatabricksLogo from './components/DatabricksLogo';
 
 const { Header, Content } = Layout;
@@ -90,7 +89,7 @@ function App() {
             {
               key: 'concurrency',
               label: 'Concurrency Testing (pgbench on local machine)',
-              children: <ConcurrencyTesting />
+              children: <ConcurrencyTestingPgbench />
             },
             {
               key: 'pgbench-databricks',
@@ -101,11 +100,6 @@ function App() {
               key: 'concurrency-databricks',
               label: 'Concurrency Testing (psycopg)',
               children: <ConcurrencyTestingPsycopg />
-            },
-            {
-              key: 'tbd',
-              label: 'TBD',
-              children: <TBDTab />
             }
           ]}
           style={{ padding: '0 24px', background: 'white', margin: '24px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}

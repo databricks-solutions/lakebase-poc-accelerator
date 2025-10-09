@@ -92,7 +92,11 @@ The project includes a full-stack web application for interactive workload confi
 
 ## Run on Databricks App
 
-TBD
+1. On Databricks workspace, go to **Compute > Apps > Create app > Create custom app > provide app name and description > Click Create App**
+2. run `sh npm-build.sh` to create a new build folder for frontend
+3. remove build folder from .gitignore
+4. run `databricks sync . /Workspace/Users/<user-name>/<app-name> --full`
+5. run `databricks apps deploy <app-name> --source-code-path /Workspace/Users/<user-name>/<app-name>` to deploy the synced source code to app
 
 ## Starting the Web Application (self-hosted on local machine)
 
@@ -111,4 +115,6 @@ The app will run on host: http://0.0.0.0:8000
 
 ### Authentication
 
-Authentication is handled via your Databricks CLI profiles, as set up in the [Environment Setup](#environments-setup) section. The backend uses these CLI profiles to authenticate with the Databricks Python SDK (WorkspaceClient). No extra environment variables or config files are required.
+If self-host (on local machine), authentication is handled via your Databricks CLI profiles, as set up in the [Environment Setup](#environments-setup) section. The backend uses these CLI profiles to authenticate with the Databricks Python SDK (WorkspaceClient). No extra environment variables or config files are required. 
+
+When running the app on Databricks, make sure the service principal assigned to the app has the following permissions: Database Instance Management (see Database instance ACLs), Unity Catalog privileges including CREATE CATALOG, USE CATALOG, and CREATE SCHEMA on the target catalog, SELECT on any source Delta tables to be synced, USE SCHEMA and CREATE TABLE on the storage catalog and schema for Lakeflow-synced Delta pipelines, databricks-superuser permission to query tables, and "Allow unrestricted cluster creation" enabled.

@@ -1169,16 +1169,36 @@ async def run_pgbench_uploaded_tests(test_request: dict):
         if not sql_files:
             raise HTTPException(status_code=404, detail="No SQL files found in queries folder")
 
-        # Prepare queries for pgbench
+        # Prepare queries for pgbench with weight parsing
         queries_with_weights = []
         for sql_file in sql_files:
             try:
                 content = sql_file.read_text(encoding='utf-8')
+                
+                # Parse weight from comments in the SQL file
+                weight = 1  # Default weight
+                lines = content.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('-- weight:'):
+                        try:
+                            weight_str = line.replace('-- weight:', '').strip()
+                            weight = int(weight_str)
+                            print(f"DEBUG: Found weight {weight} in {sql_file.name}")
+                            break
+                        except ValueError:
+                            print(f"Warning: Invalid weight format in {sql_file.name}: {line}")
+                            weight = 1
+                            break
+                
                 queries_with_weights.append({
                     "query_identifier": sql_file.stem,
                     "query_content": content,
-                    "weight": 1  # Equal weight for all queries
+                    "weight": weight
                 })
+                
+                print(f"DEBUG: Added uploaded query '{sql_file.stem}' with weight {weight}")
+                
             except Exception as e:
                 print(f"Error reading {sql_file.name}: {e}")
                 continue
@@ -1229,6 +1249,154 @@ async def run_pgbench_uploaded_tests(test_request: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"pgbench test execution failed: {str(e)}")
 
+@app.post("/api/pgbench-test/run-predefined-tests")
+async def run_pgbench_predefined_tests(test_request: dict):
+    """
+    Run pgbench tests using predefined queries with weights.
+
+    Args:
+        test_request: pgbench test configuration with connection, benchmark settings, and predefined queries
+
+    Returns:
+        PgbenchTestReport with test results and metrics
+    """
+    try:
+        # Extract test configuration
+        databricks_profile = test_request.get("databricks_profile", "DEFAULT")
+        workspace_url = test_request.get("workspace_url")
+        instance_name = test_request.get("instance_name")
+        database_name = test_request.get("database_name", "databricks_postgres")
+
+        # Extract pgbench configuration
+        pgbench_config = {
+            "clients": test_request.get("pgbench_clients", 8),
+            "jobs": test_request.get("pgbench_jobs", 8),
+            "duration_seconds": test_request.get("pgbench_duration", 30),
+            "progress_interval": test_request.get("pgbench_progress_interval", 5),
+            "protocol": test_request.get("pgbench_protocol", "prepared"),
+            "per_statement_latency": test_request.get("pgbench_per_statement_latency", True),
+            "detailed_logging": test_request.get("pgbench_detailed_logging", True),
+            "connect_per_transaction": test_request.get("pgbench_connect_per_transaction", False)
+        }
+
+        # Extract predefined queries
+        predefined_queries = test_request.get("predefined_queries", [])
+
+        if not instance_name:
+            raise HTTPException(status_code=400, detail="instance_name is required")
+
+        if not workspace_url:
+            raise HTTPException(status_code=400, detail="workspace_url is required")
+
+        if not predefined_queries:
+            raise HTTPException(status_code=400, detail="No predefined queries provided")
+
+        # Prepare queries for pgbench with weights
+        queries_with_weights = []
+        for query_config in predefined_queries:
+            try:
+                query_name = query_config.get("name", "unnamed_query")
+                query_content = query_config.get("content", "")
+                weight = query_config.get("weight", 1)  # Default weight is 1
+
+                if not query_content.strip():
+                    print(f"Warning: Skipping empty query: {query_name}")
+                    continue
+
+                queries_with_weights.append({
+                    "query_identifier": query_name,
+                    "query_content": query_content,
+                    "weight": weight
+                })
+                
+                print(f"DEBUG: Added predefined query '{query_name}' with weight {weight}")
+                
+            except Exception as e:
+                print(f"Error processing predefined query: {e}")
+                continue
+
+        if not queries_with_weights:
+            raise HTTPException(status_code=400, detail="No valid predefined queries found")
+
+        print(f"DEBUG: Processing {len(queries_with_weights)} predefined queries for pgbench")
+
+        # Initialize pgbench service
+        pgbench_service = PgbenchService()
+
+        try:
+            # Initialize connection
+            connection_initialized = await pgbench_service.initialize_connection(
+                workspace_url=workspace_url,
+                instance_name=instance_name,
+                database=database_name,
+                profile=databricks_profile
+            )
+
+            if not connection_initialized:
+                raise HTTPException(status_code=500, detail="Failed to initialize pgbench connection")
+        except Exception as e:
+            error_message = str(e)
+            if "Resource not found" in error_message:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Lakebase instance '{instance_name}' not found or not accessible with profile '{databricks_profile}'"
+                )
+            elif "profile" in error_message.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid Databricks profile '{databricks_profile}'"
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Connection initialization failed: {error_message}"
+                )
+
+        # Execute pgbench test
+        report = await pgbench_service.execute_pgbench_test(
+            queries=queries_with_weights,
+            pgbench_config=pgbench_config
+        )
+
+        return report
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pgbench predefined test execution failed: {str(e)}")
+
+@app.post("/api/pgbench-test/clear-temp-files")
+async def clear_pgbench_temp_files():
+    """
+    Clear all temporary SQL files from the pgbench testing temp directory.
+    
+    Returns:
+        Success message
+    """
+    try:
+        import tempfile
+        import shutil
+        
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
+        
+        if temp_dir.exists():
+            # Remove all .sql files
+            sql_files = list(temp_dir.glob("*.sql"))
+            for sql_file in sql_files:
+                try:
+                    sql_file.unlink()
+                    print(f"DEBUG: Deleted {sql_file}")
+                except Exception as e:
+                    print(f"Warning: Could not delete {sql_file}: {e}")
+            
+            print(f"DEBUG: Cleared {len(sql_files)} SQL files from {temp_dir}")
+            return {"message": f"Cleared {len(sql_files)} temporary SQL files"}
+        else:
+            print(f"DEBUG: Temp directory {temp_dir} does not exist")
+            return {"message": "No temporary files to clear"}
+            
+    except Exception as e:
+        print(f"Error clearing temp files: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear temporary files: {str(e)}")
+
 @app.get("/api/pgbench-test/status")
 async def get_pgbench_test_status():
     """
@@ -1243,7 +1411,9 @@ async def get_pgbench_test_status():
             "pgbench_available": True,
             "available_endpoints": [
                 "/api/pgbench-test/upload-query",
-                "/api/pgbench-test/run-uploaded-tests"
+                "/api/pgbench-test/run-uploaded-tests",
+                "/api/pgbench-test/run-predefined-tests",
+                "/api/pgbench-test/clear-temp-files"
             ]
         }
 
