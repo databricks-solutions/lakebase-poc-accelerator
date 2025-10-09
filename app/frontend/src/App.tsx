@@ -89,12 +89,12 @@ function App() {
             },
             {
               key: 'concurrency',
-              label: 'Concurrency Testing (pgbench)',
+              label: 'Concurrency Testing (pgbench on local machine)',
               children: <ConcurrencyTesting />
             },
             {
               key: 'pgbench-databricks',
-              label: 'Pgbench in Databricks',
+              label: 'Concurrency Testing (pgbench on Databricks Apps)',
               children: <PgbenchDatabricks />
             },
             {

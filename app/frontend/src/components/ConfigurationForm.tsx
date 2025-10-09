@@ -514,7 +514,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               label={
                 <span>
                   Databricks Profile Name{' '}
-                  <Tooltip title="Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
+                  <Tooltip title="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
                     <InfoCircleOutlined />
                   </Tooltip>
                 </span>

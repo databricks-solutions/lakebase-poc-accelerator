@@ -81,43 +81,33 @@ brew install postgresql
 # Verify installation
 pgbench --version
 ```
-
-## Starting the Web Application
+## Application Features
 
 The project includes a full-stack web application for interactive workload configuration, cost estimation, and deployment automation using the Databricks Python SDK.
-
-### Prerequisites
-
-Ensure you have completed the [Environment Setup](#environments-setup) and authenticated with Databricks CLI.
-
-### Development Setup
-
-#### Full Stack Development
-
-```bash
-# Terminal 1 - Start Backend API
-cd app/backend
-# Run development server
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# Terminal 2 - Start Frontend
-cd app/frontend
-npm install
-npm start
-```
-
-**Access Points:**
-- **Frontend App**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
-
-
-### Application Features
 
 - **🧮 Lakebase Calculator**: Interactive cost estimation with real table size calculation
 - **🚀 Automatic Deployment**: Direct deployment using Databricks Python SDK
 - **📁 Manual Deployment**: Generate and download Databricks Asset Bundle files
 - **🧪 Concurrency Testing**: Upload and execute SQL queries for performance testing
+
+## Run on Databricks App
+
+TBD
+
+## Starting the Web Application (self-hosted on local machine)
+
+Ensure you have completed the [Environment Setup](#environments-setup) and authenticated with Databricks CLI.
+
+Then on root rirectory, run
+```
+# build frontend
+./npm-build.sh
+
+# Start the app
+python app.py
+```
+
+The app will run on host: http://0.0.0.0:8000
 
 ### Authentication
 

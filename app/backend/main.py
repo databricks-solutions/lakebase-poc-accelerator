@@ -614,9 +614,23 @@ async def upload_query_file(file: UploadFile = File(...)):
         query_identifier = file.filename.replace('.sql', '')
         validation_result = SimpleParameterParser.validate_query_format(query_content)
         
-        # Save file to app/queries_psycopg/ folder
-        queries_dir = Path(__file__).parent.parent / "queries_psycopg"
-        queries_dir.mkdir(exist_ok=True)
+        # Extract parameter sets from comments
+        parameter_sets = []
+        lines = query_content.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('-- PARAMETERS:'):
+                json_str = line.replace('-- PARAMETERS:', '').strip()
+                try:
+                    parameter_sets = json.loads(json_str)
+                except json.JSONDecodeError:
+                    parameter_sets = []
+                break
+        
+        # Save file to temp directory for security (separate from pgbench)
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_psycopg_queries"
+        temp_dir.mkdir(exist_ok=True)
         
         file_path = temp_dir / file.filename
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -625,7 +639,7 @@ async def upload_query_file(file: UploadFile = File(...)):
         return {
             "query_identifier": query_identifier,
             "query_content": query_content,
-            "parameter_count": validation_result["parameter_count"],
+            "parameter_count": len(parameter_sets),  # Show parameter set count instead of parameter count
             "is_valid": validation_result["is_valid"],
             "error_message": validation_result["error_message"],
             "saved_path": str(file_path)
@@ -669,14 +683,19 @@ async def run_uploaded_tests(test_request: dict):
         if not workspace_url:
             raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
         
-        # Get all SQL files from app/queries_psycopg/ folder
-        queries_dir = Path(__file__).parent.parent / "queries_psycopg"
-        if not queries_dir.exists():
-            raise HTTPException(status_code=404, detail="No queries_psycopg folder found")
+        # Get all SQL files from temp directory (separate from pgbench)
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_psycopg_queries"
+        if not temp_dir.exists():
+            raise HTTPException(status_code=404, detail="No concurrency queries folder found")
         
         sql_files = list(temp_dir.glob("*.sql"))
         if not sql_files:
-            raise HTTPException(status_code=404, detail="No SQL files found in queries_psycopg folder")
+            raise HTTPException(status_code=404, detail="No SQL files found in concurrency queries folder")
+        
+        print(f"🔍 Found {len(sql_files)} SQL files in temp directory:")
+        for sql_file in sql_files:
+            print(f"   - {sql_file.name}")
         
         # Parse each SQL file and prepare queries
         execution_queries = []
@@ -796,6 +815,188 @@ async def run_uploaded_tests(test_request: dict):
         except:
             pass
         raise HTTPException(status_code=500, detail=f"Test execution failed: {str(e)}")
+
+@app.post("/api/concurrency-test/run-predefined-tests")
+async def run_predefined_tests(test_request: dict):
+    """
+    Run concurrency tests using predefined queries.
+    
+    Args:
+        test_request: Test configuration with databricks_profile, instance_name, database_name, concurrency_level, query_configs
+        
+    Returns:
+        ConcurrencyTestReport with test results and metrics
+    """
+    try:
+        # Debug: Log the incoming request
+        print(f"🔍 Incoming predefined test_request: {test_request}")
+        
+        # Extract test configuration
+        databricks_profile = test_request.get("databricks_profile", "DEFAULT")
+        workspace_url = test_request.get("workspace_url")
+        instance_name = test_request.get("instance_name")
+        database_name = test_request.get("database_name", "databricks_postgres")
+        concurrency_level = test_request.get("concurrency_level", 10)
+        query_configs = test_request.get("query_configs", [])
+
+        print(f"🔍 Extracted values:")
+        print(f"   databricks_profile: {databricks_profile}")
+        print(f"   workspace_url: {workspace_url}")
+        print(f"   instance_name: {instance_name}")
+        print(f"   database_name: {database_name}")
+        print(f"   concurrency_level: {concurrency_level}")
+        print(f"   query_configs count: {len(query_configs)}")
+
+        if not instance_name:
+            raise HTTPException(status_code=400, detail="instance_name is required")
+
+        if not workspace_url:
+            raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
+
+        if not query_configs:
+            raise HTTPException(status_code=400, detail="No predefined queries provided")
+        
+        # Parse each predefined query and prepare execution queries
+        execution_queries = []
+        for query_config in query_configs:
+            try:
+                query_content = query_config.get("content", "")
+                query_name = query_config.get("name", "unnamed_query")
+                
+                # Parse query content to extract parameters and exec count
+                lines = query_content.split('\n')
+                parameter_sets = []
+                exec_count = 5  # Default
+                
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith('-- PARAMETERS:'):
+                        json_str = line.replace('-- PARAMETERS:', '').strip()
+                        try:
+                            parameter_sets = json.loads(json_str)
+                        except json.JSONDecodeError:
+                            parameter_sets = []
+                    elif line.startswith('-- EXEC_COUNT:'):
+                        exec_count = int(line.replace('-- EXEC_COUNT:', '').strip())
+                
+                # Create test scenarios for each parameter set
+                test_scenarios = []
+                if parameter_sets:
+                    for i, params in enumerate(parameter_sets, 1):
+                        test_scenarios.append({
+                            "name": f"scenario_{i}",
+                            "parameters": params,
+                            "execution_count": exec_count,
+                        })
+                else:
+                    # No parameters - single scenario
+                    test_scenarios.append({
+                        "name": "scenario_1", 
+                        "parameters": [],
+                        "execution_count": exec_count,
+                    })
+                
+                execution_queries.append({
+                    "query_identifier": query_name,
+                    "query_content": query_content,
+                    "test_scenarios": test_scenarios
+                })
+                
+            except Exception as e:
+                print(f"Error parsing predefined query {query_config.get('name', 'unknown')}: {e}")
+                continue
+        
+        if not execution_queries:
+            raise HTTPException(status_code=400, detail="No valid predefined queries found")
+        
+        # Initialize connection service
+        connection_service = LakebaseConnectionService()
+        
+        # Initialize connection pool
+        pool_config = {
+            "base_pool_size": max(1, concurrency_level // 4),
+            "max_overflow": concurrency_level,
+            "pool_timeout": 30,
+            "pool_recycle": 3600,
+            "command_timeout": 30,
+            "ssl_mode": "require"
+        }
+        
+        try:
+            pool_initialized = await connection_service.initialize_connection_pool(
+                workspace_url=workspace_url,
+                instance_name=instance_name,
+                database=database_name,
+                pool_config=pool_config,
+                profile=databricks_profile
+            )
+            
+            if not pool_initialized:
+                raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
+        except Exception as e:
+            # Provide more specific error details
+            error_message = str(e)
+            if "Resource not found" in error_message:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Lakebase instance '{instance_name}' not found or not accessible with profile '{databricks_profile}'. Please verify the instance name and your Databricks profile configuration."
+                )
+            elif "profile" in error_message.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid Databricks profile '{databricks_profile}'. Please check your Databricks CLI configuration."
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Connection initialization failed: {error_message}"
+                )
+        
+        # Execute concurrent queries
+        report = await connection_service.execute_concurrent_queries(
+            queries=execution_queries,
+            concurrency_level=concurrency_level
+        )
+        
+        # Clean up connection pool
+        connection_service.close_connection_pool()
+        
+        return report
+        
+    except Exception as e:
+        # Ensure connection pool is closed on error
+        try:
+            connection_service.close_connection_pool()
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Predefined test execution failed: {str(e)}")
+
+@app.post("/api/concurrency-test/clear-temp-files")
+async def clear_temp_files():
+    """
+    Clear all temporary SQL files from the concurrency testing temp directory.
+    
+    Returns:
+        Success message
+    """
+    try:
+        import tempfile
+        import shutil
+        
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_psycopg_queries"
+        
+        if temp_dir.exists():
+            # Remove all .sql files
+            for sql_file in temp_dir.glob("*.sql"):
+                sql_file.unlink()
+                print(f"Deleted temp file: {sql_file}")
+            
+            return {"message": "Temporary files cleared successfully", "files_cleared": True}
+        else:
+            return {"message": "No temp directory found", "files_cleared": False}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear temp files: {str(e)}")
 
 @app.get("/api/concurrency-test/status")
 async def get_concurrency_test_status():

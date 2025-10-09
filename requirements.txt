@@ -1,4 +1,3 @@
-psycopg2-binary
 python-dotenv
 # Core dependencies
 pyyaml
@@ -10,7 +9,7 @@ uvicorn[standard]
 pydantic
 pyyaml
 python-multipart
-psycopg2-binary
+psycopg2-binary==2.9.10
 
 # Concurrency testing dependencies
 databricks-sdk==0.61.0
