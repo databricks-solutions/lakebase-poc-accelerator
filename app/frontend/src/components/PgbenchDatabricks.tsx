@@ -17,7 +17,9 @@ import {
   Tag,
   Radio,
   Upload,
-  Alert
+  Alert,
+  Statistic,
+  Divider
 } from 'antd';
 import { PlayCircleOutlined, ClusterOutlined, DatabaseOutlined, SettingOutlined, UploadOutlined, FolderOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
@@ -389,6 +391,182 @@ const PgbenchDatabricks: React.FC = () => {
               </Row>
             </Card>
           )}
+
+          {(jobStatus as any).pgbench_results && (
+            <Card size="small" title="Pgbench Summary Stats" style={{ marginTop: 16 }}>
+              <Row gutter={[16, 16]}>
+                <Col span={6}>
+                  <Statistic
+                    title="TPS"
+                    value={(jobStatus as any).pgbench_results.tps}
+                    precision={2}
+                    valueStyle={{ color: '#3f8600', fontSize: '24px', fontWeight: 'bold' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Avg Latency"
+                    value={(jobStatus as any).pgbench_results.latency_avg_ms}
+                    suffix="ms"
+                    precision={2}
+                    valueStyle={{ color: '#1890ff', fontSize: '24px', fontWeight: 'bold' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Total Transactions"
+                    value={(jobStatus as any).pgbench_results.total_transactions}
+                    valueStyle={{ color: '#722ed1', fontSize: '24px', fontWeight: 'bold' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Duration"
+                    value={(jobStatus as any).pgbench_results.duration}
+                    suffix="s"
+                    valueStyle={{ fontSize: '24px', fontWeight: 'bold' }}
+                  />
+                </Col>
+              </Row>
+              
+              {/* Add p50/p95/p99 from performance_metrics if available */}
+              {jobStatus.results?.performance_metrics && (
+                <>
+                  <Divider style={{ margin: '16px 0' }}>Latency Percentiles</Divider>
+                  <Row gutter={[16, 16]}>
+                    <Col span={8}>
+                      <Statistic
+                        title="p50 (Median)"
+                        value={jobStatus.results.performance_metrics.latency_p50_ms}
+                        suffix="ms"
+                        precision={2}
+                        valueStyle={{ fontSize: '20px' }}
+                      />
+                    </Col>
+                    <Col span={8}>
+                      <Statistic
+                        title="p95"
+                        value={jobStatus.results.performance_metrics.latency_p95_ms}
+                        suffix="ms"
+                        precision={2}
+                        valueStyle={{ fontSize: '20px' }}
+                      />
+                    </Col>
+                    <Col span={8}>
+                      <Statistic
+                        title="p99"
+                        value={jobStatus.results.performance_metrics.latency_p99_ms}
+                        suffix="ms"
+                        precision={2}
+                        valueStyle={{ fontSize: '20px' }}
+                      />
+                    </Col>
+                  </Row>
+                </>
+              )}
+              
+              <Divider style={{ margin: '16px 0' }} />
+              
+              <Row gutter={[16, 12]}>
+                <Col span={6}>
+                  <Text type="secondary">Test Type:</Text>
+                  <br />
+                  <Text strong>{(jobStatus as any).pgbench_results.transaction_type || 'N/A'}</Text>
+                </Col>
+                <Col span={6}>
+                  <Text type="secondary">Clients:</Text>
+                  <br />
+                  <Text strong style={{ fontSize: '16px' }}>{(jobStatus as any).pgbench_results.num_clients || 'N/A'}</Text>
+                </Col>
+                <Col span={6}>
+                  <Text type="secondary">Latency Stddev:</Text>
+                  <br />
+                  <Text strong style={{ fontSize: '16px' }}>{(jobStatus as any).pgbench_results.latency_stddev_ms?.toFixed(2) || 'N/A'} ms</Text>
+                </Col>
+                <Col span={6}>
+                  <Text type="secondary">Failed Transactions:</Text>
+                  <br />
+                  <Text strong style={{ 
+                    color: (jobStatus as any).pgbench_results.failed_transactions > 0 ? '#cf1322' : '#52c41a',
+                    fontSize: '16px'
+                  }}>
+                    {(jobStatus as any).pgbench_results.failed_transactions || 0}
+                  </Text>
+                </Col>
+              </Row>
+
+              {(jobStatus as any).pgbench_results.success_rate !== undefined && (
+                <div style={{ marginTop: 16 }}>
+                  <Text type="secondary">Success Rate: </Text>
+                  <Tag color="success" style={{ fontSize: '14px', padding: '4px 12px' }}>
+                    {(jobStatus as any).pgbench_results.success_rate}%
+                  </Tag>
+                </div>
+              )}
+
+              {/* Per-Query Statistics */}
+              {(jobStatus as any).pgbench_results?.per_query_stats && (jobStatus as any).pgbench_results.per_query_stats.length > 0 && (
+                <>
+                  <Divider style={{ margin: '16px 0' }}>Per-Query Statistics</Divider>
+                  {(jobStatus as any).pgbench_results.per_query_stats.map((queryStat: any, index: number) => (
+                    <Card 
+                      key={index} 
+                      size="small" 
+                      style={{ marginBottom: 12, backgroundColor: '#fafafa' }}
+                      title={
+                        <Space>
+                          <Text strong>SQL Script: {queryStat.query_name}.sql</Text>
+                          <Tag color="blue">{queryStat.transactions} transactions</Tag>
+                        </Space>
+                      }
+                    >
+                      <Row gutter={[16, 8]}>
+                        <Col span={6}>
+                          <Statistic
+                            title="TPS"
+                            value={queryStat.tps}
+                            precision={2}
+                            valueStyle={{ fontSize: '16px' }}
+                          />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic
+                            title="Avg Latency"
+                            value={queryStat.latency_avg_ms}
+                            suffix="ms"
+                            precision={2}
+                            valueStyle={{ fontSize: '16px' }}
+                          />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic
+                            title="Latency Stddev"
+                            value={queryStat.latency_stddev_ms}
+                            suffix="ms"
+                            precision={2}
+                            valueStyle={{ fontSize: '16px' }}
+                          />
+                        </Col>
+                        <Col span={6}>
+                          <div style={{ textAlign: 'center' }}>
+                            <Text type="secondary" style={{ fontSize: '12px' }}>Weight</Text>
+                            <div style={{ fontSize: '16px', fontWeight: 500 }}>{queryStat.weight}</div>
+                          </div>
+                        </Col>
+                      </Row>
+                      {queryStat.query_path && (
+                        <div style={{ marginTop: 8 }}>
+                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                            Path: {queryStat.query_path}
+                          </Text>
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                </>
+              )}
+            </Card>
+          )}
         </Space>
       </Card>
     );
@@ -453,13 +631,58 @@ const PgbenchDatabricks: React.FC = () => {
             name="cluster_id"
             label="Databricks Cluster ID (Optional)"
             rules={[{ required: false }]}
-            extra="Enter your Databricks cluster ID (e.g., 0123-456789-abcd123). Leave empty to create an ephemeral job cluster automatically."
           >
             <Input
               placeholder="Enter Databricks cluster ID or leave empty"
               prefix={<ClusterOutlined />}
             />
           </Form.Item>
+          
+          <Alert
+            message="Cluster Configuration Notes"
+            description={
+              <div>
+                <div style={{ marginBottom: 12 }}>
+                  <strong>Job Cluster:</strong>
+                  <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
+                    <li>
+                      Leave empty to create an ephemeral job cluster automatically 
+                      (cluster size determined by # of clients & jobs selection)
+                    </li>
+                    <li>
+                      App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong>
+                    </li>
+                  </ul>
+                </div>
+                <div>
+                  <strong>Interactive Clusters:</strong>
+                  <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
+                    <li>
+                      Configure as <strong>Dedicated</strong> (formerly: Single user) access mode
+                    </li>
+                    <li>
+                      The app service principal must be added as a user to the interactive cluster
+                    </li>
+                    <li>
+                      Make sure to attach the{' '}
+                      <a 
+                        href="https://github.com/databricks-solutions/lakebase-poc-accelerator/blob/app-dev-new/app/notebooks/init.sh"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        init script
+                      </a>
+                      {' '}to the interactive cluster
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            }
+            type="info"
+            showIcon
+            icon={<InfoCircleOutlined />}
+            style={{ marginBottom: 16 }}
+          />
         </Card>
 
         <Card title={<><SettingOutlined /> pgbench Configuration</>} style={{ marginBottom: 24 }}>
@@ -468,18 +691,18 @@ const PgbenchDatabricks: React.FC = () => {
               <Form.Item
                 name="pgbench_clients"
                 label="Clients"
-                tooltip="Number of concurrent database sessions"
+                tooltip="Number of concurrent database sessions (connections to database)"
               >
-                <InputNumber min={1} max={100} style={{ width: '100%' }} />
+                <InputNumber min={1} max={1000} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={6}>
               <Form.Item
                 name="pgbench_jobs"
                 label="Jobs"
-                tooltip="Number of worker threads"
+                tooltip="Number of worker threads (should match CPU cores on job cluster, typically 4-16)"
               >
-                <InputNumber min={1} max={100} style={{ width: '100%' }} />
+                <InputNumber min={1} max={64} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={6}>

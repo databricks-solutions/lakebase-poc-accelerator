@@ -139,23 +139,99 @@ class DatabricksJobsService:
             logger.warning(f"DEBUG: Failed to detect cloud provider: {e}, defaulting to Azure")
             return 'azure'
     
-    def _get_node_type_for_cloud(self) -> str:
-        """Get appropriate node type based on cloud provider
+    def _get_node_type_for_workload(self, threads: int, clients: int) -> str:
+        """Select appropriate node type based on workload requirements (threads and clients)
         
+        Uses tiered selection:
+        - Primary: Match cores to threads (capped at 64)
+        - Secondary: Ensure sufficient memory for clients (~200MB per client)
+        - Returns memory-optimized instances for better performance
+        
+        Args:
+            threads: Number of pgbench worker threads (-j parameter)
+            clients: Number of concurrent database connections (-c parameter)
+            
         Returns:
-            Node type ID string for the detected cloud provider
+            Node type ID string appropriate for the cloud provider and workload
         """
         cloud = self._detect_cloud_provider()
         
-        # Map cloud providers to their appropriate instance types
-        node_types = {
-            'aws': 'r3.xlarge',
-            'azure': 'Standard_E8_v3',
-            'gcp': 'n1-highmem-4'  # GCP equivalent
+        # Cap threads at 64 cores maximum
+        threads = min(threads, 64)
+        
+        # Calculate required memory (200MB per client as conservative estimate)
+        required_memory_gb = (clients * 200) / 1024
+        
+        # Instance type mapping: cloud -> tier -> instance_type
+        # Using general purpose instances (m6i for AWS - best price/performance for pgbench)
+        INSTANCE_MAP = {
+            'aws': {
+                'small': 'm6i.xlarge',      # 4 cores, 16 GB
+                'medium': 'm6i.2xlarge',    # 8 cores, 32 GB
+                'large': 'm6i.4xlarge',     # 16 cores, 64 GB
+                'xlarge': 'm6i.8xlarge',    # 32 cores, 128 GB
+                '2xlarge': 'm6i.16xlarge',  # 64 cores, 256 GB
+            },
+            'azure': {
+                'small': 'Standard_E4s_v3',     # 4 cores, 32 GB
+                'medium': 'Standard_E8s_v3',    # 8 cores, 64 GB
+                'large': 'Standard_E16s_v3',    # 16 cores, 128 GB
+                'xlarge': 'Standard_E32s_v3',   # 32 cores, 256 GB
+                '2xlarge': 'Standard_E64s_v3',  # 64 cores, 432 GB
+            },
+            'gcp': {
+                'small': 'n2-highmem-4',    # 4 cores, 32 GB
+                'medium': 'n2-highmem-8',   # 8 cores, 64 GB
+                'large': 'n2-highmem-16',   # 16 cores, 128 GB
+                'xlarge': 'n2-highmem-32',  # 32 cores, 256 GB
+                '2xlarge': 'n2-highmem-64', # 64 cores, 512 GB
+            }
         }
         
-        node_type = node_types.get(cloud, 'Standard_E8_v3')
-        logger.info(f"DEBUG: Selected node type '{node_type}' for cloud provider '{cloud}'")
+        # Tier specifications: (tier_name, max_threads, memory_gb)
+        # Memory values based on m6i family (4GB per vCPU)
+        TIERS = [
+            ('small', 4, 16),      # m6i.xlarge
+            ('medium', 8, 32),     # m6i.2xlarge
+            ('large', 16, 64),     # m6i.4xlarge
+            ('xlarge', 32, 128),   # m6i.8xlarge
+            ('2xlarge', 64, 256),  # m6i.16xlarge
+        ]
+        
+        # Select tier based on threads (primary criterion)
+        selected_tier = 'small'
+        for tier_name, max_threads, tier_memory in TIERS:
+            if threads <= max_threads:
+                selected_tier = tier_name
+                tier_mem_gb = tier_memory
+                break
+        else:
+            # If threads > 64, use largest tier
+            selected_tier = '2xlarge'
+            tier_mem_gb = 512
+        
+        # Upgrade tier if insufficient memory for clients
+        if required_memory_gb > tier_mem_gb:
+            logger.info(f"Upgrading tier: {clients} clients need {required_memory_gb:.1f}GB, "
+                       f"tier '{selected_tier}' only has {tier_mem_gb}GB")
+            for tier_name, max_threads, tier_memory in TIERS:
+                if required_memory_gb <= tier_memory:
+                    selected_tier = tier_name
+                    tier_mem_gb = tier_memory
+                    break
+            else:
+                # Use largest tier if memory requirement exceeds all tiers
+                selected_tier = '2xlarge'
+                tier_mem_gb = 512
+        
+        # Get cloud-specific instance type
+        node_type = INSTANCE_MAP.get(cloud, INSTANCE_MAP['azure']).get(selected_tier, 'Standard_E8s_v3')
+        
+        logger.info(f"Selected node type '{node_type}' (tier: {selected_tier}) for "
+                   f"workload: {threads} threads, {clients} clients on {cloud} cloud")
+        logger.info(f"Estimated memory requirement: {required_memory_gb:.1f}GB, "
+                   f"tier provides: {tier_mem_gb}GB")
+        
         return node_type
     
     def get_clusters(self) -> List[Dict[str, Any]]:
@@ -564,8 +640,47 @@ class DatabricksJobsService:
                 
                 logger.info(f"JOB_CLUSTER: Using SDK API client for job creation")
                 
-                # Get the appropriate node type for the cloud provider
-                node_type = self._get_node_type_for_cloud()
+                # Get the appropriate node type based on workload (threads and clients)
+                pgbench_threads = int(parameters.get('pgbench_jobs', 8))
+                pgbench_clients = int(parameters.get('pgbench_clients', 100))
+                node_type = self._get_node_type_for_workload(pgbench_threads, pgbench_clients)
+                
+                # Detect cloud provider for cloud-specific configurations
+                cloud = self._detect_cloud_provider()
+                
+                # Build new_cluster configuration
+                new_cluster_config = {
+                    "spark_version": "14.3.x-scala2.12",
+                    "node_type_id": node_type,
+                    "num_workers": 0,
+                    "spark_conf": {
+                        "spark.databricks.cluster.profile": "singleNode",
+                        "spark.master": "local[*]"
+                    },
+                    "custom_tags": {
+                        "ResourceClass": "SingleNode",
+                        "pgbench_job": "true"
+                    },
+                    "data_security_mode": "SINGLE_USER",
+                    "single_user_name": current_user,
+                    "init_scripts": [
+                        {
+                            "workspace": {
+                                "destination": init_script_path
+                            }
+                        }
+                    ]
+                }
+                
+                # Add cloud-specific attributes
+                # AWS 6th gen Intel instances (m6i, r6i, c6i, etc.) require EBS volumes (no local storage)
+                if cloud == 'aws' and any(family in node_type for family in ['m6i', 'r6i', 'c6i', 'm6a', 'r6a', 'c6a']):
+                    new_cluster_config["aws_attributes"] = {
+                        "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+                        "ebs_volume_count": 1,
+                        "ebs_volume_size": 100
+                    }
+                    logger.info(f"Added EBS volume configuration for AWS 6th gen instance type: {node_type}")
                 
                 # Build job configuration for REST API
                 job_payload = {
@@ -577,28 +692,7 @@ class DatabricksJobsService:
                                 "notebook_path": notebook_path,
                                 "base_parameters": base_parameters
                             },
-                            "new_cluster": {
-                                "spark_version": "14.3.x-scala2.12",
-                                "node_type_id": node_type,
-                                "num_workers": 0,
-                                "spark_conf": {
-                                    "spark.databricks.cluster.profile": "singleNode",
-                                    "spark.master": "local[*]"
-                                },
-                                "custom_tags": {
-                                    "ResourceClass": "SingleNode",
-                                    "pgbench_job": "true"
-                                },
-                                "data_security_mode": "SINGLE_USER",
-                                "single_user_name": current_user,
-                                "init_scripts": [
-                                    {
-                                        "workspace": {
-                                            "destination": init_script_path
-                                        }
-                                    }
-                                ]
-                            },
+                            "new_cluster": new_cluster_config,
                             "timeout_seconds": 3600
                         }
                     ],
@@ -724,17 +818,63 @@ class DatabricksJobsService:
             
             # Get run output if available
             results = None
+            pgbench_results = None
             if status == "completed":
                 try:
-                    # Try to get notebook output
-                    output = client.jobs.get_run_output(int(run_id))
-                    if output and output.notebook_output:
-                        # Parse results from notebook output
-                        results = self._parse_notebook_results(output.notebook_output.result)
+                    # For multi-task jobs, we need to get output from the specific task
+                    logger.info(f"Attempting to get run output for run_id={run_id}")
+                    
+                    # First, get the run to find task runs
+                    run = client.jobs.get_run(int(run_id))
+                    
+                    # Find the pgbench_test task run
+                    pgbench_task_run_id = None
+                    if run.tasks:
+                        for task_run in run.tasks:
+                            if task_run.task_key == "pgbench_test":
+                                pgbench_task_run_id = task_run.run_id
+                                logger.info(f"Found pgbench_test task run: {pgbench_task_run_id}")
+                                break
+                    
+                    if pgbench_task_run_id:
+                        # Get output from the specific task run
+                        output = client.jobs.get_run_output(pgbench_task_run_id)
+                        logger.info(f"Got output object from task run: {output is not None}")
+                        
+                        if output:
+                            logger.info(f"Output has notebook_output: {hasattr(output, 'notebook_output') and output.notebook_output is not None}")
+                            if output.notebook_output:
+                                result_str = output.notebook_output.result
+                                logger.info(f"notebook_output.result type: {type(result_str)}, length: {len(result_str) if result_str else 0}")
+                                if result_str:
+                                    logger.info(f"First 200 chars of result: {result_str[:200]}")
+                                
+                                # Parse results from notebook output
+                                results = self._parse_notebook_results(result_str)
+                                logger.info(f"Parsed results: {results is not None}, keys: {list(results.keys()) if results else None}")
+                                
+                                # Extract pgbench summary stats from raw_output field
+                                if results and 'raw_output' in results:
+                                    raw_output = results['raw_output']
+                                    logger.info(f"Found raw_output in results, length: {len(raw_output)}")
+                                    pgbench_results = self._parse_pgbench_results(raw_output)
+                                    if pgbench_results:
+                                        logger.info(f"Successfully parsed pgbench summary: TPS={pgbench_results.get('tps')}")
+                                    else:
+                                        logger.warning("Could not parse pgbench summary from raw_output")
+                                else:
+                                    logger.warning(f"No raw_output in results. Results keys: {list(results.keys()) if results else 'None'}")
+                            else:
+                                logger.warning("output.notebook_output is None")
+                        else:
+                            logger.warning("output is None")
+                    else:
+                        logger.warning(f"Could not find pgbench_test task in run {run_id}")
+                        
                 except Exception as e:
-                    logger.warning(f"Could not retrieve run output: {e}")
+                    logger.error(f"Could not retrieve run output: {e}", exc_info=True)
             
-            return {
+            response = {
                 "run_id": run_id,
                 "status": status,
                 "message": self._get_status_message(life_cycle_state, result_state),
@@ -743,6 +883,12 @@ class DatabricksJobsService:
                 "end_time": run.end_time,
                 "results": results
             }
+            
+            # Add pgbench summary stats if available
+            if pgbench_results:
+                response["pgbench_results"] = pgbench_results
+            
+            return response
             
         except Exception as e:
             logger.error(f"Failed to get run status for {run_id}: {e}")
@@ -779,8 +925,16 @@ class DatabricksJobsService:
             Parsed results dictionary or None
         """
         try:
-            # Look for JSON results in the notebook output
-            # The parameterized notebook saves results as JSON
+            if not notebook_result:
+                return None
+                
+            # Try to parse as JSON directly (from dbutils.notebook.exit())
+            try:
+                return json.loads(notebook_result)
+            except json.JSONDecodeError:
+                pass
+            
+            # Fall back to looking for JSON in the output lines
             lines = notebook_result.split('\n')
             for line in lines:
                 line = line.strip()
@@ -795,6 +949,92 @@ class DatabricksJobsService:
             
         except Exception as e:
             logger.warning(f"Could not parse notebook results: {e}")
+            return None
+    
+    def _parse_pgbench_results(self, raw_output: str) -> Optional[Dict[str, Any]]:
+        """Parse pgbench summary statistics from raw output
+        
+        Args:
+            raw_output: Raw pgbench stdout containing summary stats
+            
+        Returns:
+            Dictionary with parsed pgbench summary stats or None
+        """
+        import re
+        
+        try:
+            if not raw_output:
+                return None
+                
+            results = {}
+            
+            # Extract summary stats from pgbench output
+            patterns = {
+                'transaction_type': r'transaction type:\s*(.+)',
+                'scaling_factor': r'scaling factor:\s*(\d+)',
+                'query_mode': r'query mode:\s*(\w+)',
+                'num_clients': r'number of clients:\s*(\d+)',
+                'num_threads': r'number of threads:\s*(\d+)',
+                'duration': r'duration:\s*(\d+)\s*s',
+                'total_transactions': r'number of transactions actually processed:\s*(\d+)',
+                'failed_transactions': r'number of failed transactions:\s*(\d+)',
+                'latency_avg_ms': r'latency average\s*=\s*([\d.]+)\s*ms',
+                'latency_stddev_ms': r'latency stddev\s*=\s*([\d.]+)\s*ms',
+                'initial_connection_time_ms': r'initial connection time\s*=\s*([\d.]+)\s*ms',
+                'tps': r'tps\s*=\s*([\d.]+)',
+            }
+            
+            for key, pattern in patterns.items():
+                match = re.search(pattern, raw_output)
+                if match:
+                    value = match.group(1)
+                    # Convert numeric values
+                    if key in ['scaling_factor', 'num_clients', 'num_threads', 'duration', 'total_transactions', 'failed_transactions']:
+                        results[key] = int(value)
+                    elif key in ['latency_avg_ms', 'latency_stddev_ms', 'initial_connection_time_ms', 'tps']:
+                        results[key] = float(value)
+                    else:
+                        results[key] = value.strip()
+            
+            # Calculate success rate if we have the data
+            if 'total_transactions' in results and 'failed_transactions' in results:
+                total = results['total_transactions']
+                failed = results['failed_transactions']
+                if total > 0:
+                    results['success_rate'] = round((total - failed) / total * 100, 2)
+            
+            # Parse per-query statistics
+            per_query_stats = []
+            sql_script_pattern = r'SQL script \d+: (.+?)\n.*?- weight: (\d+).*?\n.*?- (\d+) transactions.*?tps = ([\d.]+)\).*?\n.*?- latency average = ([\d.]+) ms.*?\n.*?- latency stddev = ([\d.]+) ms'
+            
+            for match in re.finditer(sql_script_pattern, raw_output, re.DOTALL):
+                query_path = match.group(1).strip()
+                query_name = query_path.split('/')[-1].replace('.sql', '') if '/' in query_path else query_path
+                
+                query_stat = {
+                    'query_name': query_name,
+                    'query_path': query_path,
+                    'weight': int(match.group(2)),
+                    'transactions': int(match.group(3)),
+                    'tps': float(match.group(4)),
+                    'latency_avg_ms': float(match.group(5)),
+                    'latency_stddev_ms': float(match.group(6))
+                }
+                per_query_stats.append(query_stat)
+            
+            if per_query_stats:
+                results['per_query_stats'] = per_query_stats
+                logger.info(f"Parsed {len(per_query_stats)} per-query statistics")
+            
+            # Only return if we found the key metric (TPS)
+            if 'tps' in results:
+                return results
+            else:
+                logger.warning("Could not find TPS in pgbench output")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error parsing pgbench results: {e}")
             return None
     
     def submit_pgbench_job(self, 
