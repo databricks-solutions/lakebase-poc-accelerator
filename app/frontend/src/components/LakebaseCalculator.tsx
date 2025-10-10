@@ -16,7 +16,7 @@ const LakebaseCalculator: React.FC<Props> = ({ onConfigGenerated }) => {
   const handleConfigurationSubmit = async (config: WorkloadConfig) => {
     setLoading(true);
     try {
-      
+
       // Call cost estimation API
       const response = await fetch('/api/estimate-cost', {
         method: 'POST',
@@ -89,8 +89,8 @@ const LakebaseCalculator: React.FC<Props> = ({ onConfigGenerated }) => {
   };
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Card 
+    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <Card
         title={
           <span>
             <CalculatorOutlined style={{ marginRight: '8px' }} />

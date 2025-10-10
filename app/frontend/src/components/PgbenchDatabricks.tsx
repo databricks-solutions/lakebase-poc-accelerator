@@ -75,22 +75,22 @@ const PgbenchDatabricks: React.FC = () => {
   // Helper function to ensure URL is absolute
   const ensureAbsoluteUrl = (url: string): string => {
     if (!url) return url;
-    
+
     // If URL already starts with http:// or https://, it's absolute
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url;
     }
-    
+
     // If URL starts with //, add https:
     if (url.startsWith('//')) {
       return `https:${url}`;
     }
-    
+
     // If URL doesn't start with protocol, add https://
     if (!url.includes('://')) {
       return `https://${url}`;
     }
-    
+
     return url;
   };
   const [queryConfigs, setQueryConfigs] = useState<QueryConfig[]>([
@@ -100,7 +100,7 @@ const PgbenchDatabricks: React.FC = () => {
       weight: 60
     },
     {
-      name: 'range', 
+      name: 'range',
       content: '\\set c_current_hdemo_sk random(1, 700)\nSELECT count(*)\nFROM databricks_postgres.public.customer\nWHERE c_current_hdemo_sk BETWEEN :c_current_hdemo_sk AND :c_current_hdemo_sk + 1000;',
       weight: 30
     },
@@ -167,14 +167,14 @@ const PgbenchDatabricks: React.FC = () => {
 
       if (response.ok) {
         const result = await response.json();
-        
+
         // Debug: Log the URLs received from backend
         console.log('FRONTEND: Received URLs from backend:', {
           job_url: result.job_url,
           job_run_url: result.job_run_url,
           workspace_url: result.workspace_url
         });
-        
+
         setJobStatus({
           job_id: result.job_id,
           run_id: result.run_id,
@@ -185,7 +185,7 @@ const PgbenchDatabricks: React.FC = () => {
           job_url: result.job_url,
           workspace_url: result.workspace_url
         });
-        
+
         // Start polling for job status
         pollJobStatus(result.run_id);
         message.success('Job submitted successfully!');
@@ -209,45 +209,46 @@ const PgbenchDatabricks: React.FC = () => {
     }
   };
 
+
   // Handle query file uploads
   const handleQueryUpload = (file: File) => {
     const reader = new FileReader();
-    
+
     reader.onload = (e) => {
       const content = e.target?.result as string;
       const fileName = file.name.replace('.sql', '');
-      
+
       // Parse query content - look for weight in comments
       let weight = 1;
       const weightMatch = content.match(/--\s*weight:\s*(\d+)/i);
       if (weightMatch) {
         weight = parseInt(weightMatch[1], 10);
       }
-      
+
       // Add to uploaded queries
       const newQuery: QueryConfig = {
         name: fileName,
         content: content,
         weight: weight
       };
-      
+
       setUploadedQueries(prev => [...prev, newQuery]);
-      
+
       // Update summary
       const totalQueries = uploadedQueries.length + 1;
       const totalSize = (JSON.stringify([...uploadedQueries, newQuery]).length / 1024).toFixed(2);
-      const queriesWithParams = [...uploadedQueries, newQuery].filter(q => 
+      const queriesWithParams = [...uploadedQueries, newQuery].filter(q =>
         q.content.includes('\\set') || q.content.includes(':')
       ).length;
-      
+
       setUploadSummary(
         `${totalQueries} queries uploaded (${queriesWithParams} with parameters), ` +
         `total size: ${totalSize} KB`
       );
-      
+
       message.success(`Uploaded ${fileName}`);
     };
-    
+
     reader.readAsText(file);
     return false; // Prevent auto upload
   };
@@ -265,7 +266,7 @@ const PgbenchDatabricks: React.FC = () => {
         const response = await fetch(`/api/databricks/job-status/${runId}`);
         if (response.ok) {
           const status = await response.json();
-          
+
           setJobStatus(prevStatus => ({
             ...prevStatus,
             ...status,
@@ -325,7 +326,7 @@ const PgbenchDatabricks: React.FC = () => {
             </Tag>
             <Text>{jobStatus.message}</Text>
           </div>
-          
+
           {jobStatus.job_id && (
             <div>
               <Text type="secondary">Job ID: </Text>
@@ -338,7 +339,7 @@ const PgbenchDatabricks: React.FC = () => {
               )}
             </div>
           )}
-          
+
           {jobStatus.run_id && (
             <div>
               <Text type="secondary">Run ID: </Text>
@@ -399,8 +400,16 @@ const PgbenchDatabricks: React.FC = () => {
         <ClusterOutlined /> Pgbench in Databricks
       </Title>
       <Paragraph>
-        Run pgbench performance tests against your Lakebase instance using Databricks compute clusters.
-        This will create and submit a Databricks job that executes the pgbench test with your specified parameters.
+        <strong>pgbench</strong> is PostgreSQL's built-in benchmarking tool that provides industry-standard database performance testing.
+        It simulates realistic database workloads by running multiple concurrent client sessions against your Lakebase Postgres database.
+      </Paragraph>
+      <Paragraph>
+        <ul>
+          <li>Run pgbench performance tests against your Lakebase instance using Databricks compute clusters.</li>
+          <li>This will create and submit a Databricks job that executes the pgbench test with your specified parameters.</li>
+          <li>Choose this option to test higher concurrency by scaling up the number of driver CPU cores in your Databricks cluster.</li>
+          <li>If running on Databricks Apps, ensure the app's service principal has permission to access the database. In Databricks Workspace, navigate to your **Lakebase Instance &gt; Permissions &gt; Add PostgreSQL Role**, search for the App Service Principal, and grant it the databricks_superuser role.</li>
+        </ul>
       </Paragraph>
 
       <Form
@@ -617,7 +626,7 @@ const PgbenchDatabricks: React.FC = () => {
                   </Panel>
                 ))}
               </Collapse>
-              
+
               <Button
                 type="dashed"
                 onClick={addQueryConfig}
@@ -643,7 +652,7 @@ const PgbenchDatabricks: React.FC = () => {
                 icon={<InfoCircleOutlined />}
                 style={{ marginBottom: 16 }}
               />
-              
+
               <Upload.Dragger
                 multiple
                 accept=".sql"
@@ -682,7 +691,7 @@ const PgbenchDatabricks: React.FC = () => {
                       </Panel>
                     ))}
                   </Collapse>
-                  
+
                   <Button danger onClick={handleClearUploads} style={{ width: '100%' }}>
                     Clear All Uploads
                   </Button>
@@ -701,7 +710,7 @@ const PgbenchDatabricks: React.FC = () => {
                 icon={<InfoCircleOutlined />}
                 style={{ marginBottom: 16 }}
               />
-              
+
               <Form.Item
                 name="query_workspace_path"
                 label="Workspace Path"
@@ -749,6 +758,7 @@ const PgbenchDatabricks: React.FC = () => {
       </Form>
 
       {renderJobStatus()}
+
     </div>
   );
 };

@@ -11,7 +11,7 @@ const { Title, Paragraph, Text } = Typography;
 
 const LakebaseOverview: React.FC = () => {
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
       <Title level={2}>Lakebase Overview</Title>
       <Alert
         message="Official Documentation"

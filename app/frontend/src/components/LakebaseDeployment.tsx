@@ -233,8 +233,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
 
             // Update progress display (include warning if we've had timeouts)
             const progressMsg = `${progress.message || 'Deploying...'} (${elapsedTime}s)`;
-            const displayMsg = timeoutWarningShown 
-              ? `${progressMsg} ⚠️ (Intermittent connectivity issues)` 
+            const displayMsg = timeoutWarningShown
+              ? `${progressMsg} ⚠️ (Intermittent connectivity issues)`
               : progressMsg;
             setDeploymentProgress(displayMsg);
             setDeploymentSteps(progress.steps || []);
@@ -248,7 +248,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             }
             output += `Status: ${progress.status}\n`;
             output += `Step: ${progress.current_step}/${progress.total_steps}\n\n`;
-            
+
             // Add helpful note about deployment time
             if (progress.current_step === 1 && progress.status === 'in_progress') {
               output += `ℹ️ Note: Database instance creation typically takes 15-30 minutes.\n\n`;
@@ -424,7 +424,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const hasConfigs = Object.keys(generatedConfigs).length > 0;
 
   return (
-    <div style={{ padding: '24px' }}>
+    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
       <Card
         title={
           <span>

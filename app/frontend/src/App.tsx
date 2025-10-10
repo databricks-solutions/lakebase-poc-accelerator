@@ -6,7 +6,6 @@ import './App.css';
 import LakebaseOverview from './components/LakebaseOverview';
 import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
-import ConcurrencyTestingPgbench from './components/ConcurrencyTestingPgbench';
 import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import PgbenchDatabricks from './components/PgbenchDatabricks';
 import DatabricksLogo from './components/DatabricksLogo';
@@ -87,13 +86,8 @@ function App() {
               children: <LakebaseDeployment generatedConfigs={generatedConfigs} />
             },
             {
-              key: 'concurrency',
-              label: 'Concurrency Testing (pgbench on local machine)',
-              children: <ConcurrencyTestingPgbench />
-            },
-            {
               key: 'pgbench-databricks',
-              label: 'Concurrency Testing (pgbench on Databricks Apps)',
+              label: 'Concurrency Testing (pgbench)',
               children: <PgbenchDatabricks />
             },
             {

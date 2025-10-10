@@ -230,9 +230,27 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
       console.log('Response status:', response.status);
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error response:', errorData);
-        const errorMessage = errorData.detail || 'Test execution failed';
+        let errorMessage = 'Test execution failed';
+
+        if (response.status === 504) {
+          errorMessage = 'Request timed out. The test is taking too long. Try reducing concurrency level or test duration.';
+        } else {
+          try {
+            const errorData = await response.json();
+            console.error('Error response:', errorData);
+            errorMessage = errorData.detail || 'Test execution failed';
+          } catch (e) {
+            // If response is not JSON (e.g., HTML error page), try to get text
+            try {
+              const errorText = await response.text();
+              console.error('Non-JSON error response:', errorText);
+              errorMessage = `Server error (${response.status}): ${errorText.substring(0, 100)}...`;
+            } catch (textError) {
+              errorMessage = `Server error (${response.status}): Could not read error response`;
+            }
+          }
+        }
+
         setTestError(errorMessage);
         message.error(`Test execution failed: ${errorMessage}`);
         return; // Don't throw, just return to show error in UI
@@ -246,7 +264,18 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
 
     } catch (error) {
       console.error('Test execution error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      let errorMessage = 'Unknown error';
+
+      if (error instanceof Error) {
+        if (error.message.includes('504')) {
+          errorMessage = 'Request timed out. The test may be taking too long. Try reducing concurrency level,  test duration or scaling up lakebase instance.';
+        } else if (error.message.includes('Unexpected token')) {
+          errorMessage = 'Server returned invalid response. The test may have timed out or encountered an error.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       setTestError(errorMessage);
       message.error(`Test execution failed: ${errorMessage}`);
     } finally {
@@ -263,9 +292,11 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
           Concurrency Testing (psycopg)
         </Title>
         <Paragraph style={{ marginBottom: 0 }}>
-          <li>Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.</li>
-          <li>This provides flexible, customizable concurrency testing with detailed performance metrics.</li>
-          <li>If running on Databricks Apps, ensure the app service principal has permission to access the database. In Databricks Workspace, navigate to your Lakebase Instance &gt; Permissions &gt; Add PostgreSQL Role, search for the App Service Principal, and grant it the databricks_superuser role.</li>
+          <ul>
+            <li>Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.</li>
+            <li>This provides flexible, customizable concurrency testing with detailed performance metrics.</li>
+            <li>If running on Databricks Apps, ensure the app service principal has permission to access the database. In Databricks Workspace, navigate to your Lakebase Instance &gt; Permissions &gt; Add PostgreSQL Role, search for the App Service Principal, and grant it the databricks_superuser role.</li>
+          </ul>
         </Paragraph>
       </div>
 
@@ -787,7 +818,9 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                       successful_executions: 0,
                       failed_executions: 0,
                       durations: [],
-                      parameter_sets: new Set()
+                      parameter_sets: new Set(),
+                      error_messages: new Set(),
+                      error_types: new Set()
                     };
                   }
 
@@ -797,6 +830,13 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                     aggregatedResults[queryId].durations.push(result.duration_ms);
                   } else {
                     aggregatedResults[queryId].failed_executions++;
+                    // Collect error information for debugging
+                    if (result.error_message) {
+                      aggregatedResults[queryId].error_messages.add(result.error_message);
+                    }
+                    if (result.error_type) {
+                      aggregatedResults[queryId].error_types.add(result.error_type);
+                    }
                   }
 
                   // Collect parameter sets (if available)
@@ -883,6 +923,61 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                             {paramSet}
                           </Tag>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Error Details for Failed Queries */}
+                    {details.failed_executions > 0 && (details.error_messages.size > 0 || details.error_types.size > 0) && (
+                      <div style={{ marginTop: '12px' }}>
+                        <Collapse
+                          size="small"
+                          items={[
+                            {
+                              key: 'error-details',
+                              label: (
+                                <Text strong style={{ color: '#ff4d4f' }}>
+                                  Error Details ({details.failed_executions} failures) - Click to expand
+                                </Text>
+                              ),
+                              children: (
+                                <div>
+                                  {details.error_types.size > 0 && (
+                                    <div style={{ marginBottom: '12px' }}>
+                                      <Text strong>Error Types: </Text>
+                                      {Array.from(details.error_types).map((errorType: unknown, index: number) => (
+                                        <Tag key={index} color="red" style={{ marginRight: '4px' }}>
+                                          {errorType as string}
+                                        </Tag>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {details.error_messages.size > 0 && (
+                                    <div>
+                                      <Text strong>Error Messages: </Text>
+                                      <div style={{ marginTop: '8px' }}>
+                                        {Array.from(details.error_messages).map((errorMsg: unknown, index: number) => (
+                                          <div key={index} style={{
+                                            marginBottom: '8px',
+                                            padding: '12px',
+                                            backgroundColor: '#fff2f0',
+                                            border: '1px solid #ffccc7',
+                                            borderRadius: '6px',
+                                            fontSize: '12px',
+                                            fontFamily: 'monospace',
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-word'
+                                          }}>
+                                            <Text style={{ color: '#ff4d4f' }}>{errorMsg as string}</Text>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            }
+                          ]}
+                        />
                       </div>
                     )}
                   </Card>

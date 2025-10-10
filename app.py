@@ -64,6 +64,41 @@ if frontend_build_path and frontend_build_path.exists():
     
     app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
 
+    # Serve specific files from build root - these must be defined BEFORE the catch-all route
+    @app.get("/databricks-logo.svg")
+    async def serve_databricks_logo():
+        print(f"DEBUG: Serving databricks-logo.svg from: {frontend_build_path / 'databricks-logo.svg'}")
+        logo_path = frontend_build_path / "databricks-logo.svg"
+        if logo_path.exists():
+            return FileResponse(
+                str(logo_path),
+                media_type="image/svg+xml",
+                headers={"Cache-Control": "public, max-age=3600"}
+            )
+        else:
+            print(f"DEBUG: Logo not found at {logo_path}")
+            return {"error": "Logo not found"}
+
+    @app.get("/favicon.ico")
+    async def serve_favicon():
+        print(f"DEBUG: Serving favicon.ico from: {frontend_build_path / 'favicon.ico'}")
+        favicon_path = frontend_build_path / "favicon.ico"
+        if favicon_path.exists():
+            return FileResponse(str(favicon_path))
+        else:
+            print(f"DEBUG: Favicon not found at {favicon_path}")
+            return {"error": "Favicon not found"}
+
+    # Test route to verify logo serving
+    @app.get("/test-logo")
+    async def test_logo():
+        logo_path = frontend_build_path / "databricks-logo.svg"
+        return {
+            "logo_exists": logo_path.exists(),
+            "logo_path": str(logo_path),
+            "build_path": str(frontend_build_path)
+        }
+
     @app.get("/")
     async def serve_frontend():
         print(f"DEBUG: Serving frontend from: {frontend_build_path / 'index.html'}")
@@ -89,4 +124,10 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        timeout_keep_alive=300,  # 5 minutes keep-alive timeout
+        timeout_graceful_shutdown=30  # 30 seconds graceful shutdown
+    )
