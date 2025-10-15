@@ -1,6 +1,7 @@
 
 import psycopg2
 
+# Generate token through the Lakebase UI, REST API, or using the Databricks SDK
 PGPASSWORD = "<OAUTH-token>"
 conn_string = f"<conn-string-from-lakebase-UI>"
 
