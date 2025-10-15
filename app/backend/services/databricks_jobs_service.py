@@ -491,16 +491,29 @@ class DatabricksJobsService:
             logger.error(f"Failed to upload notebook: {e}")
             raise
     
-    def _upload_init_script(self, job_name: str) -> str:
+    def _upload_init_script(self) -> str:
         """
-        Upload the pgbench init script to the workspace.
+        Upload the pgbench init script to the workspace (reusable location).
         Returns the workspace path to the uploaded script.
+        Checks if script already exists and only uploads if missing or different.
         """
         try:
             import os
             client = self._get_client()
             
-            # Find the init.sh script
+            # Use a fixed workspace path (not per-job) for reusability
+            workspace_path = "/Shared/pgbench_resources/init.sh"
+            
+            # Check if script already exists in workspace
+            try:
+                existing_script = client.workspace.export(workspace_path)
+                logger.info(f"INIT_SCRIPT: Script already exists at {workspace_path}, reusing")
+                return workspace_path
+            except Exception:
+                # Script doesn't exist, will upload it
+                logger.info(f"INIT_SCRIPT: Script not found at {workspace_path}, will upload")
+            
+            # Find the init.sh script locally
             current_dir = os.path.dirname(os.path.abspath(__file__))
             parent_dir = os.path.dirname(current_dir)
             
@@ -526,9 +539,6 @@ class DatabricksJobsService:
                 init_script_content = f.read()
             
             logger.info(f"INIT_SCRIPT: Read {len(init_script_content)} bytes from init.sh")
-            
-            # Upload to workspace as a plain file (not notebook)
-            workspace_path = f"/Shared/pgbench_init/{job_name}/init.sh"
             logger.info(f"INIT_SCRIPT: Uploading to workspace path: {workspace_path}")
             
             # Create directory if it doesn't exist
@@ -630,9 +640,9 @@ class DatabricksJobsService:
                 current_user = self._get_current_service_principal()
                 logger.info(f"JOB_CLUSTER: Using service principal: {current_user}")
                 
-                # Upload init script to workspace
-                init_script_path = self._upload_init_script(job_name)
-                logger.info(f"JOB_CLUSTER: Init script uploaded to {init_script_path}")
+                # Get init script path (uploads only if not already in workspace)
+                init_script_path = self._upload_init_script()
+                logger.info(f"JOB_CLUSTER: Using init script at {init_script_path}")
                 
                 # Use SDK's internal API client for REST call
                 # This automatically handles authentication (OAuth, service principal, PAT, etc.)
@@ -1066,8 +1076,8 @@ class DatabricksJobsService:
             timestamp = int(time.time())
             job_name = f"pgbench_test_{lakebase_instance_name}_{timestamp}"
             
-            # Notebook path in workspace
-            notebook_path = f"/Shared/pgbench_jobs/{job_name}"
+            # Use fixed notebook path in workspace for reusability (not per-job)
+            notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
             
             # Read the parameterized notebook content
             import os
@@ -1177,8 +1187,22 @@ class DatabricksJobsService:
                 print(f"NOTEBOOK ERROR: Cannot proceed without the actual pgbench_parameterized.ipynb")
                 raise Exception(f"Failed to load pgbench notebook: {e}. Cannot create job without the actual notebook file.")
             
-            # Upload notebook to workspace
-            self.upload_notebook(notebook_path, notebook_content)
+            # Check if notebook already exists in workspace, upload only if needed
+            client = self._get_client()
+            notebook_exists = False
+            try:
+                client.workspace.get_status(notebook_path)
+                notebook_exists = True
+                logger.info(f"NOTEBOOK: Already exists at {notebook_path}, reusing")
+            except Exception:
+                logger.info(f"NOTEBOOK: Not found at {notebook_path}, will upload")
+            
+            # Upload notebook only if it doesn't exist
+            if not notebook_exists:
+                self.upload_notebook(notebook_path, notebook_content)
+                logger.info(f"NOTEBOOK: Uploaded to {notebook_path}")
+            else:
+                logger.info(f"NOTEBOOK: Skipping upload, using existing notebook at {notebook_path}")
             
             # Prepare job parameters - handle both query sources
             parameters = {
