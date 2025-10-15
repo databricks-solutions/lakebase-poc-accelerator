@@ -503,15 +503,7 @@ class DatabricksJobsService:
             
             # Use a fixed workspace path (not per-job) for reusability
             workspace_path = "/Shared/pgbench_resources/init.sh"
-            
-            # Check if script already exists in workspace
-            try:
-                existing_script = client.workspace.export(workspace_path)
-                logger.info(f"INIT_SCRIPT: Script already exists at {workspace_path}, reusing")
-                return workspace_path
-            except Exception:
-                # Script doesn't exist, will upload it
-                logger.info(f"INIT_SCRIPT: Script not found at {workspace_path}, will upload")
+            logger.info(f"INIT_SCRIPT: Uploading latest version to {workspace_path}")
             
             # Find the init.sh script locally
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1047,6 +1039,140 @@ class DatabricksJobsService:
             logger.error(f"Error parsing pgbench results: {e}")
             return None
     
+    def _get_or_create_pgbench_job(self, cluster_id: Optional[str]) -> str:
+        """Get existing pgbench job or create it if it doesn't exist.
+        
+        The job is reusable across all test runs with different parameters.
+        
+        Args:
+            cluster_id: Cluster ID to use (None for auto job cluster)
+            
+        Returns:
+            Job ID string
+        """
+        try:
+            client = self._get_client()
+            
+            # Use fixed job name for reusability
+            job_name = "lakebase_pgbench_job"
+            
+            # Check if job already exists
+            logger.info(f"PGBENCH_JOB: Checking if job '{job_name}' exists")
+            
+            try:
+                # List all jobs and find ours by name
+                for job in client.jobs.list():
+                    if job.settings and job.settings.name == job_name:
+                        job_id = str(job.job_id)
+                        logger.info(f"PGBENCH_JOB: Found existing job: {job_id}")
+                        return job_id
+            except Exception as e:
+                logger.warning(f"PGBENCH_JOB: Error listing jobs: {e}")
+            
+            # Job doesn't exist, create it
+            logger.info(f"PGBENCH_JOB: Job not found, creating new job '{job_name}'")
+            
+            # Notebook path (already uploaded in submit_pgbench_job)
+            notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
+            
+            if cluster_id and cluster_id.strip():
+                # Use existing cluster
+                logger.info(f"PGBENCH_JOB: Creating job with existing cluster {cluster_id}")
+                
+                job_settings = JobSettings(
+                    name=job_name,
+                    tasks=[
+                        Task(
+                            task_key="pgbench_test",
+                            notebook_task=NotebookTask(
+                                notebook_path=notebook_path,
+                                base_parameters={}  # Parameters provided at runtime
+                            ),
+                            existing_cluster_id=cluster_id,
+                            timeout_seconds=3600
+                        )
+                    ],
+                    max_concurrent_runs=1,
+                    timeout_seconds=3600
+                )
+                
+                job = client.jobs.create(
+                    name=job_settings.name,
+                    tasks=job_settings.tasks,
+                    max_concurrent_runs=job_settings.max_concurrent_runs,
+                    timeout_seconds=job_settings.timeout_seconds
+                )
+                job_id = str(job.job_id)
+                
+            else:
+                # Create with auto job cluster
+                logger.info(f"PGBENCH_JOB: Creating job with auto job cluster")
+                
+                # Get service principal
+                current_user = self._get_current_service_principal()
+                
+                # Get init script path
+                init_script_path = self._upload_init_script()
+                
+                # Build job configuration
+                job_payload = {
+                    "name": job_name,
+                    "tasks": [
+                        {
+                            "task_key": "pgbench_test",
+                            "notebook_task": {
+                                "notebook_path": notebook_path,
+                                "base_parameters": {}  # Parameters provided at runtime
+                            },
+                            "new_cluster": {
+                                "spark_version": "14.3.x-scala2.12",
+                                "node_type_id": "m6i.2xlarge",  # Default, will be sized at runtime
+                                "num_workers": 0,
+                                "spark_conf": {
+                                    "spark.databricks.cluster.profile": "singleNode",
+                                    "spark.master": "local[*]"
+                                },
+                                "custom_tags": {
+                                    "ResourceClass": "SingleNode",
+                                    "pgbench_job": "true"
+                                },
+                                "data_security_mode": "SINGLE_USER",
+                                "single_user_name": current_user,
+                                "init_scripts": [
+                                    {
+                                        "workspace": {
+                                            "destination": init_script_path
+                                        }
+                                    }
+                                ],
+                                "aws_attributes": {
+                                    "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+                                    "ebs_volume_count": 1,
+                                    "ebs_volume_size": 100
+                                }
+                            },
+                            "timeout_seconds": 3600
+                        }
+                    ],
+                    "max_concurrent_runs": 1,
+                    "timeout_seconds": 3600
+                }
+                
+                response = client.api_client.do(
+                    'POST',
+                    '/api/2.1/jobs/create',
+                    body=job_payload
+                )
+                
+                job_id = str(response.get("job_id"))
+            
+            logger.info(f"PGBENCH_JOB: Created job {job_id}")
+            return job_id
+            
+        except Exception as e:
+            logger.error(f"PGBENCH_JOB: Failed to get/create job: {e}")
+            raise
+    
     def submit_pgbench_job(self, 
                           lakebase_instance_name: str,
                           database_name: str,
@@ -1072,10 +1198,6 @@ class DatabricksJobsService:
             If query_configs size > 8KB, queries are automatically uploaded to workspace.
         """
         try:
-            # Generate unique job name
-            timestamp = int(time.time())
-            job_name = f"pgbench_test_{lakebase_instance_name}_{timestamp}"
-            
             # Use fixed notebook path in workspace for reusability (not per-job)
             notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
             
@@ -1187,22 +1309,12 @@ class DatabricksJobsService:
                 print(f"NOTEBOOK ERROR: Cannot proceed without the actual pgbench_parameterized.ipynb")
                 raise Exception(f"Failed to load pgbench notebook: {e}. Cannot create job without the actual notebook file.")
             
-            # Check if notebook already exists in workspace, upload only if needed
+            # Always upload notebook to ensure latest version is used (overwrite=True in upload_notebook)
+            # This ensures bug fixes and updates are immediately reflected
             client = self._get_client()
-            notebook_exists = False
-            try:
-                client.workspace.get_status(notebook_path)
-                notebook_exists = True
-                logger.info(f"NOTEBOOK: Already exists at {notebook_path}, reusing")
-            except Exception:
-                logger.info(f"NOTEBOOK: Not found at {notebook_path}, will upload")
-            
-            # Upload notebook only if it doesn't exist
-            if not notebook_exists:
-                self.upload_notebook(notebook_path, notebook_content)
-                logger.info(f"NOTEBOOK: Uploaded to {notebook_path}")
-            else:
-                logger.info(f"NOTEBOOK: Skipping upload, using existing notebook at {notebook_path}")
+            logger.info(f"NOTEBOOK: Uploading latest version to {notebook_path}")
+            self.upload_notebook(notebook_path, notebook_content)
+            logger.info(f"NOTEBOOK: Successfully uploaded/updated notebook at {notebook_path}")
             
             # Prepare job parameters - handle both query sources
             parameters = {
@@ -1243,10 +1355,12 @@ class DatabricksJobsService:
                     # Large query set - upload to workspace
                     logger.info(f"QUERY_SOURCE: Query size exceeds 8KB, uploading to workspace")
                     
-                    queries_workspace_path = f"/Shared/pgbench_queries/{job_name}/queries.json"
+                    # Generate unique path for this query set
+                    timestamp = int(time.time())
+                    queries_workspace_path = f"/Shared/pgbench_queries/queries_{timestamp}.json"
                     
                     # Create parent directory
-                    queries_dir = f"/Shared/pgbench_queries/{job_name}"
+                    queries_dir = "/Shared/pgbench_queries"
                     self._create_workspace_directory(queries_dir)
                     
                     # Upload queries as JSON file
@@ -1268,8 +1382,11 @@ class DatabricksJobsService:
                     parameters["query_config"] = query_json
                     parameters["query_source"] = "inline"
             
-            # Create and run the job
-            job_id = self.create_pgbench_job(job_name, cluster_id, notebook_path, parameters)
+            # Get or create reusable pgbench job (created once, reused for all tests)
+            job_id = self._get_or_create_pgbench_job(cluster_id)
+            logger.info(f"PGBENCH_JOB: Using job {job_id} for this test run")
+            
+            # Run the job with test-specific parameters
             run_id = self.run_job(job_id, parameters)
             
             # Generate workspace links
@@ -1284,7 +1401,7 @@ class DatabricksJobsService:
             result = {
                 "job_id": job_id,
                 "run_id": run_id,
-                "job_name": job_name,
+                "job_name": "lakebase_pgbench_job",  # Fixed reusable job name
                 "notebook_path": notebook_path,
                 "status": "submitted",
                 "job_run_url": job_run_url,
