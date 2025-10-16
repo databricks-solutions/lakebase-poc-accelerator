@@ -603,7 +603,7 @@ const PgbenchDatabricks: React.FC = () => {
           <li>Run pgbench performance tests against your Lakebase instance using Databricks compute clusters.</li>
           <li>This will create and submit a Databricks job that executes the pgbench test with your specified parameters.</li>
           <li>Choose this option to test higher concurrency by scaling up the number of driver CPU cores in your Databricks cluster.</li>
-          <li>If running on Databricks Apps, ensure the app's service principal has permission to access the database. In Databricks Workspace, navigate to your **Lakebase Instance &gt; Permissions &gt; Add PostgreSQL Role**, search for the App Service Principal, and grant it the databricks_superuser role.</li>
+          <li>If running on Databricks Apps, ensure the app's service principal has permission to access the database. In Databricks Workspace, navigate to your <strong>Lakebase Instance &gt; Permissions &gt; Add PostgreSQL Role, search for the App Service Principal, and grant it the databricks_superuser role.</strong></li>
         </ul>
       </Paragraph>
 
@@ -697,7 +697,7 @@ const PgbenchDatabricks: React.FC = () => {
                     </li>
                     <li>Recommended for high concurrency testing, cluster size determined by # of clients & jobs selection</li>
                     <li>
-                      App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong> in Databricks Workspace.
+                      App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong> in Databricks Workspace. Workspace Admin can go to <strong>Workspace settings &gt; Identity and access &gt; Service principals &gt; &lt;app service principal name&gt; Configurations / Entitlements &gt; Allow unrestricted cluster creation</strong>
                     </li>
                   </ul>
                 </div>

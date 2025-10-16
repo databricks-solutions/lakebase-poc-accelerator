@@ -173,7 +173,7 @@ class DatabricksJobsService:
                 '2xlarge': 'm6i.16xlarge',  # 64 cores, 256 GB
             },
             'azure': {
-                'small': 'Standard_E4s_v3',     # 4 cores, 32 GB
+                'small': 'Standard_E4s_v4',     # 4 cores, 32 GB
                 'medium': 'Standard_E8s_v3',    # 8 cores, 64 GB
                 'large': 'Standard_E16s_v3',    # 16 cores, 128 GB
                 'xlarge': 'Standard_E32s_v3',   # 32 cores, 256 GB
