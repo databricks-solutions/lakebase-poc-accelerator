@@ -101,18 +101,16 @@ class DatabricksJobsService:
             'aws', 'azure', or 'gcp'
         """
         try:
-            # Use provided workspace_url first, then fall back to environment/client
+            client = self._get_client()
+            
+            # First, try to get workspace URL from the client's config
             import os
-            host = self.workspace_url or os.getenv('DATABRICKS_HOST')
+            host = os.getenv('DATABRICKS_HOST') or self.workspace_url
             
             if not host:
-                # Try to get from client config as fallback
-                try:
-                    client = self._get_client()
-                    if hasattr(client, 'config') and hasattr(client.config, 'host'):
-                        host = client.config.host
-                except:
-                    pass
+                # Try to get from client config
+                if hasattr(client, 'config') and hasattr(client.config, 'host'):
+                    host = client.config.host
             
             if host:
                 logger.info(f"DEBUG: Detecting cloud provider from host: {host}")
@@ -175,11 +173,11 @@ class DatabricksJobsService:
                 '2xlarge': 'm6i.16xlarge',  # 64 cores, 256 GB
             },
             'azure': {
-                'small': 'Standard_E4s_v4',     # 4 cores, 32 GB
-                'medium': 'Standard_E8s_v4',    # 8 cores, 64 GB
-                'large': 'Standard_E16s_v4',    # 16 cores, 128 GB
-                'xlarge': 'Standard_E32s_v4',   # 32 cores, 256 GB
-                '2xlarge': 'Standard_E64s_v4',  # 64 cores, 432 GB
+                'small': 'Standard_E4s_v3',     # 4 cores, 32 GB
+                'medium': 'Standard_E8s_v3',    # 8 cores, 64 GB
+                'large': 'Standard_E16s_v3',    # 16 cores, 128 GB
+                'xlarge': 'Standard_E32s_v3',   # 32 cores, 256 GB
+                '2xlarge': 'Standard_E64s_v3',  # 64 cores, 432 GB
             },
             'gcp': {
                 'small': 'n2-highmem-4',    # 4 cores, 32 GB
@@ -227,7 +225,7 @@ class DatabricksJobsService:
                 tier_mem_gb = 512
         
         # Get cloud-specific instance type
-        node_type = INSTANCE_MAP.get(cloud, INSTANCE_MAP['azure']).get(selected_tier, 'Standard_E8s_v4')
+        node_type = INSTANCE_MAP.get(cloud, INSTANCE_MAP['azure']).get(selected_tier, 'Standard_E8s_v3')
         
         logger.info(f"Selected node type '{node_type}' (tier: {selected_tier}) for "
                    f"workload: {threads} threads, {clients} clients on {cloud} cloud")
@@ -400,13 +398,10 @@ class DatabricksJobsService:
     def _get_workspace_url(self) -> str:
         """Get the Databricks workspace URL"""
         try:
-            # Use provided workspace_url first (highest priority)
-            if self.workspace_url:
-                workspace_url = self.workspace_url.rstrip('/')
-                logger.info(f"WORKSPACE_URL: Using provided URL: {workspace_url}")
-                return workspace_url
+            # Try to get workspace URL from client config
+            client = self._get_client()
             
-            # Try to get from environment variables
+            # Try to get from environment variables first (most reliable)
             import os
             host = os.getenv('DATABRICKS_HOST')
             if host:
@@ -434,21 +429,23 @@ class DatabricksJobsService:
                 logger.info(f"WORKSPACE_URL: Final workspace URL: {workspace_url}")
                 return workspace_url
             
+            # Check if we have workspace URL from initialization
+            if self.workspace_url:
+                workspace_url = self.workspace_url.rstrip('/')
+                logger.info(f"WORKSPACE_URL: Using initialization URL: {workspace_url}")
+                return workspace_url
+            
             # Try to get from client configuration
-            try:
-                client = self._get_client()
-                if hasattr(client, 'config') and hasattr(client.config, 'host'):
-                    workspace_url = client.config.host.rstrip('/')
-                    logger.info(f"WORKSPACE_URL: Using client config: {workspace_url}")
-                    return workspace_url
-                
-                # Fallback: try to extract from client
-                if hasattr(client, '_client') and hasattr(client._client, '_host'):
-                    workspace_url = client._client._host.rstrip('/')
-                    logger.info(f"WORKSPACE_URL: Using client host: {workspace_url}")
-                    return workspace_url
-            except Exception as e:
-                logger.warning(f"Could not get workspace URL from client: {e}")
+            if hasattr(client, 'config') and hasattr(client.config, 'host'):
+                workspace_url = client.config.host.rstrip('/')
+                logger.info(f"WORKSPACE_URL: Using client config: {workspace_url}")
+                return workspace_url
+            
+            # Fallback: try to extract from client
+            if hasattr(client, '_client') and hasattr(client._client, '_host'):
+                workspace_url = client._client._host.rstrip('/')
+                logger.info(f"WORKSPACE_URL: Using client host: {workspace_url}")
+                return workspace_url
             
             # Last resort: return a placeholder
             logger.warning("Could not determine workspace URL, using placeholder")
@@ -648,13 +645,10 @@ class DatabricksJobsService:
                 # Get the appropriate node type based on workload (threads and clients)
                 pgbench_threads = int(parameters.get('pgbench_jobs', 8))
                 pgbench_clients = int(parameters.get('pgbench_clients', 100))
+                node_type = self._get_node_type_for_workload(pgbench_threads, pgbench_clients)
                 
                 # Detect cloud provider for cloud-specific configurations
                 cloud = self._detect_cloud_provider()
-                logger.info(f"JOB_CLUSTER: Detected cloud provider: {cloud}")
-                
-                node_type = self._get_node_type_for_workload(pgbench_threads, pgbench_clients)
-                logger.info(f"JOB_CLUSTER: Selected node type: {node_type} for {pgbench_threads} threads, {pgbench_clients} clients")
                 
                 # Build new_cluster configuration
                 new_cluster_config = {
@@ -1046,9 +1040,10 @@ class DatabricksJobsService:
             return None
     
     def _get_or_create_pgbench_job(self, cluster_id: Optional[str]) -> str:
-        """Get existing pgbench job or create it if it doesn't exist.
+        """Get existing pgbench job or create/update it based on cluster configuration.
         
         The job is reusable across all test runs with different parameters.
+        Job configuration is updated if cluster type changes (interactive <-> job cluster).
         
         Args:
             cluster_id: Cluster ID to use (None for auto job cluster)
@@ -1059,21 +1054,168 @@ class DatabricksJobsService:
         try:
             client = self._get_client()
             
-            # Use fixed job name for reusability
-            job_name = "lakebase_pgbench_job"
+            # Get app name from environment (set by Databricks Apps)
+            import os
+            app_name = os.getenv('DATABRICKS_APP_NAME', 'lakebase_app')
+            
+            # Single job name per app (not split by cluster type)
+            job_name = f"{app_name}_pgbench_job"
+            
+            print(f"PGBENCH_JOB: Using job name: {job_name}")
+            print(f"PGBENCH_JOB: Cluster config - Interactive: {bool(cluster_id)}")
             
             # Check if job already exists
-            logger.info(f"PGBENCH_JOB: Checking if job '{job_name}' exists")
+            print(f"PGBENCH_JOB: Checking if job '{job_name}' exists")
             
+            existing_job = None
+            existing_job_id = None
             try:
                 # List all jobs and find ours by name
                 for job in client.jobs.list():
                     if job.settings and job.settings.name == job_name:
-                        job_id = str(job.job_id)
-                        logger.info(f"PGBENCH_JOB: Found existing job: {job_id}")
-                        return job_id
+                        existing_job_id = job.job_id
+                        print(f"PGBENCH_JOB: Found existing job ID: {existing_job_id}")
+                        break
+                
+                # Fetch full job details if found
+                if existing_job_id:
+                    print(f"PGBENCH_JOB: Fetching full job details for job {existing_job_id}")
+                    existing_job = client.jobs.get(job_id=existing_job_id)
+                    print(f"PGBENCH_JOB: Successfully fetched full job details")
             except Exception as e:
-                logger.warning(f"PGBENCH_JOB: Error listing jobs: {e}")
+                print(f"PGBENCH_JOB: Error finding/fetching job: {e}")
+            
+            # If job exists, check if cluster configuration matches
+            if existing_job:
+                job_id = str(existing_job.job_id)
+                needs_update = False
+                
+                print(f"PGBENCH_JOB: Checking if job config needs update...")
+                print(f"PGBENCH_JOB:   - existing_job.settings exists: {existing_job.settings is not None}")
+                if existing_job.settings:
+                    print(f"PGBENCH_JOB:   - existing_job.settings.tasks exists: {existing_job.settings.tasks is not None}")
+                    if existing_job.settings.tasks:
+                        print(f"PGBENCH_JOB:   - number of tasks: {len(existing_job.settings.tasks)}")
+                
+                # Check if cluster configuration matches current request
+                if existing_job.settings and existing_job.settings.tasks:
+                    task = existing_job.settings.tasks[0]
+                    
+                    # Log current job configuration
+                    print(f"PGBENCH_JOB: Current job task config:")
+                    print(f"PGBENCH_JOB:   - existing_cluster_id: {task.existing_cluster_id}")
+                    print(f"PGBENCH_JOB:   - has new_cluster: {task.new_cluster is not None}")
+                    print(f"PGBENCH_JOB: Requested cluster_id: {repr(cluster_id)}")
+                    
+                    # Check cluster type mismatch
+                    using_interactive = task.existing_cluster_id is not None
+                    wants_interactive = cluster_id and cluster_id.strip()
+                    
+                    print(f"PGBENCH_JOB: Comparison:")
+                    print(f"PGBENCH_JOB:   - Job currently uses interactive: {using_interactive}")
+                    print(f"PGBENCH_JOB:   - Request wants interactive: {bool(wants_interactive)}")
+                    
+                    if using_interactive != bool(wants_interactive):
+                        needs_update = True
+                        print(f"PGBENCH_JOB: ✓ Cluster type changed - Was interactive: {using_interactive}, Now: {bool(wants_interactive)}")
+                    elif using_interactive and task.existing_cluster_id != cluster_id:
+                        needs_update = True
+                        print(f"PGBENCH_JOB: ✓ Interactive cluster ID changed - Was: {task.existing_cluster_id}, Now: {cluster_id}")
+                    else:
+                        print(f"PGBENCH_JOB: ✓ Cluster configuration matches")
+                
+                if not needs_update:
+                    print(f"PGBENCH_JOB: Job configuration matches, reusing job {job_id}")
+                    return job_id
+                
+                # Configuration doesn't match, update the job
+                print(f"PGBENCH_JOB: Updating job {job_id} with new cluster configuration")
+                
+                # Get notebook path
+                notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
+                
+                if cluster_id and cluster_id.strip():
+                    # Update to use interactive cluster
+                    updated_settings = JobSettings(
+                        name=job_name,
+                        tasks=[
+                            Task(
+                                task_key="pgbench_test",
+                                notebook_task=NotebookTask(
+                                    notebook_path=notebook_path,
+                                    base_parameters={}
+                                ),
+                                existing_cluster_id=cluster_id,
+                                timeout_seconds=3600
+                            )
+                        ],
+                        max_concurrent_runs=1,
+                        timeout_seconds=3600
+                    )
+                else:
+                    # Update to use job cluster
+                    current_user = self._get_current_service_principal()
+                    init_script_path = self._upload_init_script()
+                    
+                    # Build updated job configuration
+                    job_payload = {
+                        "job_id": int(job_id),
+                        "new_settings": {
+                            "name": job_name,
+                            "tasks": [
+                                {
+                                    "task_key": "pgbench_test",
+                                    "notebook_task": {
+                                        "notebook_path": notebook_path,
+                                        "base_parameters": {}
+                                    },
+                                    "new_cluster": {
+                                        "spark_version": "14.3.x-scala2.12",
+                                        "node_type_id": "m6i.2xlarge",
+                                        "num_workers": 0,
+                                        "spark_conf": {
+                                            "spark.databricks.cluster.profile": "singleNode",
+                                            "spark.master": "local[*]"
+                                        },
+                                        "custom_tags": {
+                                            "ResourceClass": "SingleNode",
+                                            "pgbench_job": "true"
+                                        },
+                                        "data_security_mode": "SINGLE_USER",
+                                        "single_user_name": current_user,
+                                        "init_scripts": [
+                                            {
+                                                "workspace": {
+                                                    "destination": init_script_path
+                                                }
+                                            }
+                                        ],
+                                        "aws_attributes": {
+                                            "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+                                            "ebs_volume_count": 1,
+                                            "ebs_volume_size": 100
+                                        }
+                                    },
+                                    "timeout_seconds": 3600
+                                }
+                            ],
+                            "max_concurrent_runs": 1,
+                            "timeout_seconds": 3600
+                        }
+                    }
+                    
+                    client.api_client.do('POST', '/api/2.1/jobs/update', body=job_payload)
+                    logger.info(f"PGBENCH_JOB: Updated job {job_id} to use job cluster")
+                    return job_id
+                
+                # Update for interactive cluster (using SDK)
+                client.jobs.update(
+                    job_id=int(job_id),
+                    new_settings=updated_settings
+                )
+                logger.info(f"PGBENCH_JOB: Updated job {job_id} to use interactive cluster {cluster_id}")
+                return job_id
+            
             
             # Job doesn't exist, create it
             logger.info(f"PGBENCH_JOB: Job not found, creating new job '{job_name}'")
@@ -1120,43 +1262,6 @@ class DatabricksJobsService:
                 # Get init script path
                 init_script_path = self._upload_init_script()
                 
-                # Get cloud-specific node type (use medium tier as default for reusable job)
-                cloud = self._detect_cloud_provider()
-                node_type = self._get_node_type_for_workload(8, 100)  # Default medium workload
-                
-                # Build new_cluster configuration
-                new_cluster_config = {
-                    "spark_version": "14.3.x-scala2.12",
-                    "node_type_id": node_type,
-                    "num_workers": 0,
-                    "spark_conf": {
-                        "spark.databricks.cluster.profile": "singleNode",
-                        "spark.master": "local[*]"
-                    },
-                    "custom_tags": {
-                        "ResourceClass": "SingleNode",
-                        "pgbench_job": "true"
-                    },
-                    "data_security_mode": "SINGLE_USER",
-                    "single_user_name": current_user,
-                    "init_scripts": [
-                        {
-                            "workspace": {
-                                "destination": init_script_path
-                            }
-                        }
-                    ]
-                }
-                
-                # Add cloud-specific attributes
-                if cloud == 'aws' and any(family in node_type for family in ['m6i', 'r6i', 'c6i', 'm6a', 'r6a', 'c6a']):
-                    new_cluster_config["aws_attributes"] = {
-                        "ebs_volume_type": "GENERAL_PURPOSE_SSD",
-                        "ebs_volume_count": 1,
-                        "ebs_volume_size": 100
-                    }
-                    logger.info(f"Added EBS volume configuration for AWS 6th gen instance type: {node_type}")
-                
                 # Build job configuration
                 job_payload = {
                     "name": job_name,
@@ -1167,7 +1272,33 @@ class DatabricksJobsService:
                                 "notebook_path": notebook_path,
                                 "base_parameters": {}  # Parameters provided at runtime
                             },
-                            "new_cluster": new_cluster_config,
+                            "new_cluster": {
+                                "spark_version": "14.3.x-scala2.12",
+                                "node_type_id": "m6i.2xlarge",  # Default, will be sized at runtime
+                                "num_workers": 0,
+                                "spark_conf": {
+                                    "spark.databricks.cluster.profile": "singleNode",
+                                    "spark.master": "local[*]"
+                                },
+                                "custom_tags": {
+                                    "ResourceClass": "SingleNode",
+                                    "pgbench_job": "true"
+                                },
+                                "data_security_mode": "SINGLE_USER",
+                                "single_user_name": current_user,
+                                "init_scripts": [
+                                    {
+                                        "workspace": {
+                                            "destination": init_script_path
+                                        }
+                                    }
+                                ],
+                                "aws_attributes": {
+                                    "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+                                    "ebs_volume_count": 1,
+                                    "ebs_volume_size": 100
+                                }
+                            },
                             "timeout_seconds": 3600
                         }
                     ],
@@ -1215,6 +1346,11 @@ class DatabricksJobsService:
             If query_configs size > 8KB, queries are automatically uploaded to workspace.
         """
         try:
+            # Log cluster_id for debugging (using print for app logs visibility)
+            print(f"CLUSTER_ID_DEBUG: Received cluster_id={repr(cluster_id)}, type={type(cluster_id)}, bool={bool(cluster_id)}")
+            if cluster_id:
+                print(f"CLUSTER_ID_DEBUG: cluster_id.strip()={repr(cluster_id.strip())}, bool(strip)={bool(cluster_id.strip())}")
+            
             # Use fixed notebook path in workspace for reusability (not per-job)
             notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
             
@@ -1399,9 +1535,15 @@ class DatabricksJobsService:
                     parameters["query_config"] = query_json
                     parameters["query_source"] = "inline"
             
-            # Get or create reusable pgbench job (created once, reused for all tests)
+            # Get or create reusable pgbench job (created once, updated if cluster config changes)
+            # Job is namespaced by app name. Single job per app, auto-updates on cluster type change.
             job_id = self._get_or_create_pgbench_job(cluster_id)
             logger.info(f"PGBENCH_JOB: Using job {job_id} for this test run")
+            
+            # Get job name for response
+            import os
+            app_name = os.getenv('DATABRICKS_APP_NAME', 'lakebase_app')
+            job_name = f"{app_name}_pgbench_job"
             
             # Run the job with test-specific parameters
             run_id = self.run_job(job_id, parameters)
@@ -1418,7 +1560,7 @@ class DatabricksJobsService:
             result = {
                 "job_id": job_id,
                 "run_id": run_id,
-                "job_name": "lakebase_pgbench_job",  # Fixed reusable job name
+                "job_name": job_name,  # Dynamic job name (namespaced by app and cluster type)
                 "notebook_path": notebook_path,
                 "status": "submitted",
                 "job_run_url": job_run_url,
