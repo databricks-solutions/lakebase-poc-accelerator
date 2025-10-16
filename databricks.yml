@@ -17,10 +17,10 @@ targets:
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
   
   # Test environment
-  test:
+  adb:
     mode: development
     workspace:
-      host: https://company-test.cloud.databricks.com
+      host: https://adb-984752964297111.11.azuredatabricks.net/
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
   
   # Production environment

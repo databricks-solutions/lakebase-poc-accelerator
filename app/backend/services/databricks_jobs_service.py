@@ -113,26 +113,26 @@ class DatabricksJobsService:
                     host = client.config.host
             
             if host:
-                logger.info(f"DEBUG: Detecting cloud provider from host: {host}")
+                print(f"CLOUD_DETECT: Detecting cloud provider from host: {host}")
                 host_lower = host.lower()
                 
                 # Azure workspace URLs contain 'azuredatabricks.net'
                 if 'azuredatabricks.net' in host_lower or 'azure' in host_lower:
-                    logger.info("DEBUG: Detected Azure cloud provider")
+                    print("CLOUD_DETECT: Detected Azure cloud provider")
                     return 'azure'
                 
                 # GCP workspace URLs contain 'gcp.databricks.com'
                 if 'gcp.databricks.com' in host_lower:
-                    logger.info("DEBUG: Detected GCP cloud provider")
+                    print("CLOUD_DETECT: Detected GCP cloud provider")
                     return 'gcp'
                 
                 # AWS workspace URLs contain 'cloud.databricks.com', 'dbc-' patterns, or other AWS-specific patterns
                 if 'cloud.databricks.com' in host_lower or '.cloud.databricks.com' in host_lower:
-                    logger.info("DEBUG: Detected AWS cloud provider")
+                    print("CLOUD_DETECT: Detected AWS cloud provider")
                     return 'aws'
             
             # Default to Azure if we can't determine (for backward compatibility)
-            logger.warning("DEBUG: Could not detect cloud provider, defaulting to Azure")
+            print("CLOUD_DETECT: Could not detect cloud provider, defaulting to Azure")
             return 'azure'
             
         except Exception as e:
@@ -1157,6 +1157,52 @@ class DatabricksJobsService:
                     current_user = self._get_current_service_principal()
                     init_script_path = self._upload_init_script()
                     
+                    # Detect cloud and select appropriate node type
+                    cloud = self._detect_cloud_provider()
+                    print(f"PGBENCH_JOB: Detected cloud: {cloud}")
+                    
+                    # Use default medium instance for job update (actual sizing happens at run time)
+                    if cloud == 'aws':
+                        default_node_type = 'm6i.2xlarge'
+                    elif cloud == 'azure':
+                        default_node_type = 'Standard_E8s_v3'
+                    else:  # gcp
+                        default_node_type = 'n2-highmem-8'
+                    
+                    print(f"PGBENCH_JOB: Using default node type for job update: {default_node_type}")
+                    
+                    # Build new_cluster config
+                    new_cluster_config = {
+                        "spark_version": "14.3.x-scala2.12",
+                        "node_type_id": default_node_type,
+                        "num_workers": 0,
+                        "spark_conf": {
+                            "spark.databricks.cluster.profile": "singleNode",
+                            "spark.master": "local[*]"
+                        },
+                        "custom_tags": {
+                            "ResourceClass": "SingleNode",
+                            "pgbench_job": "true"
+                        },
+                        "data_security_mode": "SINGLE_USER",
+                        "single_user_name": current_user,
+                        "init_scripts": [
+                            {
+                                "workspace": {
+                                    "destination": init_script_path
+                                }
+                            }
+                        ]
+                    }
+                    
+                    # Add AWS-specific EBS volumes for m6i instances
+                    if cloud == 'aws' and 'm6i' in default_node_type:
+                        new_cluster_config["aws_attributes"] = {
+                            "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+                            "ebs_volume_count": 1,
+                            "ebs_volume_size": 100
+                        }
+                    
                     # Build updated job configuration
                     job_payload = {
                         "job_id": int(job_id),
@@ -1169,33 +1215,7 @@ class DatabricksJobsService:
                                         "notebook_path": notebook_path,
                                         "base_parameters": {}
                                     },
-                                    "new_cluster": {
-                                        "spark_version": "14.3.x-scala2.12",
-                                        "node_type_id": "m6i.2xlarge",
-                                        "num_workers": 0,
-                                        "spark_conf": {
-                                            "spark.databricks.cluster.profile": "singleNode",
-                                            "spark.master": "local[*]"
-                                        },
-                                        "custom_tags": {
-                                            "ResourceClass": "SingleNode",
-                                            "pgbench_job": "true"
-                                        },
-                                        "data_security_mode": "SINGLE_USER",
-                                        "single_user_name": current_user,
-                                        "init_scripts": [
-                                            {
-                                                "workspace": {
-                                                    "destination": init_script_path
-                                                }
-                                            }
-                                        ],
-                                        "aws_attributes": {
-                                            "ebs_volume_type": "GENERAL_PURPOSE_SSD",
-                                            "ebs_volume_count": 1,
-                                            "ebs_volume_size": 100
-                                        }
-                                    },
+                                    "new_cluster": new_cluster_config,
                                     "timeout_seconds": 3600
                                 }
                             ],
@@ -1204,8 +1224,9 @@ class DatabricksJobsService:
                         }
                     }
                     
+                    print(f"PGBENCH_JOB: Updating job with cloud-specific config for {cloud}")
                     client.api_client.do('POST', '/api/2.1/jobs/update', body=job_payload)
-                    logger.info(f"PGBENCH_JOB: Updated job {job_id} to use job cluster")
+                    print(f"PGBENCH_JOB: Updated job {job_id} to use job cluster")
                     return job_id
                 
                 # Update for interactive cluster (using SDK)
@@ -1254,13 +1275,59 @@ class DatabricksJobsService:
                 
             else:
                 # Create with auto job cluster
-                logger.info(f"PGBENCH_JOB: Creating job with auto job cluster")
+                print(f"PGBENCH_JOB: Creating job with auto job cluster")
                 
                 # Get service principal
                 current_user = self._get_current_service_principal()
                 
                 # Get init script path
                 init_script_path = self._upload_init_script()
+                
+                # Detect cloud and select appropriate node type
+                cloud = self._detect_cloud_provider()
+                print(f"PGBENCH_JOB: Detected cloud for job creation: {cloud}")
+                
+                # Use default medium instance for job creation (actual sizing happens at run time)
+                if cloud == 'aws':
+                    default_node_type = 'm6i.2xlarge'
+                elif cloud == 'azure':
+                    default_node_type = 'Standard_E8s_v3'
+                else:  # gcp
+                    default_node_type = 'n2-highmem-8'
+                
+                print(f"PGBENCH_JOB: Using default node type for job creation: {default_node_type}")
+                
+                # Build new_cluster config
+                new_cluster_config = {
+                    "spark_version": "14.3.x-scala2.12",
+                    "node_type_id": default_node_type,
+                    "num_workers": 0,
+                    "spark_conf": {
+                        "spark.databricks.cluster.profile": "singleNode",
+                        "spark.master": "local[*]"
+                    },
+                    "custom_tags": {
+                        "ResourceClass": "SingleNode",
+                        "pgbench_job": "true"
+                    },
+                    "data_security_mode": "SINGLE_USER",
+                    "single_user_name": current_user,
+                    "init_scripts": [
+                        {
+                            "workspace": {
+                                "destination": init_script_path
+                            }
+                        }
+                    ]
+                }
+                
+                # Add AWS-specific EBS volumes for m6i instances
+                if cloud == 'aws' and 'm6i' in default_node_type:
+                    new_cluster_config["aws_attributes"] = {
+                        "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+                        "ebs_volume_count": 1,
+                        "ebs_volume_size": 100
+                    }
                 
                 # Build job configuration
                 job_payload = {
@@ -1272,33 +1339,7 @@ class DatabricksJobsService:
                                 "notebook_path": notebook_path,
                                 "base_parameters": {}  # Parameters provided at runtime
                             },
-                            "new_cluster": {
-                                "spark_version": "14.3.x-scala2.12",
-                                "node_type_id": "m6i.2xlarge",  # Default, will be sized at runtime
-                                "num_workers": 0,
-                                "spark_conf": {
-                                    "spark.databricks.cluster.profile": "singleNode",
-                                    "spark.master": "local[*]"
-                                },
-                                "custom_tags": {
-                                    "ResourceClass": "SingleNode",
-                                    "pgbench_job": "true"
-                                },
-                                "data_security_mode": "SINGLE_USER",
-                                "single_user_name": current_user,
-                                "init_scripts": [
-                                    {
-                                        "workspace": {
-                                            "destination": init_script_path
-                                        }
-                                    }
-                                ],
-                                "aws_attributes": {
-                                    "ebs_volume_type": "GENERAL_PURPOSE_SSD",
-                                    "ebs_volume_count": 1,
-                                    "ebs_volume_size": 100
-                                }
-                            },
+                            "new_cluster": new_cluster_config,
                             "timeout_seconds": 3600
                         }
                     ],
