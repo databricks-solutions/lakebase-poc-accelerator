@@ -1429,6 +1429,8 @@ class JobSubmissionRequest(BaseModel):
     lakebase_instance_name: str = Field(..., description="Lakebase instance name")
     database_name: str = Field("databricks_postgres", description="Database name")
     cluster_id: Optional[str] = Field(None, description="Databricks cluster ID (optional - will create job cluster if not provided)")
+    workspace_url: str = Field(..., description="Databricks workspace URL")
+    databricks_profile: str = Field("DEFAULT", description="Databricks CLI profile name")
     pgbench_config: Dict[str, Any] = Field(..., description="pgbench configuration")
     query_configs: Optional[List[Dict[str, Any]]] = Field(None, description="Query configurations (for upload approach)")
     query_workspace_path: Optional[str] = Field(None, description="Workspace path to queries folder (for workspace approach)")
@@ -1508,7 +1510,11 @@ async def submit_pgbench_job(request: JobSubmissionRequest):
         Job submission result with job_id and run_id
     """
     try:
-        jobs_service = DatabricksJobsService()
+        # Initialize service with workspace URL and profile from request
+        jobs_service = DatabricksJobsService(
+            profile=request.databricks_profile,
+            workspace_url=request.workspace_url
+        )
         
         result = jobs_service.submit_pgbench_job(
             lakebase_instance_name=request.lakebase_instance_name,

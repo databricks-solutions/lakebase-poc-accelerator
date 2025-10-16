@@ -48,6 +48,8 @@ interface JobSubmissionRequest {
   lakebase_instance_name: string;
   database_name: string;
   cluster_id: string;
+  workspace_url: string;
+  databricks_profile: string;
   pgbench_config: PgbenchConfig;
   query_configs?: QueryConfig[];
   query_workspace_path?: string;
@@ -125,6 +127,8 @@ const PgbenchDatabricks: React.FC = () => {
         lakebase_instance_name: values.lakebase_instance_name,
         database_name: values.database_name || 'databricks_postgres',
         cluster_id: values.cluster_id,
+        workspace_url: values.workspace_url,
+        databricks_profile: values.databricks_profile || 'DEFAULT',
         pgbench_config: {
           pgbench_clients: values.pgbench_clients,
           pgbench_jobs: values.pgbench_jobs,
@@ -171,10 +175,12 @@ const PgbenchDatabricks: React.FC = () => {
         const result = await response.json();
 
         // Debug: Log the URLs received from backend
-        console.log('FRONTEND: Received URLs from backend:', {
+        console.log('FRONTEND: Job submission successful - Debug info:', {
           job_url: result.job_url,
           job_run_url: result.job_run_url,
-          workspace_url: result.workspace_url
+          workspace_url: result.workspace_url,
+          submitted_workspace_url: jobRequest.workspace_url,
+          submitted_databricks_profile: jobRequest.databricks_profile
         });
 
         setJobStatus({
@@ -193,6 +199,17 @@ const PgbenchDatabricks: React.FC = () => {
         message.success('Job submitted successfully!');
       } else {
         const error = await response.json();
+
+        // Console log for debugging job submission failures
+        console.log('FRONTEND: Job submission failed - Debug info:', {
+          error: error.detail || 'Unknown error',
+          jobRequest: jobRequest,
+          responseStatus: response.status,
+          responseStatusText: response.statusText,
+          workspaceUrl: jobRequest.workspace_url,
+          databricksProfile: jobRequest.databricks_profile
+        });
+
         setJobStatus({
           status: 'failed',
           message: `Job submission failed: ${error.detail || 'Unknown error'}`
@@ -428,7 +445,7 @@ const PgbenchDatabricks: React.FC = () => {
                   />
                 </Col>
               </Row>
-              
+
               {/* Add p50/p95/p99 from performance_metrics if available */}
               {jobStatus.results?.performance_metrics && (
                 <>
@@ -464,9 +481,9 @@ const PgbenchDatabricks: React.FC = () => {
                   </Row>
                 </>
               )}
-              
+
               <Divider style={{ margin: '16px 0' }} />
-              
+
               <Row gutter={[16, 12]}>
                 <Col span={6}>
                   <Text type="secondary">Test Type:</Text>
@@ -486,7 +503,7 @@ const PgbenchDatabricks: React.FC = () => {
                 <Col span={6}>
                   <Text type="secondary">Failed Transactions:</Text>
                   <br />
-                  <Text strong style={{ 
+                  <Text strong style={{
                     color: (jobStatus as any).pgbench_results.failed_transactions > 0 ? '#cf1322' : '#52c41a',
                     fontSize: '16px'
                   }}>
@@ -509,9 +526,9 @@ const PgbenchDatabricks: React.FC = () => {
                 <>
                   <Divider style={{ margin: '16px 0' }}>Per-Query Statistics</Divider>
                   {(jobStatus as any).pgbench_results.per_query_stats.map((queryStat: any, index: number) => (
-                    <Card 
-                      key={index} 
-                      size="small" 
+                    <Card
+                      key={index}
+                      size="small"
                       style={{ marginBottom: 12, backgroundColor: '#fafafa' }}
                       title={
                         <Space>
@@ -627,6 +644,36 @@ const PgbenchDatabricks: React.FC = () => {
             </Col>
           </Row>
 
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="workspace_url"
+                label="Databricks Workspace URL"
+                rules={[
+                  { required: true, message: 'Please enter your Databricks workspace URL' }
+                ]}
+                tooltip="Your Databricks workspace URL."
+              >
+                <Input
+                  placeholder="https://adb-xxxxx.region.azuredatabricks.net"
+                  prefix={<ClusterOutlined />}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="databricks_profile"
+                label="Databricks Profile Name"
+                tooltip="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above."
+              >
+                <Input
+                  placeholder="DEFAULT"
+                  prefix={<SettingOutlined />}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
           <Form.Item
             name="cluster_id"
             label="Databricks Cluster ID (Optional)"
@@ -637,35 +684,36 @@ const PgbenchDatabricks: React.FC = () => {
               prefix={<ClusterOutlined />}
             />
           </Form.Item>
-          
+
           <Alert
             message="Cluster Configuration Notes"
             description={
               <div>
                 <div style={{ marginBottom: 12 }}>
-                  <strong>Job Cluster:</strong>
+                  <strong>Job Clusters (recommended):</strong>
                   <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
                     <li>
-                      Leave empty to create an ephemeral job cluster automatically 
-                      (cluster size determined by # of clients & jobs selection)
+                      Leave empty to create an ephemeral job cluster automatically with auto-installed pgbench on the cluster
                     </li>
+                    <li>Recommended for high concurrency testing, cluster size determined by # of clients & jobs selection</li>
                     <li>
-                      App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong>
+                      App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong> in Databricks Workspace.
                     </li>
                   </ul>
                 </div>
                 <div>
-                  <strong>Interactive Clusters:</strong>
+                  <strong>Interactive Clusters (used with local mode or for repeatable testing):</strong>
                   <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
                     <li>
-                      Configure as <strong>Dedicated</strong> (formerly: Single user) access mode
+                      Require users tomanually configure as a Single node cluster with <strong>Dedicated</strong> (formerly: Single user) access mode.
                     </li>
+                    <li>Recommended for repeatable testing without waiting for job cluster spinup, or used with local mode. </li>
                     <li>
-                      The app service principal must be added as a user to the interactive cluster
+                      If running on Databricks Apps, add the app service principal as the dedicated user to the interactive cluster. If running locally, make sure your Databricks user is added as the dedicated user to the interactive cluster.
                     </li>
                     <li>
                       Make sure to attach the{' '}
-                      <a 
+                      <a
                         href="https://github.com/databricks-solutions/lakebase-poc-accelerator/blob/app-dev-new/app/notebooks/init.sh"
                         target="_blank"
                         rel="noopener noreferrer"

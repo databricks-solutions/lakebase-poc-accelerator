@@ -101,16 +101,18 @@ class DatabricksJobsService:
             'aws', 'azure', or 'gcp'
         """
         try:
-            client = self._get_client()
-            
-            # First, try to get workspace URL from the client's config
+            # Use provided workspace_url first, then fall back to environment/client
             import os
-            host = os.getenv('DATABRICKS_HOST') or self.workspace_url
+            host = self.workspace_url or os.getenv('DATABRICKS_HOST')
             
             if not host:
-                # Try to get from client config
-                if hasattr(client, 'config') and hasattr(client.config, 'host'):
-                    host = client.config.host
+                # Try to get from client config as fallback
+                try:
+                    client = self._get_client()
+                    if hasattr(client, 'config') and hasattr(client.config, 'host'):
+                        host = client.config.host
+                except:
+                    pass
             
             if host:
                 logger.info(f"DEBUG: Detecting cloud provider from host: {host}")
@@ -173,11 +175,11 @@ class DatabricksJobsService:
                 '2xlarge': 'm6i.16xlarge',  # 64 cores, 256 GB
             },
             'azure': {
-                'small': 'Standard_E4s_v3',     # 4 cores, 32 GB
-                'medium': 'Standard_E8s_v3',    # 8 cores, 64 GB
-                'large': 'Standard_E16s_v3',    # 16 cores, 128 GB
-                'xlarge': 'Standard_E32s_v3',   # 32 cores, 256 GB
-                '2xlarge': 'Standard_E64s_v3',  # 64 cores, 432 GB
+                'small': 'Standard_E4s_v4',     # 4 cores, 32 GB
+                'medium': 'Standard_E8s_v4',    # 8 cores, 64 GB
+                'large': 'Standard_E16s_v4',    # 16 cores, 128 GB
+                'xlarge': 'Standard_E32s_v4',   # 32 cores, 256 GB
+                '2xlarge': 'Standard_E64s_v4',  # 64 cores, 432 GB
             },
             'gcp': {
                 'small': 'n2-highmem-4',    # 4 cores, 32 GB
@@ -225,7 +227,7 @@ class DatabricksJobsService:
                 tier_mem_gb = 512
         
         # Get cloud-specific instance type
-        node_type = INSTANCE_MAP.get(cloud, INSTANCE_MAP['azure']).get(selected_tier, 'Standard_E8s_v3')
+        node_type = INSTANCE_MAP.get(cloud, INSTANCE_MAP['azure']).get(selected_tier, 'Standard_E8s_v4')
         
         logger.info(f"Selected node type '{node_type}' (tier: {selected_tier}) for "
                    f"workload: {threads} threads, {clients} clients on {cloud} cloud")
@@ -398,10 +400,13 @@ class DatabricksJobsService:
     def _get_workspace_url(self) -> str:
         """Get the Databricks workspace URL"""
         try:
-            # Try to get workspace URL from client config
-            client = self._get_client()
+            # Use provided workspace_url first (highest priority)
+            if self.workspace_url:
+                workspace_url = self.workspace_url.rstrip('/')
+                logger.info(f"WORKSPACE_URL: Using provided URL: {workspace_url}")
+                return workspace_url
             
-            # Try to get from environment variables first (most reliable)
+            # Try to get from environment variables
             import os
             host = os.getenv('DATABRICKS_HOST')
             if host:
@@ -429,23 +434,21 @@ class DatabricksJobsService:
                 logger.info(f"WORKSPACE_URL: Final workspace URL: {workspace_url}")
                 return workspace_url
             
-            # Check if we have workspace URL from initialization
-            if self.workspace_url:
-                workspace_url = self.workspace_url.rstrip('/')
-                logger.info(f"WORKSPACE_URL: Using initialization URL: {workspace_url}")
-                return workspace_url
-            
             # Try to get from client configuration
-            if hasattr(client, 'config') and hasattr(client.config, 'host'):
-                workspace_url = client.config.host.rstrip('/')
-                logger.info(f"WORKSPACE_URL: Using client config: {workspace_url}")
-                return workspace_url
-            
-            # Fallback: try to extract from client
-            if hasattr(client, '_client') and hasattr(client._client, '_host'):
-                workspace_url = client._client._host.rstrip('/')
-                logger.info(f"WORKSPACE_URL: Using client host: {workspace_url}")
-                return workspace_url
+            try:
+                client = self._get_client()
+                if hasattr(client, 'config') and hasattr(client.config, 'host'):
+                    workspace_url = client.config.host.rstrip('/')
+                    logger.info(f"WORKSPACE_URL: Using client config: {workspace_url}")
+                    return workspace_url
+                
+                # Fallback: try to extract from client
+                if hasattr(client, '_client') and hasattr(client._client, '_host'):
+                    workspace_url = client._client._host.rstrip('/')
+                    logger.info(f"WORKSPACE_URL: Using client host: {workspace_url}")
+                    return workspace_url
+            except Exception as e:
+                logger.warning(f"Could not get workspace URL from client: {e}")
             
             # Last resort: return a placeholder
             logger.warning("Could not determine workspace URL, using placeholder")
@@ -645,10 +648,13 @@ class DatabricksJobsService:
                 # Get the appropriate node type based on workload (threads and clients)
                 pgbench_threads = int(parameters.get('pgbench_jobs', 8))
                 pgbench_clients = int(parameters.get('pgbench_clients', 100))
-                node_type = self._get_node_type_for_workload(pgbench_threads, pgbench_clients)
                 
                 # Detect cloud provider for cloud-specific configurations
                 cloud = self._detect_cloud_provider()
+                logger.info(f"JOB_CLUSTER: Detected cloud provider: {cloud}")
+                
+                node_type = self._get_node_type_for_workload(pgbench_threads, pgbench_clients)
+                logger.info(f"JOB_CLUSTER: Selected node type: {node_type} for {pgbench_threads} threads, {pgbench_clients} clients")
                 
                 # Build new_cluster configuration
                 new_cluster_config = {
@@ -1114,6 +1120,43 @@ class DatabricksJobsService:
                 # Get init script path
                 init_script_path = self._upload_init_script()
                 
+                # Get cloud-specific node type (use medium tier as default for reusable job)
+                cloud = self._detect_cloud_provider()
+                node_type = self._get_node_type_for_workload(8, 100)  # Default medium workload
+                
+                # Build new_cluster configuration
+                new_cluster_config = {
+                    "spark_version": "14.3.x-scala2.12",
+                    "node_type_id": node_type,
+                    "num_workers": 0,
+                    "spark_conf": {
+                        "spark.databricks.cluster.profile": "singleNode",
+                        "spark.master": "local[*]"
+                    },
+                    "custom_tags": {
+                        "ResourceClass": "SingleNode",
+                        "pgbench_job": "true"
+                    },
+                    "data_security_mode": "SINGLE_USER",
+                    "single_user_name": current_user,
+                    "init_scripts": [
+                        {
+                            "workspace": {
+                                "destination": init_script_path
+                            }
+                        }
+                    ]
+                }
+                
+                # Add cloud-specific attributes
+                if cloud == 'aws' and any(family in node_type for family in ['m6i', 'r6i', 'c6i', 'm6a', 'r6a', 'c6a']):
+                    new_cluster_config["aws_attributes"] = {
+                        "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+                        "ebs_volume_count": 1,
+                        "ebs_volume_size": 100
+                    }
+                    logger.info(f"Added EBS volume configuration for AWS 6th gen instance type: {node_type}")
+                
                 # Build job configuration
                 job_payload = {
                     "name": job_name,
@@ -1124,33 +1167,7 @@ class DatabricksJobsService:
                                 "notebook_path": notebook_path,
                                 "base_parameters": {}  # Parameters provided at runtime
                             },
-                            "new_cluster": {
-                                "spark_version": "14.3.x-scala2.12",
-                                "node_type_id": "m6i.2xlarge",  # Default, will be sized at runtime
-                                "num_workers": 0,
-                                "spark_conf": {
-                                    "spark.databricks.cluster.profile": "singleNode",
-                                    "spark.master": "local[*]"
-                                },
-                                "custom_tags": {
-                                    "ResourceClass": "SingleNode",
-                                    "pgbench_job": "true"
-                                },
-                                "data_security_mode": "SINGLE_USER",
-                                "single_user_name": current_user,
-                                "init_scripts": [
-                                    {
-                                        "workspace": {
-                                            "destination": init_script_path
-                                        }
-                                    }
-                                ],
-                                "aws_attributes": {
-                                    "ebs_volume_type": "GENERAL_PURPOSE_SSD",
-                                    "ebs_volume_count": 1,
-                                    "ebs_volume_size": 100
-                                }
-                            },
+                            "new_cluster": new_cluster_config,
                             "timeout_seconds": 3600
                         }
                     ],
