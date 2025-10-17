@@ -13,7 +13,8 @@ import {
   Tooltip,
   Modal,
   Input,
-  Spin
+  Spin,
+  Collapse
 } from 'antd';
 import {
   RocketOutlined,
@@ -468,151 +469,163 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               Deploy directly using the Python SDK. This method automatically creates all resources in your Databricks workspace.
             </Paragraph>
 
-            <Alert
-              message="Deployment Process"
-              description={
-                <div>
-                  <p>1. <strong>Initialize</strong> → Connect to Databricks workspace</p>
-                  <p>2. <strong>Database Instance</strong> → Create Lakebase instance</p>
-                  <p>3. <strong>Database Catalog</strong> → Create catalog for data organization</p>
-                  <p>4. <strong>Synced Tables</strong> → Create and configure table synchronization</p>
-                  <p>5. <strong>Finalize</strong> → Complete deployment and provide connection details</p>
-                </div>
-              }
-              type="info"
-              showIcon
-              className="databricks-alert"
+            <Collapse
+              items={[
+                {
+                  key: 'deployment-process',
+                  label: '📋 Deployment Process',
+                  children: (
+                    <div>
+                      <p>1. <strong>Initialize</strong> → Connect to Databricks workspace</p>
+                      <p>2. <strong>Database Instance</strong> → Create Lakebase instance</p>
+                      <p>3. <strong>Database Catalog</strong> → Create catalog for data organization</p>
+                      <p>4. <strong>Synced Tables</strong> → Create and configure table synchronization</p>
+                      <p>5. <strong>Finalize</strong> → Complete deployment and provide connection details</p>
+                    </div>
+                  ),
+                },
+              ]}
               style={{ marginBottom: '16px' }}
             />
 
             {/* Combined Important Information */}
-            <Alert
-              message="Important Deployment Information"
-              description={
-                <div>
-                  <div style={{ marginBottom: '16px' }}>
-                    <h4 style={{ margin: '0 0 8px 0', color: '#1890ff' }}>🔐 Required Unity Catalog Permissions</h4>
-                    <p><strong>To create Lakebase instances and sync Delta tables, you need:</strong></p>
-                    <ul style={{ marginBottom: '8px' }}>
-                      <li><strong>Database Instance Management:</strong> refer to <a href="https://docs.databricks.com/aws/en/security/auth/access-control/#database-instance-acls" target="_blank" rel="noopener noreferrer">Database instance ACLs</a></li>
-                      <li><strong>Unity Catalog Access:</strong> <code>CREATE CATALOG, USE CATALOG</code> and <code>CREATE SCHEMA</code> permissions on the target catalog</li>
-                      <li><strong>Delta Table Access:</strong> <code>SELECT</code> permission on source Delta tables to be synced</li>
-                      <li><strong>Pipeline Storage Access:</strong> <code>USE SCHEMA</code> and <code>CREATE TABLE</code> permissions on the storage catalog and schema for the Delta table Lakeflow synced pipelines</li>
-                    </ul>
-                    <p><strong>Note:</strong> If resources already exist, you need <code>USE</code> permissions to view and access them.</p>
-                  </div>
+            <Collapse
+              items={[
+                {
+                  key: 'important-info',
+                  label: 'ℹ️ Important Deployment Information',
+                  children: (
+                    <div>
+                      <div style={{ marginBottom: '16px' }}>
+                        <h4 style={{ margin: '0 0 8px 0', color: '#1890ff' }}>🔐 Required Unity Catalog Permissions</h4>
+                        <p><strong>To create Lakebase instances and sync Delta tables, you need:</strong></p>
+                        <ul style={{ marginBottom: '8px' }}>
+                          <li><strong>Database Instance Management:</strong> refer to <a href="https://docs.databricks.com/aws/en/security/auth/access-control/#database-instance-acls" target="_blank" rel="noopener noreferrer">Database instance ACLs</a></li>
+                          <li><strong>Unity Catalog Access:</strong> <code>CREATE CATALOG, USE CATALOG</code> and <code>CREATE SCHEMA</code> permissions on the target catalog</li>
+                          <li><strong>Delta Table Access:</strong> <code>SELECT</code> permission on source Delta tables to be synced</li>
+                          <li><strong>Pipeline Storage Access:</strong> <code>USE SCHEMA</code> and <code>CREATE TABLE</code> permissions on the storage catalog and schema for the Delta table Lakeflow synced pipelines</li>
+                        </ul>
+                        <p><strong>Note:</strong> If resources already exist, you need <code>USE</code> permissions to view and access them.</p>
+                      </div>
 
-                  <div style={{ marginBottom: '16px' }}>
-                    <h4 style={{ margin: '0 0 8px 0', color: '#ff4d4f' }}>⚠️ Sync Mode Cannot Be Changed After Creation</h4>
-                    <p><strong>Table sync mode is permanent once set.</strong></p>
-                    <p>To change sync mode (SNAPSHOT, TRIGGERED, CONTINUOUS), you must:</p>
-                    <ol style={{ marginBottom: '8px' }}>
-                      <li>Delete the existing synced table</li>
-                      <li>Recreate it with the new sync mode</li>
-                    </ol>
-                    <p>Choose your sync mode carefully during initial configuration.</p>
-                  </div>
+                      <div style={{ marginBottom: '16px' }}>
+                        <h4 style={{ margin: '0 0 8px 0', color: '#ff4d4f' }}>⚠️ Sync Mode Cannot Be Changed After Creation</h4>
+                        <p><strong>Table sync mode is permanent once set.</strong></p>
+                        <p>To change sync mode (SNAPSHOT, TRIGGERED, CONTINUOUS), you must:</p>
+                        <ol style={{ marginBottom: '8px' }}>
+                          <li>Delete the existing synced table</li>
+                          <li>Recreate it with the new sync mode</li>
+                        </ol>
+                        <p>Choose your sync mode carefully during initial configuration.</p>
+                      </div>
 
-                  <div>
-                    <h4 style={{ margin: '0 0 8px 0', color: '#52c41a' }}>🚀 Deployment Behavior</h4>
-                    <p><strong>This deployment will:</strong></p>
-                    <ul style={{ marginBottom: '8px' }}>
-                      <li><strong>Create new resources</strong> if they don't exist (Lakebase instance, catalog, synced tables)</li>
-                      <li><strong>Return existing instance information</strong> if the instance is already available (provided you have sufficient permissions)</li>
-                    </ul>
-                    <p><strong>Note:</strong> The deployment process checks for existing resources first and only creates new ones when necessary. Update to existing assets is not supported.</p>
-                  </div>
-                </div>
-              }
-              type="info"
-              showIcon
-              className="databricks-alert"
+                      <div>
+                        <h4 style={{ margin: '0 0 8px 0', color: '#52c41a' }}>🚀 Deployment Behavior</h4>
+                        <p><strong>This deployment will:</strong></p>
+                        <ul style={{ marginBottom: '8px' }}>
+                          <li><strong>Create new resources</strong> if they don't exist (Lakebase instance, catalog, synced tables)</li>
+                          <li><strong>Return existing instance information</strong> if the instance is already available (provided you have sufficient permissions)</li>
+                        </ul>
+                        <p><strong>Note:</strong> The deployment process checks for existing resources first and only creates new ones when necessary. Update to existing assets is not supported.</p>
+                      </div>
+                    </div>
+                  ),
+                },
+              ]}
               style={{ marginBottom: '16px' }}
             />
 
             {/* Deployment Summary */}
-            <Card size="small" title="Deployment Summary" style={{ marginBottom: '16px', backgroundColor: '#fafafa' }}>
+            <Collapse
+              items={[
+                {
+                  key: 'deployment-summary',
+                  label: '📊 Deployment Summary',
+                  children: (
+                    <Row gutter={[16, 8]}>
+                      <Col span={12}>
+                        <Text strong>Databricks Workspace:</Text>
+                        <br />
+                        <Text>{(generatedConfigs as any)?.workload_config?.databricks_workspace_url || 'Not specified'}</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Text strong>Authentication:</Text>
+                        <br />
+                        <Text>Environment variables / Default profile</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Text strong>Lakebase Instance:</Text>
+                        <br />
+                        <Text>{(generatedConfigs as any)?.workload_config?.lakebase_instance_name || 'lakebase-accelerator-instance'}</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Text strong>Database Catalog:</Text>
+                        <br />
+                        <Text>{(generatedConfigs as any)?.workload_config?.uc_catalog_name || 'lakebase-accelerator-catalog'}</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Text strong>Database Name:</Text>
+                        <br />
+                        <Text>{(generatedConfigs as any)?.workload_config?.database_name || 'databricks_postgres'}</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Text strong>Storage Catalog:</Text>
+                        <br />
+                        <Text>{(generatedConfigs as any)?.workload_config?.storage_catalog || 'main'}</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Text strong>Storage Schema:</Text>
+                        <br />
+                        <Text>{(generatedConfigs as any)?.workload_config?.storage_schema || 'default'}</Text>
+                      </Col>
+                      <Col span={24}>
+                        <Text strong>Tables to Sync:</Text>
+                        <br />
+                        {(() => {
+                          // Try multiple possible paths for tables data
+                          const tables = (generatedConfigs as any)?.synced_tables?.config_data?.synced_tables ||
+                            (generatedConfigs as any)?.synced_tables?.synced_tables ||
+                            (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
+                            (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
+                            (generatedConfigs as any)?.tables ||
+                            [];
 
-              <Row gutter={[16, 8]}>
-                <Col span={12}>
-                  <Text strong>Databricks Workspace:</Text>
-                  <br />
-                  <Text>{(generatedConfigs as any)?.workload_config?.databricks_workspace_url || 'Not specified'}</Text>
-                </Col>
-                <Col span={12}>
-                  <Text strong>Authentication:</Text>
-                  <br />
-                  <Text>Environment variables / Default profile</Text>
-                </Col>
-                <Col span={12}>
-                  <Text strong>Lakebase Instance:</Text>
-                  <br />
-                  <Text>{(generatedConfigs as any)?.workload_config?.lakebase_instance_name || 'lakebase-accelerator-instance'}</Text>
-                </Col>
-                <Col span={12}>
-                  <Text strong>Database Catalog:</Text>
-                  <br />
-                  <Text>{(generatedConfigs as any)?.workload_config?.uc_catalog_name || 'lakebase-accelerator-catalog'}</Text>
-                </Col>
-                <Col span={12}>
-                  <Text strong>Database Name:</Text>
-                  <br />
-                  <Text>{(generatedConfigs as any)?.workload_config?.database_name || 'databricks_postgres'}</Text>
-                </Col>
-                <Col span={12}>
-                  <Text strong>Storage Catalog:</Text>
-                  <br />
-                  <Text>{(generatedConfigs as any)?.workload_config?.storage_catalog || 'main'}</Text>
-                </Col>
-                <Col span={12}>
-                  <Text strong>Storage Schema:</Text>
-                  <br />
-                  <Text>{(generatedConfigs as any)?.workload_config?.storage_schema || 'default'}</Text>
-                </Col>
-                <Col span={24}>
-                  <Text strong>Tables to Sync:</Text>
-                  <br />
-                  {(() => {
-                    // Try multiple possible paths for tables data
-                    const tables = (generatedConfigs as any)?.synced_tables?.config_data?.synced_tables ||
-                      (generatedConfigs as any)?.synced_tables?.synced_tables ||
-                      (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
-                      (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
-                      (generatedConfigs as any)?.tables ||
-                      [];
+                          console.log('Debug - generatedConfigs:', generatedConfigs);
+                          console.log('Debug - tables found:', tables);
 
-                    console.log('Debug - generatedConfigs:', generatedConfigs);
-                    console.log('Debug - tables found:', tables);
+                          if (tables.length === 0) {
+                            return <Text type="secondary">No tables configured</Text>;
+                          }
 
-                    if (tables.length === 0) {
-                      return <Text type="secondary">No tables configured</Text>;
-                    }
-
-                    return (
-                      <div>
-                        <Text>{tables.length} table{tables.length !== 1 ? 's' : ''}</Text>
-                        <div style={{ marginTop: '8px' }}>
-                          {tables.map((table: any, index: number) => {
-                            const tableName = table.table_name || table.name || `Table ${index + 1}`;
-                            const syncMode = table.scheduling_policy || table.sync_policy || 'SNAPSHOT';
-                            return (
-                              <div key={index} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Tag style={{ marginBottom: '4px' }}>
-                                  {tableName}
-                                </Tag>
-                                <Tag color="blue" style={{ marginBottom: '4px' }}>
-                                  {syncMode}
-                                </Tag>
+                          return (
+                            <div>
+                              <Text>{tables.length} table{tables.length !== 1 ? 's' : ''}</Text>
+                              <div style={{ marginTop: '8px' }}>
+                                {tables.map((table: any, index: number) => {
+                                  const tableName = table.table_name || table.name || `Table ${index + 1}`;
+                                  const syncMode = table.scheduling_policy || table.sync_policy || 'SNAPSHOT';
+                                  return (
+                                    <div key={index} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <Tag style={{ marginBottom: '4px' }}>
+                                        {tableName}
+                                      </Tag>
+                                      <Tag color="blue" style={{ marginBottom: '4px' }}>
+                                        {syncMode}
+                                      </Tag>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </Col>
-              </Row>
-            </Card>
+                            </div>
+                          );
+                        })()}
+                      </Col>
+                    </Row>
+                  ),
+                },
+              ]}
+              style={{ marginBottom: '16px' }}
+            />
 
             <Row gutter={[16, 16]}>
               <Col span={24}>

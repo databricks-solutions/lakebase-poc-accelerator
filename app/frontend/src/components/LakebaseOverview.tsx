@@ -113,9 +113,15 @@ const LakebaseOverview: React.FC = () => {
             'Support up to 1000 connections per instance'
           ]}
           renderItem={(item) => (
-            <List.Item style={{ ...styled.listItem, textAlign: 'left' }}>
-              <CheckCircleOutlined style={{ color: theme.colors.primary, marginRight: '12px', fontSize: '16px' }} />
-              <span style={{ lineHeight: '1.6', textAlign: 'left' }}>{item}</span>
+            <List.Item style={styled.listItem}>
+              <CheckCircleOutlined style={{
+                color: theme.colors.primary,
+                fontSize: '16px',
+                position: 'absolute' as const,
+                left: '0',
+                top: '12px'
+              }} />
+              <span style={{ lineHeight: '1.6' }}>{item}</span>
             </List.Item>
           )}
         />

@@ -206,22 +206,7 @@
 }
 
 /* Button Components */
-[data-theme="dark"] .ant-btn {
-  color: var(--dark-text) !important;
-  border-color: var(--dark-border) !important;
-}
-
-[data-theme="dark"] .ant-btn-primary {
-  background: var(--dark-primary) !important;
-  border-color: var(--dark-primary) !important;
-  color: var(--dark-bg) !important;
-}
-
-[data-theme="dark"] .ant-btn-default {
-  background: var(--dark-surface) !important;
-  border-color: var(--dark-border) !important;
-  color: var(--dark-text) !important;
-}
+/* Button styles remain consistent across themes */
 
 /* Table Components */
 [data-theme="dark"] .ant-table {

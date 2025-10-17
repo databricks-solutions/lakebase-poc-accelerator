@@ -107,9 +107,8 @@ export const createStyledComponents = (theme: Theme) => ({
     border: 'none',
     padding: '12px 0',
     color: theme.colors.textSecondary,
-    textAlign: 'left',
-    display: 'flex',
-    alignItems: 'flex-start',
+    position: 'relative' as const,
+    paddingLeft: '24px',
   },
 
   // Divider
