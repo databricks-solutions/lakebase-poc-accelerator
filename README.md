@@ -97,7 +97,7 @@ The project includes a full-stack web application for interactive workload confi
 - **📁 Manual Deployment**: Generate and download Databricks Asset Bundle files
 - **🧪 Concurrency Testing**: Upload and execute SQL queries for performance testing
 
-## Option 1: Starting the Web Application on Databricks Apps
+## Option 1: Starting the Web Application on Databricks Apps (Recommended)
 
 Follow instruction on [DEPLOY_WITH_DAB.md](./DEPLOY_WITH_DAB.md)
 

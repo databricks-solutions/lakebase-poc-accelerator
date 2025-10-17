@@ -1,192 +1,140 @@
 import React from 'react';
-import { Card, Typography, Row, Col, Tag, Alert, Divider, List, Statistic } from 'antd';
+import { Card, Typography, Row, Col, Tag, Alert, Divider, List, Statistic, Tooltip, Collapse } from 'antd';
 import {
   CheckCircleOutlined,
   DatabaseOutlined,
   ThunderboltOutlined,
   SyncOutlined
 } from '@ant-design/icons';
+import { useTheme } from '../contexts/ThemeContext';
+import { createStyledComponents } from '../styles/theme';
 
 const { Title, Paragraph, Text } = Typography;
 
 const LakebaseOverview: React.FC = () => {
+  const { theme } = useTheme();
+  const styled = createStyledComponents(theme);
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <Title level={2}>Lakebase Overview</Title>
+    <div style={styled.pageContainer}>
+      {/* Background pattern */}
+      <div style={styled.backgroundPattern} />
+
+      <Title level={2} style={styled.pageTitle}>
+        Lakebase Overview
+      </Title>
       <Alert
         message="Official Documentation"
         description={
           <div>
-            <Text>Please refer to the official Databricks documentation for the most up-to-date details on Lakebase database instances.</Text>
+            <Text style={{ color: theme.colors.textSecondary }}>
+              Please refer to the official Databricks documentation for the most up-to-date details on Lakebase database instances.
+            </Text>
             <div style={{ marginTop: 8 }}>
-              <a href="https://docs.databricks.com/aws/en/oltp/instances/instance" target="_blank" rel="noreferrer">
-                Database instance overview
+              <a
+                href="https://docs.databricks.com/aws/en/oltp/instances/instance"
+                target="_blank"
+                rel="noreferrer"
+                style={styled.link}
+              >
+                Database instance overview →
               </a>
             </div>
           </div>
         }
         type="info"
         showIcon
-        style={{ marginBottom: '16px' }}
+        style={styled.alert}
       />
 
       {/* Qualifications Section */}
-      <Card title="Qualifications" className="databricks-card" style={{ marginBottom: '24px' }}>
+      <Card
+        title={<span style={styled.sectionTitle}>Qualifications</span>}
+        style={styled.mainCard}
+      >
         <Row gutter={[16, 16]}>
-          <Col span={24}>
-            <Alert
-              message="Dataset Size Support"
-              description="Up to 2TB in Postgres. Be aware that Delta tables are highly compressed on cloud storage, when migrated to Lakebase, the physical table size may increase by 5x-10x."
-              type="warning"
-              showIcon
-              className="databricks-alert"
-              style={{ marginBottom: '16px' }}
-            />
-          </Col>
           <Col span={8}>
-            <div className="databricks-stat-card">
-              <div className="databricks-stat-value">100k</div>
-              <div className="databricks-stat-title">
-                <ThunderboltOutlined style={{ marginRight: '4px' }} />
-                Throughput (QPS)
-              </div>
-            </div>
-          </Col>
-          <Col span={8}>
-            <div className="databricks-stat-card">
-              <div className="databricks-stat-value">2TB</div>
-              <div className="databricks-stat-title">
-                <DatabaseOutlined style={{ marginRight: '4px' }} />
-                Max Dataset Size
-              </div>
-            </div>
-          </Col>
-          <Col span={8}>
-            <div className="databricks-stat-card">
-              <div className="databricks-stat-value">✓</div>
-              <div className="databricks-stat-title">
-                <CheckCircleOutlined style={{ marginRight: '4px' }} />
+            <div style={styled.statCard(theme.colors.accent1)}>
+              <div style={styled.statValue(theme.colors.accent1)}>✓</div>
+              <div style={styled.statTitle}>
+                <CheckCircleOutlined style={{ marginRight: '6px', color: theme.colors.accent1 }} />
                 Reverse ETL
               </div>
             </div>
           </Col>
-        </Row>
-
-        <Divider />
-
-        <List
-          header={<Title level={4}>Key Features</Title>}
-          dataSource={[
-            'Reverse ETL is supported: data can be synchronized from Delta tables to Postgres in Lakebase',
-            'Low-latency application serving capabilities',
-            'Recommend PrivateLink as a security best practice.'
-          ]}
-          renderItem={(item) => (
-            <List.Item>
-              <CheckCircleOutlined style={{ color: '#52c41a', marginRight: '8px' }} />
-              {item}
-            </List.Item>
-          )}
-        />
-      </Card>
-
-      {/* Lakebase Performance Section */}
-      <Card title="Lakebase Performance" className="databricks-card" style={{ marginBottom: '24px' }}>
-        <Row gutter={[16, 16]}>
-          <Col span={24}>
-            <Alert
-              message="Performance Assumptions"
-              description="1CU of compute capacity = 16GB Memory and uncompressed 1KB row size"
-              type="info"
-              showIcon
-              className="databricks-alert"
-              style={{ marginBottom: '16px' }}
-            />
+          <Col span={8}>
+            <div style={styled.statCard(theme.colors.accent2)}>
+              <div style={styled.statValue(theme.colors.accent2)}>10</div>
+              <div style={styled.statTitle}>
+                <ThunderboltOutlined style={{ marginRight: '6px', color: theme.colors.accent2 }} />
+                Instances per Workspace
+              </div>
+            </div>
           </Col>
-        </Row>
-
-        <Row gutter={[16, 16]}>
-          <Col span={12}>
-            <Card size="small" title="Latency & Connections">
-              <List size="small">
-                <List.Item>
-                  <Text strong>Latency:</Text> <Tag color="green">&lt;10ms</Tag>
-                </List.Item>
-                <List.Item>
-                  <Text strong>Max Connections:</Text> <Tag color="blue">1000</Tag>
-                </List.Item>
-              </List>
-            </Card>
-          </Col>
-          <Col span={12}>
-            <Card size="small" title="Read Performance">
-              <List size="small">
-                <List.Item>
-                  <Text strong>Read QPS:</Text> <Tag color="green">around 10K QPS point lookup</Tag>
-                </List.Item>
-                <List.Item>
-                  <Text strong>Range:</Text> <Text type="secondary">2k-30k QPS depending on data size & cache hit ratio</Text>
-                </List.Item>
-              </List>
-            </Card>
+          <Col span={8}>
+            <div style={styled.statCard(theme.colors.accent3)}>
+              <div style={styled.statValue(theme.colors.accent3)}>100k</div>
+              <div style={styled.statTitle}>
+                <ThunderboltOutlined style={{ marginRight: '6px', color: theme.colors.accent3 }} />
+                Throughput (QPS)
+              </div>
+            </div>
           </Col>
         </Row>
 
         <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
           <Col span={12}>
-            <Card size="small" title="Write Performance (Initial)">
-              <Statistic
-                value="15k"
-                suffix="per 1KB rows/sec per CU"
-                valueStyle={{ color: '#1890ff' }}
-              />
-            </Card>
+            <div style={styled.statCard(theme.colors.accent4)}>
+              <div style={styled.statValue(theme.colors.accent4)}>1,000</div>
+              <div style={styled.statTitle}>
+                <SyncOutlined style={{ marginRight: '6px', color: theme.colors.accent4 }} />
+                Max Connections per Instance
+              </div>
+            </div>
           </Col>
           <Col span={12}>
-            <Card size="small" title="Write Performance (Incremental)">
-              <Statistic
-                value="1.2k"
-                suffix="per 1KB rows/sec per CU"
-                valueStyle={{ color: '#722ed1' }}
-              />
-            </Card>
+            <div style={{ ...styled.statCard(theme.colors.accent5), cursor: 'help' }}>
+              <div style={styled.statValue(theme.colors.accent5)}>2TB</div>
+              <div style={styled.statTitle}>
+                <DatabaseOutlined style={{ marginRight: '6px', color: theme.colors.accent5 }} />
+                Max Dataset Size
+              </div>
+            </div>
           </Col>
         </Row>
 
-        <Divider />
+        <Divider style={styled.divider} />
 
-        <Row gutter={[16, 16]}>
-          <Col span={8}>
-            <Statistic
-              title="Max Size Per Instance"
-              value="2TB"
-              suffix="across all databases"
-              prefix={<DatabaseOutlined />}
-            />
-          </Col>
-          <Col span={8}>
-            <Statistic
-              title="Instances per Workspace"
-              value="10"
-              prefix={<ThunderboltOutlined />}
-            />
-          </Col>
-          <Col span={8}>
-            <Statistic
-              title="Max Connections per Instance"
-              value="1000"
-              prefix={<SyncOutlined />}
-            />
-          </Col>
-        </Row>
+        <List
+          header={<Title level={4} style={{ color: theme.colors.text, marginBottom: '16px', textAlign: 'left' }}>Key Features</Title>}
+          dataSource={[
+            'Synchronize data from Delta tables (data lake) to Managed Postgres databases in Lakebase, enables your front-end applications and APIs to access real-time data from your data lake through a high-performance Postgres database, bridging the gap between analytical data processing and operational application needs',
+            'Low-latency application serving capabilities with sub-10ms response times for front-end applications for point lookups queries',
+            'Support up to 1000 connections per instance'
+          ]}
+          renderItem={(item) => (
+            <List.Item style={{ ...styled.listItem, textAlign: 'left' }}>
+              <CheckCircleOutlined style={{ color: theme.colors.primary, marginRight: '12px', fontSize: '16px' }} />
+              <span style={{ lineHeight: '1.6', textAlign: 'left' }}>{item}</span>
+            </List.Item>
+          )}
+        />
       </Card>
 
+
       {/* Delta Sync Section */}
-      <Card title="Delta Sync" className="databricks-card" style={{ marginBottom: '24px' }}>
-        <Paragraph>
-          Delta tables can be synced to Lakebase by 3 modes: Snapshot, Triggered, Continuous.
+      <Card
+        title={<span style={styled.sectionTitle}>Delta Sync</span>}
+        style={styled.mainCard}
+      >
+        <Paragraph style={{ color: theme.colors.textSecondary }}>
+          <Text strong style={{ color: theme.colors.text }}>Delta Sync Modes:</Text> Delta tables (data lake) can be synced to Lakebase by 3 modes: Snapshot, Triggered, Continuous.
         </Paragraph>
-        <Paragraph>
+        <Paragraph style={{ color: theme.colors.textSecondary }}>
+          <Text strong style={{ color: theme.colors.text }}>Dataset Size Support:</Text>
+          Up to 2TB in Postgres. Be aware that Delta tables are highly compressed on cloud storage, when migrated to Lakebase, the physical table size may increase by 5x-10x
+        </Paragraph>
+        <Paragraph style={{ color: theme.colors.textSecondary }}>
           <Text>
             For additional instructions, see the official Databricks guide:
             {' '}
@@ -194,6 +142,7 @@ const LakebaseOverview: React.FC = () => {
               href="https://docs.databricks.com/aws/en/oltp/instances/sync-data/sync-table"
               target="_blank"
               rel="noreferrer"
+              style={styled.link}
             >
               Sync data from Unity Catalog tables to a database instance
             </a>.
@@ -203,81 +152,157 @@ const LakebaseOverview: React.FC = () => {
         <Row gutter={[16, 16]}>
           <Col span={8}>
             <Card
-              title="Snapshot"
+              title={<span style={{ color: theme.colors.text }}>Triggered</span>}
               size="small"
-              className="databricks-card"
-              extra={<Tag className="databricks-tag">Most Efficient</Tag>}
+              style={styled.syncCard}
+              extra={<Tag style={styled.tag(theme.colors.success)}>Incremental, Recommended</Tag>}
             >
               <List size="small">
-                <List.Item>
-                  <Text strong>Description:</Text> Pipeline runs once to take a snapshot
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Description:</Text> User triggers sync manually or on schedule to incrementally sync changes.
                 </List.Item>
-                <List.Item>
-                  <Text strong>Efficiency:</Text> 10x more efficient than other modes
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Use Case:</Text> Recommended for tables with Change Data Feed, and updated frequently.
                 </List.Item>
-                <List.Item>
-                  <Text strong>Use Case:</Text> When modifying &gt;10% of source table. Work for Views and Materialized Views, or tables without Change Data Feed.
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Requirement:</Text> Delta Tables with Change data feed enabled
                 </List.Item>
               </List>
             </Card>
           </Col>
           <Col span={8}>
             <Card
-              title="Triggered"
+              title={<span style={{ color: theme.colors.text }}>Snapshot</span>}
               size="small"
-              className="databricks-card"
-              extra={<Tag className="databricks-tag-secondary">Manual/Scheduled</Tag>}
+              style={styled.syncCard}
+              extra={<Tag style={styled.tag(theme.colors.warning)}>Efficient but sync full table</Tag>}
             >
               <List size="small">
-                <List.Item>
-                  <Text strong>Description:</Text> User triggers sync manually or on schedule
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Description:</Text> Pipeline take a snapshot of the entire table everytime it runs
                 </List.Item>
-                <List.Item>
-                  <Text strong>Timing:</Text> Preferably after table is updated
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Efficiency:</Text> 10x more efficient than other modes, but sync full table everytime
                 </List.Item>
-                <List.Item>
-                  <Text strong>Requirement:</Text> Change data feed enabled
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Use Case:</Text> When modifying &gt;10% of source table. Work for Views and Materialized Views, or tables without Change Data Feed. For tables with Change Data Feed, use Triggered mode instead.
                 </List.Item>
               </List>
             </Card>
           </Col>
           <Col span={8}>
             <Card
-              title="Continuous"
+              title={<span style={{ color: theme.colors.text }}>Continuous</span>}
               size="small"
-              className="databricks-card"
-              extra={<Tag className="databricks-tag" style={{ background: '#dc2626' }}>Real-time</Tag>}
+              style={styled.syncCard}
+              extra={<Tag style={styled.tag(theme.colors.error)}>Real-time</Tag>}
             >
               <List size="small">
-                <List.Item>
-                  <Text strong>Description:</Text> All changes synced continuously
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Description:</Text> All changes synced continuously
                 </List.Item>
-                <List.Item>
-                  <Text strong>Lag:</Text> Up to 10-15 seconds
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Lag:</Text> Up to 10-15 seconds
                 </List.Item>
-                <List.Item>
-                  <Text strong>Cost:</Text> Can be expensive
+                <List.Item style={{ color: theme.colors.textSecondary }}>
+                  <Text strong style={{ color: theme.colors.text }}>Cost:</Text> Can be expensive as pipeline runs continuously, but provide real-time data access
                 </List.Item>
               </List>
             </Card>
           </Col>
         </Row>
 
-        <Divider />
+        <Divider style={styled.divider} />
 
         <Alert
           message="Important Notes"
           description={
-            <div>
-              <p>• Sync mode cannot be changed after pipeline is created - requires table deletion and recreation</p>
-              <p>• Change data feed must be enabled for Triggered or Continuous sync modes</p>
-              <p>• Certain sources (like Views) do not support change data feed so they can only be synced in Snapshot mode</p>
+            <div style={{ color: theme.colors.textSecondary }}>
+              <p>• Sync mode <strong style={{ color: theme.colors.text }}>cannot be changed</strong> after pipeline is created - requires table deletion and recreation</p>
+              <p>• Change data feed <strong style={{ color: theme.colors.text }}>must be enabled</strong> for Triggered or Continuous sync modes</p>
+              <p>• Certain sources (like Views) <strong style={{ color: theme.colors.text }}>do not support change data feed</strong> so they can only be synced in Snapshot mode</p>
             </div>
           }
           type="info"
           showIcon
+          style={styled.alert}
         />
       </Card>
+
+      {/* Lakebase Performance (Advanced) - Collapsible Section */}
+      <Collapse
+        items={[
+          {
+            key: '1',
+            label: <Text strong style={{ color: theme.colors.text }}>Lakebase Performance (Advanced)</Text>,
+            children: (
+              <div>
+                <Row gutter={[16, 16]}>
+                  <Col span={24}>
+                    <Alert
+                      message="Performance Assumptions"
+                      description="1CU of compute capacity = 16GB Memory and uncompressed 1KB row size"
+                      type="info"
+                      showIcon
+                      className="databricks-alert"
+                      style={{ marginBottom: '16px' }}
+                    />
+                  </Col>
+                </Row>
+
+                <Row gutter={[16, 16]}>
+                  <Col span={12}>
+                    <Card size="small" title="Latency & Connections">
+                      <List size="small">
+                        <List.Item>
+                          <Text strong>Latency:</Text> <Tag color="green" style={{ color: '#000000' }}>&lt;10ms</Tag>
+                        </List.Item>
+                        <List.Item>
+                          <Text strong>Max Connections:</Text> <Tag color="blue" style={{ color: '#000000' }}>1000</Tag>
+                        </List.Item>
+                      </List>
+                    </Card>
+                  </Col>
+                  <Col span={12}>
+                    <Card size="small" title="Read Performance">
+                      <List size="small">
+                        <List.Item>
+                          <Text strong>Read QPS:</Text> <Tag color="green" style={{ color: '#000000' }}>around 10K QPS point lookup</Tag>
+                        </List.Item>
+                        <List.Item>
+                          <Text strong>Range:</Text> <Text type="secondary">2k-30k QPS depending on data size & cache hit ratio</Text>
+                        </List.Item>
+                      </List>
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
+                  <Col span={12}>
+                    <Card size="small" title="Write Performance (Initial)">
+                      <Statistic
+                        value="15k"
+                        suffix="per 1KB rows/sec per CU"
+                        valueStyle={{ color: '#1890ff' }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col span={12}>
+                    <Card size="small" title="Write Performance (Incremental)">
+                      <Statistic
+                        value="1.2k"
+                        suffix="per 1KB rows/sec per CU"
+                        valueStyle={{ color: '#722ed1' }}
+                      />
+                    </Card>
+                  </Col>
+                </Row>
+              </div>
+            ),
+          },
+        ]}
+        style={styled.collapse}
+      />
     </div>
   );
 };

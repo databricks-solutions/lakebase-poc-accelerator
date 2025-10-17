@@ -1,7 +1,7 @@
 resources:
   apps:
     lakebase_accelerator_app:
-      name: a4-lakebase-accelerator
+      name: dab-lakebase-accelerator
       description: "Lakebase POC Accelerator - Interactive web app for Lakebase deployment and testing"
       
       # Source code path - points to the root directory containing app.yml, requirements.txt, etc.

@@ -697,7 +697,7 @@ const PgbenchDatabricks: React.FC = () => {
                     </li>
                     <li>Recommended for high concurrency testing, cluster size determined by # of clients & jobs selection</li>
                     <li>
-                      App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong> in Databricks Workspace. Workspace Admin can go to <strong>Workspace settings &gt; Identity and access &gt; Service principals &gt; &lt;app service principal name&gt; Configurations / Entitlements &gt; Allow unrestricted cluster creation</strong>
+                      App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong> in Databricks Workspace. Workspace Admin can go to <strong>Workspace settings &gt; Identity and access &gt; Service principals &gt; app service principal name &gt; Configurations / Entitlements &gt; Allow unrestricted cluster creation</strong>
                     </li>
                   </ul>
                 </div>
