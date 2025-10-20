@@ -219,15 +219,8 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
         number_of_continuous_pipelines: 0,
         expected_data_per_sync_gb: 20,
         sync_mode: 'TRIGGERED',
-        sync_frequency: 'Per day',
-        databricks_workspace_url: 'https://your-workspace.cloud.databricks.com',
-        warehouse_http_path: '/sql/1.0/warehouses/your-warehouse-id',
-        databricks_profile: 'DEFAULT',
-        lakebase_instance_name: 'lakebase-accelerator-instance',
-        uc_catalog_name: 'lakebase_accelerator_catalog',
-        database_name: 'databricks_postgres',
-        storage_catalog: 'main',
-        storage_schema: 'default'
+        sync_frequency: 'Per day'
+        // Removed Databricks Configuration initialValues to use placeholders instead
       }}
     >
       {/* Database Instance Configuration */}

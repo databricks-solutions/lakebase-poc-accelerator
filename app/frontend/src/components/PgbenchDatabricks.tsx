@@ -627,26 +627,6 @@ const PgbenchDatabricks: React.FC = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="lakebase_instance_name"
-                label="Lakebase Instance Name"
-                rules={[{ required: true, message: 'Please enter the Lakebase instance name' }]}
-              >
-                <Input placeholder="e.g., ak-lakebase-accelerator-instance" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="database_name"
-                label="Database Name"
-              >
-                <Input placeholder="databricks_postgres" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
                 name="workspace_url"
                 label="Databricks Workspace URL"
                 rules={[
@@ -674,6 +654,26 @@ const PgbenchDatabricks: React.FC = () => {
             </Col>
           </Row>
 
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="lakebase_instance_name"
+                label="Lakebase Instance Name"
+                rules={[{ required: true, message: 'Please enter the Lakebase instance name' }]}
+              >
+                <Input placeholder="e.g., ak-lakebase-accelerator-instance" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="database_name"
+                label="Database Name"
+              >
+                <Input placeholder="databricks_postgres" />
+              </Form.Item>
+            </Col>
+          </Row>
+
           <Form.Item
             name="cluster_id"
             label="Databricks Cluster ID (Optional)"
@@ -685,50 +685,52 @@ const PgbenchDatabricks: React.FC = () => {
             />
           </Form.Item>
 
-          <Alert
-            message="Cluster Configuration Notes"
-            description={
-              <div>
-                <div style={{ marginBottom: 12 }}>
-                  <strong>Job Clusters (recommended):</strong>
-                  <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
-                    <li>
-                      Leave empty to create an ephemeral job cluster automatically with auto-installed pgbench on the cluster
-                    </li>
-                    <li>Recommended for high concurrency testing, cluster size determined by # of clients & jobs selection</li>
-                    <li>
-                      App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong> in Databricks Workspace. Workspace Admin can go to <strong>Workspace settings &gt; Identity and access &gt; Service principals &gt; app service principal name &gt; Configurations / Entitlements &gt; Allow unrestricted cluster creation</strong>
-                    </li>
-                  </ul>
-                </div>
-                <div>
-                  <strong>Interactive Clusters (used with local mode or for repeatable testing):</strong>
-                  <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
-                    <li>
-                      Require users tomanually configure as a Single node cluster with <strong>Dedicated</strong> (formerly: Single user) access mode.
-                    </li>
-                    <li>Recommended for repeatable testing without waiting for job cluster spinup, or used with local mode. </li>
-                    <li>
-                      If running on Databricks Apps, add the app service principal as the dedicated user to the interactive cluster. If running locally, make sure your Databricks user is added as the dedicated user to the interactive cluster.
-                    </li>
-                    <li>
-                      Make sure to attach the{' '}
-                      <a
-                        href="https://github.com/databricks-solutions/lakebase-poc-accelerator/blob/app-dev-new/app/notebooks/init.sh"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        init script
-                      </a>
-                      {' '}to the interactive cluster
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            }
-            type="info"
-            showIcon
-            icon={<InfoCircleOutlined />}
+          <Collapse
+            items={[
+              {
+                key: 'cluster-config-notes',
+                label: 'ℹ️ Cluster Configuration',
+                children: (
+                  <div>
+                    <div style={{ marginBottom: 12 }}>
+                      <strong>Job Clusters (recommended):</strong>
+                      <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
+                        <li>
+                          Leave empty to create an ephemeral job cluster automatically with auto-installed pgbench on the cluster
+                        </li>
+                        <li>Recommended for high concurrency testing, cluster size determined by # of clients & jobs selection</li>
+                        <li>
+                          App service principal needs to be given permissions to <strong>CREATE CLUSTER</strong> in Databricks Workspace. Workspace Admin can go to <strong>Workspace settings &gt; Identity and access &gt; Service principals &gt; app service principal name &gt; Configurations / Entitlements &gt; Allow unrestricted cluster creation</strong>
+                        </li>
+                      </ul>
+                    </div>
+                    <div>
+                      <strong>Interactive Clusters (used with local mode or for repeatable testing):</strong>
+                      <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
+                        <li>
+                          Require users tomanually configure as a Single node cluster with <strong>Dedicated</strong> (formerly: Single user) access mode.
+                        </li>
+                        <li>Recommended for repeatable testing without waiting for job cluster spinup, or used with local mode. </li>
+                        <li>
+                          If running on Databricks Apps, add the app service principal as the dedicated user to the interactive cluster. If running locally, make sure your Databricks user is added as the dedicated user to the interactive cluster.
+                        </li>
+                        <li>
+                          Make sure to attach the{' '}
+                          <a
+                            href="https://github.com/databricks-solutions/lakebase-poc-accelerator/blob/app-dev-new/app/notebooks/init.sh"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            init script
+                          </a>
+                          {' '}to the interactive cluster
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                ),
+              },
+            ]}
             style={{ marginBottom: 16 }}
           />
         </Card>

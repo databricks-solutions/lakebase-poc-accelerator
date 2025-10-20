@@ -329,12 +329,21 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
           style={{ marginBottom: '24px' }}
         >
           <Row gutter={16}>
-            <Col span={8}>
+            <Col span={12}>
+              <Form.Item
+                label="Databricks Workspace URL"
+                name="workspace_url"
+                rules={[{ required: true, message: 'Please enter Databricks workspace URL' }]}
+              >
+                <Input placeholder="https://your-workspace.cloud.databricks.com" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
               <Form.Item
                 label={
                   <span>
                     Databricks Profile Name
-                    <Tooltip title="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL below.">
+                    <Tooltip title="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
                       <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
                     </Tooltip>
                   </span>
@@ -345,7 +354,10 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                 <Input placeholder="DEFAULT" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
               <Form.Item
                 label="Lakebase Instance Name"
                 name="instance_name"
@@ -357,7 +369,7 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                 <Input placeholder="lakebase-accelerator-instance" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
                 label="Database Name"
                 name="database_name"
@@ -368,15 +380,6 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
           </Row>
 
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="Databricks Workspace URL"
-                name="workspace_url"
-                rules={[{ required: true, message: 'Please enter Databricks workspace URL' }]}
-              >
-                <Input placeholder="https://your-workspace.cloud.databricks.com" />
-              </Form.Item>
-            </Col>
             <Col span={12}>
               <Form.Item
                 label="Concurrent Connections"
@@ -718,288 +721,292 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
       </Form>
 
       {/* Test Results */}
-      {testResults && (
-        <div style={{ marginTop: '24px' }}>
-          {/* Test Configuration Summary */}
-          <Card title="Test Configuration Summary" style={{ marginBottom: '16px' }}>
-            <Row gutter={16}>
-              <Col span={8}>
-                <Statistic title="Total Queries" value={testResults.query_results?.length || 0} />
-              </Col>
-              <Col span={8}>
-                <Statistic title="Concurrency Level" value={testResults.concurrency_level || 0} />
-              </Col>
-              <Col span={8}>
-                <Statistic title="Available Connection Pool" value={testResults.connection_pool_metrics?.pool_size || 0} />
-              </Col>
-            </Row>
-          </Card>
+      {
+        testResults && (
+          <div style={{ marginTop: '24px' }}>
+            {/* Test Configuration Summary */}
+            <Card title="Test Configuration Summary" style={{ marginBottom: '16px' }}>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Statistic title="Total Queries" value={testResults.query_results?.length || 0} />
+                </Col>
+                <Col span={8}>
+                  <Statistic title="Concurrency Level" value={testResults.concurrency_level || 0} />
+                </Col>
+                <Col span={8}>
+                  <Statistic title="Available Connection Pool" value={testResults.connection_pool_metrics?.pool_size || 0} />
+                </Col>
+              </Row>
+            </Card>
 
-          {/* Concurrency Test Results */}
-          <Card title="Concurrency Test Results" style={{ marginBottom: '16px' }}>
-            <Row gutter={16}>
-              <Col span={6}>
-                <Statistic title="Concurrency Level" value={testResults.concurrency_level || 0} />
-              </Col>
-              <Col span={6}>
-                <Statistic title="Total Queries" value={testResults.total_queries_executed || 0} />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="Success Rate"
-                  value={(testResults.success_rate || 0) * 100}
-                  suffix="%"
-                  precision={1}
-                  valueStyle={{ color: '#52c41a' }}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="Throughput"
-                  value={testResults.throughput_queries_per_second || 0}
-                  suffix="qps"
-                  precision={2}
-                  valueStyle={{ color: '#722ed1' }}
-                />
-              </Col>
-            </Row>
+            {/* Concurrency Test Results */}
+            <Card title="Concurrency Test Results" style={{ marginBottom: '16px' }}>
+              <Row gutter={16}>
+                <Col span={6}>
+                  <Statistic title="Concurrency Level" value={testResults.concurrency_level || 0} />
+                </Col>
+                <Col span={6}>
+                  <Statistic title="Total Queries" value={testResults.total_queries_executed || 0} />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Success Rate"
+                    value={(testResults.success_rate || 0) * 100}
+                    suffix="%"
+                    precision={1}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Throughput"
+                    value={testResults.throughput_queries_per_second || 0}
+                    suffix="qps"
+                    precision={2}
+                    valueStyle={{ color: '#722ed1' }}
+                  />
+                </Col>
+              </Row>
 
-            <Row gutter={16} style={{ marginTop: '16px' }}>
-              <Col span={6}>
-                <Statistic
-                  title="Avg Execution Time"
-                  value={testResults.average_execution_time_ms || 0}
-                  suffix="ms"
-                  precision={2}
-                  valueStyle={{ color: '#1890ff' }}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="P95 Latency"
-                  value={testResults.p95_execution_time_ms || 0}
-                  suffix="ms"
-                  precision={2}
-                  valueStyle={{ color: '#1890ff' }}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="P99 Latency"
-                  value={testResults.p99_execution_time_ms || 0}
-                  suffix="ms"
-                  precision={2}
-                  valueStyle={{ color: '#ff4d4f' }}
-                />
-              </Col>
-              <Col span={6}>
-                <Statistic
-                  title="Test Duration"
-                  value={testResults.total_duration_seconds || 0}
-                  suffix="s"
-                  precision={1}
-                />
-              </Col>
-            </Row>
-          </Card>
+              <Row gutter={16} style={{ marginTop: '16px' }}>
+                <Col span={6}>
+                  <Statistic
+                    title="Avg Execution Time"
+                    value={testResults.average_execution_time_ms || 0}
+                    suffix="ms"
+                    precision={2}
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="P95 Latency"
+                    value={testResults.p95_execution_time_ms || 0}
+                    suffix="ms"
+                    precision={2}
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="P99 Latency"
+                    value={testResults.p99_execution_time_ms || 0}
+                    suffix="ms"
+                    precision={2}
+                    valueStyle={{ color: '#ff4d4f' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Test Duration"
+                    value={testResults.total_duration_seconds || 0}
+                    suffix="s"
+                    precision={1}
+                  />
+                </Col>
+              </Row>
+            </Card>
 
-          {/* Query Execution Details */}
-          {testResults.query_results && testResults.query_results.length > 0 && (
-            <Card title="Query Execution Details">
-              {(() => {
-                // Aggregate query results by query_identifier
-                const aggregatedResults: { [key: string]: any } = {};
+            {/* Query Execution Details */}
+            {testResults.query_results && testResults.query_results.length > 0 && (
+              <Card title="Query Execution Details">
+                {(() => {
+                  // Aggregate query results by query_identifier
+                  const aggregatedResults: { [key: string]: any } = {};
 
-                testResults.query_results.forEach((result: any) => {
-                  const queryId = result.query_identifier;
-                  if (!aggregatedResults[queryId]) {
-                    aggregatedResults[queryId] = {
-                      total_executions: 0,
-                      successful_executions: 0,
-                      failed_executions: 0,
-                      durations: [],
-                      parameter_sets: new Set(),
-                      error_messages: new Set(),
-                      error_types: new Set()
-                    };
-                  }
-
-                  aggregatedResults[queryId].total_executions++;
-                  if (result.success) {
-                    aggregatedResults[queryId].successful_executions++;
-                    aggregatedResults[queryId].durations.push(result.duration_ms);
-                  } else {
-                    aggregatedResults[queryId].failed_executions++;
-                    // Collect error information for debugging
-                    if (result.error_message) {
-                      aggregatedResults[queryId].error_messages.add(result.error_message);
+                  testResults.query_results.forEach((result: any) => {
+                    const queryId = result.query_identifier;
+                    if (!aggregatedResults[queryId]) {
+                      aggregatedResults[queryId] = {
+                        total_executions: 0,
+                        successful_executions: 0,
+                        failed_executions: 0,
+                        durations: [],
+                        parameter_sets: new Set(),
+                        error_messages: new Set(),
+                        error_types: new Set()
+                      };
                     }
-                    if (result.error_type) {
-                      aggregatedResults[queryId].error_types.add(result.error_type);
+
+                    aggregatedResults[queryId].total_executions++;
+                    if (result.success) {
+                      aggregatedResults[queryId].successful_executions++;
+                      aggregatedResults[queryId].durations.push(result.duration_ms);
+                    } else {
+                      aggregatedResults[queryId].failed_executions++;
+                      // Collect error information for debugging
+                      if (result.error_message) {
+                        aggregatedResults[queryId].error_messages.add(result.error_message);
+                      }
+                      if (result.error_type) {
+                        aggregatedResults[queryId].error_types.add(result.error_type);
+                      }
                     }
-                  }
 
-                  // Collect parameter sets (if available)
-                  if (result.parameters && result.parameters.length > 0) {
-                    aggregatedResults[queryId].parameter_sets.add(JSON.stringify(result.parameters));
-                  }
-                });
-
-                // Calculate statistics for each query
-                Object.keys(aggregatedResults).forEach(queryId => {
-                  const data = aggregatedResults[queryId];
-                  data.avg_duration_ms = data.durations.length > 0
-                    ? data.durations.reduce((a: number, b: number) => a + b, 0) / data.durations.length
-                    : 0;
-                  data.min_duration_ms = data.durations.length > 0 ? Math.min(...data.durations) : 0;
-                  data.max_duration_ms = data.durations.length > 0 ? Math.max(...data.durations) : 0;
-                  data.parameter_sets = Array.from(data.parameter_sets).map((ps: unknown) => {
-                    try {
-                      const parsed = JSON.parse(ps as string);
-                      return Object.values(parsed).join(', ');
-                    } catch {
-                      return ps as string;
+                    // Collect parameter sets (if available)
+                    if (result.parameters && result.parameters.length > 0) {
+                      aggregatedResults[queryId].parameter_sets.add(JSON.stringify(result.parameters));
                     }
                   });
-                });
 
-                return Object.entries(aggregatedResults).map(([queryId, details]: [string, any]) => (
-                  <Card
-                    key={queryId}
-                    size="small"
-                    title={queryId}
-                    style={{ marginBottom: '16px' }}
-                  >
-                    <Row gutter={16}>
-                      <Col span={6}>
-                        <Statistic title="Total Executions" value={details.total_executions || 0} />
-                      </Col>
-                      <Col span={6}>
-                        <Statistic
-                          title="Avg Duration"
-                          value={details.avg_duration_ms || 0}
-                          suffix="ms"
-                          precision={2}
-                          valueStyle={{ color: '#1890ff' }}
-                        />
-                      </Col>
-                      <Col span={6}>
-                        <Statistic
-                          title="Min Duration"
-                          value={details.min_duration_ms || 0}
-                          suffix="ms"
-                          precision={2}
-                          valueStyle={{ color: '#52c41a' }}
-                        />
-                      </Col>
-                      <Col span={6}>
-                        <Statistic
-                          title="Max Duration"
-                          value={details.max_duration_ms || 0}
-                          suffix="ms"
-                          precision={2}
-                          valueStyle={{ color: '#ff4d4f' }}
-                        />
-                      </Col>
-                    </Row>
+                  // Calculate statistics for each query
+                  Object.keys(aggregatedResults).forEach(queryId => {
+                    const data = aggregatedResults[queryId];
+                    data.avg_duration_ms = data.durations.length > 0
+                      ? data.durations.reduce((a: number, b: number) => a + b, 0) / data.durations.length
+                      : 0;
+                    data.min_duration_ms = data.durations.length > 0 ? Math.min(...data.durations) : 0;
+                    data.max_duration_ms = data.durations.length > 0 ? Math.max(...data.durations) : 0;
+                    data.parameter_sets = Array.from(data.parameter_sets).map((ps: unknown) => {
+                      try {
+                        const parsed = JSON.parse(ps as string);
+                        return Object.values(parsed).join(', ');
+                      } catch {
+                        return ps as string;
+                      }
+                    });
+                  });
 
-                    <div style={{ marginTop: '12px' }}>
-                      <Text strong>Status: </Text>
-                      <Tag color="green">
-                        {details.successful_executions || 0} successful
-                      </Tag>
-                      {details.failed_executions > 0 && (
-                        <Tag color="red" style={{ marginLeft: '8px' }}>
-                          {details.failed_executions} failed
-                        </Tag>
-                      )}
-                    </div>
+                  return Object.entries(aggregatedResults).map(([queryId, details]: [string, any]) => (
+                    <Card
+                      key={queryId}
+                      size="small"
+                      title={queryId}
+                      style={{ marginBottom: '16px' }}
+                    >
+                      <Row gutter={16}>
+                        <Col span={6}>
+                          <Statistic title="Total Executions" value={details.total_executions || 0} />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic
+                            title="Avg Duration"
+                            value={details.avg_duration_ms || 0}
+                            suffix="ms"
+                            precision={2}
+                            valueStyle={{ color: '#1890ff' }}
+                          />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic
+                            title="Min Duration"
+                            value={details.min_duration_ms || 0}
+                            suffix="ms"
+                            precision={2}
+                            valueStyle={{ color: '#52c41a' }}
+                          />
+                        </Col>
+                        <Col span={6}>
+                          <Statistic
+                            title="Max Duration"
+                            value={details.max_duration_ms || 0}
+                            suffix="ms"
+                            precision={2}
+                            valueStyle={{ color: '#ff4d4f' }}
+                          />
+                        </Col>
+                      </Row>
 
-                    {details.parameter_sets && details.parameter_sets.length > 0 && (
-                      <div style={{ marginTop: '8px' }}>
-                        <Text strong>Parameter Sets: </Text>
-                        {details.parameter_sets.map((paramSet: string, index: number) => (
-                          <Tag key={index} style={{ marginRight: '4px' }}>
-                            {paramSet}
-                          </Tag>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Error Details for Failed Queries */}
-                    {details.failed_executions > 0 && (details.error_messages.size > 0 || details.error_types.size > 0) && (
                       <div style={{ marginTop: '12px' }}>
-                        <Collapse
-                          size="small"
-                          items={[
-                            {
-                              key: 'error-details',
-                              label: (
-                                <Text strong style={{ color: '#ff4d4f' }}>
-                                  Error Details ({details.failed_executions} failures) - Click to expand
-                                </Text>
-                              ),
-                              children: (
-                                <div>
-                                  {details.error_types.size > 0 && (
-                                    <div style={{ marginBottom: '12px' }}>
-                                      <Text strong>Error Types: </Text>
-                                      {Array.from(details.error_types).map((errorType: unknown, index: number) => (
-                                        <Tag key={index} color="red" style={{ marginRight: '4px' }}>
-                                          {errorType as string}
-                                        </Tag>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {details.error_messages.size > 0 && (
-                                    <div>
-                                      <Text strong>Error Messages: </Text>
-                                      <div style={{ marginTop: '8px' }}>
-                                        {Array.from(details.error_messages).map((errorMsg: unknown, index: number) => (
-                                          <div key={index} style={{
-                                            marginBottom: '8px',
-                                            padding: '12px',
-                                            backgroundColor: '#fff2f0',
-                                            border: '1px solid #ffccc7',
-                                            borderRadius: '6px',
-                                            fontSize: '12px',
-                                            fontFamily: 'monospace',
-                                            whiteSpace: 'pre-wrap',
-                                            wordBreak: 'break-word'
-                                          }}>
-                                            <Text style={{ color: '#ff4d4f' }}>{errorMsg as string}</Text>
-                                          </div>
+                        <Text strong>Status: </Text>
+                        <Tag color="green">
+                          {details.successful_executions || 0} successful
+                        </Tag>
+                        {details.failed_executions > 0 && (
+                          <Tag color="red" style={{ marginLeft: '8px' }}>
+                            {details.failed_executions} failed
+                          </Tag>
+                        )}
+                      </div>
+
+                      {details.parameter_sets && details.parameter_sets.length > 0 && (
+                        <div style={{ marginTop: '8px' }}>
+                          <Text strong>Parameter Sets: </Text>
+                          {details.parameter_sets.map((paramSet: string, index: number) => (
+                            <Tag key={index} style={{ marginRight: '4px' }}>
+                              {paramSet}
+                            </Tag>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Error Details for Failed Queries */}
+                      {details.failed_executions > 0 && (details.error_messages.size > 0 || details.error_types.size > 0) && (
+                        <div style={{ marginTop: '12px' }}>
+                          <Collapse
+                            size="small"
+                            items={[
+                              {
+                                key: 'error-details',
+                                label: (
+                                  <Text strong style={{ color: '#ff4d4f' }}>
+                                    Error Details ({details.failed_executions} failures) - Click to expand
+                                  </Text>
+                                ),
+                                children: (
+                                  <div>
+                                    {details.error_types.size > 0 && (
+                                      <div style={{ marginBottom: '12px' }}>
+                                        <Text strong>Error Types: </Text>
+                                        {Array.from(details.error_types).map((errorType: unknown, index: number) => (
+                                          <Tag key={index} color="red" style={{ marginRight: '4px' }}>
+                                            {errorType as string}
+                                          </Tag>
                                         ))}
                                       </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            }
-                          ]}
-                        />
-                      </div>
-                    )}
-                  </Card>
-                ));
-              })()}
-            </Card>
-          )}
-        </div>
-      )}
+                                    )}
+                                    {details.error_messages.size > 0 && (
+                                      <div>
+                                        <Text strong>Error Messages: </Text>
+                                        <div style={{ marginTop: '8px' }}>
+                                          {Array.from(details.error_messages).map((errorMsg: unknown, index: number) => (
+                                            <div key={index} style={{
+                                              marginBottom: '8px',
+                                              padding: '12px',
+                                              backgroundColor: '#fff2f0',
+                                              border: '1px solid #ffccc7',
+                                              borderRadius: '6px',
+                                              fontSize: '12px',
+                                              fontFamily: 'monospace',
+                                              whiteSpace: 'pre-wrap',
+                                              wordBreak: 'break-word'
+                                            }}>
+                                              <Text style={{ color: '#ff4d4f' }}>{errorMsg as string}</Text>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              }
+                            ]}
+                          />
+                        </div>
+                      )}
+                    </Card>
+                  ));
+                })()}
+              </Card>
+            )}
+          </div>
+        )
+      }
 
       {/* Test Error */}
-      {testError && (
-        <Card title="Test Error" style={{ marginTop: '24px' }}>
-          <Alert
-            message="Test Execution Failed"
-            description={testError}
-            type="error"
-            showIcon
-          />
-        </Card>
-      )}
-    </div>
+      {
+        testError && (
+          <Card title="Test Error" style={{ marginTop: '24px' }}>
+            <Alert
+              message="Test Execution Failed"
+              description={testError}
+              type="error"
+              showIcon
+            />
+          </Card>
+        )
+      }
+    </div >
   );
 };
 

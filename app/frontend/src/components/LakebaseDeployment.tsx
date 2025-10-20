@@ -469,41 +469,39 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               Deploy directly using the Python SDK. This method automatically creates all resources in your Databricks workspace.
             </Paragraph>
 
-            <Collapse
-              items={[
-                {
-                  key: 'deployment-process',
-                  label: '📋 Deployment Process',
-                  children: (
-                    <div>
-                      <p>1. <strong>Initialize</strong> → Connect to Databricks workspace</p>
-                      <p>2. <strong>Database Instance</strong> → Create Lakebase instance</p>
-                      <p>3. <strong>Database Catalog</strong> → Create catalog for data organization</p>
-                      <p>4. <strong>Synced Tables</strong> → Create and configure table synchronization</p>
-                      <p>5. <strong>Finalize</strong> → Complete deployment and provide connection details</p>
-                    </div>
-                  ),
-                },
-              ]}
-              style={{ marginBottom: '16px' }}
-            />
 
             {/* Combined Important Information */}
             <Collapse
               items={[
                 {
                   key: 'important-info',
-                  label: 'ℹ️ Important Deployment Information',
+                  label: '⚠️ Deployment Requirements',
                   children: (
                     <div>
                       <div style={{ marginBottom: '16px' }}>
                         <h4 style={{ margin: '0 0 8px 0', color: '#1890ff' }}>🔐 Required Unity Catalog Permissions</h4>
-                        <p><strong>To create Lakebase instances and sync Delta tables, you need:</strong></p>
+                        <p><strong>To create Lakebase instances and sync Delta tables, the App's service principal needs to have the following permissions:</strong></p>
                         <ul style={{ marginBottom: '8px' }}>
                           <li><strong>Database Instance Management:</strong> refer to <a href="https://docs.databricks.com/aws/en/security/auth/access-control/#database-instance-acls" target="_blank" rel="noopener noreferrer">Database instance ACLs</a></li>
-                          <li><strong>Unity Catalog Access:</strong> <code>CREATE CATALOG, USE CATALOG</code> and <code>CREATE SCHEMA</code> permissions on the target catalog</li>
-                          <li><strong>Delta Table Access:</strong> <code>SELECT</code> permission on source Delta tables to be synced</li>
-                          <li><strong>Pipeline Storage Access:</strong> <code>USE SCHEMA</code> and <code>CREATE TABLE</code> permissions on the storage catalog and schema for the Delta table Lakeflow synced pipelines</li>
+                          <li><strong>Unity Catalog Access:</strong>
+                            <div style={{ marginTop: '8px' }}>
+                              <code>GRANT CREATE CATALOG ON METASTORE TO `app_sp_id`;</code><br />
+                              <code>GRANT USE CATALOG ON CATALOG &lt;catalog_name&gt; TO `app_sp_id`;</code><br />
+                              <code>GRANT USE SCHEMA ON SCHEMA &lt;schema_name&gt; TO `app_sp_id`;</code>
+                            </div>
+                          </li>
+                          <li><strong>Delta Table Access:</strong>
+                            <div style={{ marginTop: '8px' }}>
+                              <code>GRANT SELECT ON TABLE &lt;table_name&gt; TO `app_sp_id`;</code>
+                            </div>
+                          </li>
+                          <li><strong>Pipeline Storage Access (UC Catalog and Schema to store synced tables pipelines):</strong>
+                            <div style={{ marginTop: '8px' }}>
+                              <code>GRANT USE CATALOG ON CATALOG &lt;catalog_name&gt; TO `app_sp_id`;</code><br />
+                              <code>GRANT USE SCHEMA ON SCHEMA &lt;schema_name&gt; TO `app_sp_id`;</code><br />
+                              <code>GRANT CREATE TABLE ON SCHEMA &lt;schema_name&gt; TO `app_sp_id`;</code>
+                            </div>
+                          </li>
                         </ul>
                         <p><strong>Note:</strong> If resources already exist, you need <code>USE</code> permissions to view and access them.</p>
                       </div>
@@ -536,109 +534,89 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             />
 
             {/* Deployment Summary */}
-            <Collapse
-              items={[
-                {
-                  key: 'deployment-summary',
-                  label: '📊 Deployment Summary',
-                  children: (
-                    <Row gutter={[16, 8]}>
-                      <Col span={12}>
-                        <Text strong>Databricks Workspace:</Text>
-                        <br />
-                        <Text>{(generatedConfigs as any)?.workload_config?.databricks_workspace_url || 'Not specified'}</Text>
-                      </Col>
-                      <Col span={12}>
-                        <Text strong>Authentication:</Text>
-                        <br />
-                        <Text>Environment variables / Default profile</Text>
-                      </Col>
-                      <Col span={12}>
-                        <Text strong>Lakebase Instance:</Text>
-                        <br />
-                        <Text>{(generatedConfigs as any)?.workload_config?.lakebase_instance_name || 'lakebase-accelerator-instance'}</Text>
-                      </Col>
-                      <Col span={12}>
-                        <Text strong>Database Catalog:</Text>
-                        <br />
-                        <Text>{(generatedConfigs as any)?.workload_config?.uc_catalog_name || 'lakebase-accelerator-catalog'}</Text>
-                      </Col>
-                      <Col span={12}>
-                        <Text strong>Database Name:</Text>
-                        <br />
-                        <Text>{(generatedConfigs as any)?.workload_config?.database_name || 'databricks_postgres'}</Text>
-                      </Col>
-                      <Col span={12}>
-                        <Text strong>Storage Catalog:</Text>
-                        <br />
-                        <Text>{(generatedConfigs as any)?.workload_config?.storage_catalog || 'main'}</Text>
-                      </Col>
-                      <Col span={12}>
-                        <Text strong>Storage Schema:</Text>
-                        <br />
-                        <Text>{(generatedConfigs as any)?.workload_config?.storage_schema || 'default'}</Text>
-                      </Col>
-                      <Col span={24}>
-                        <Text strong>Tables to Sync:</Text>
-                        <br />
-                        {(() => {
-                          // Try multiple possible paths for tables data
-                          const tables = (generatedConfigs as any)?.synced_tables?.config_data?.synced_tables ||
-                            (generatedConfigs as any)?.synced_tables?.synced_tables ||
-                            (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
-                            (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
-                            (generatedConfigs as any)?.tables ||
-                            [];
+            <Card title="📊 Deployment Summary" style={{ marginBottom: '16px' }}>
+              <Row gutter={[16, 8]}>
+                <Col span={12}>
+                  <Text strong>Databricks Workspace:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.databricks_workspace_url || 'Not specified'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Authentication:</Text>
+                  <br />
+                  <Text>Environment variables / Default profile</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Lakebase Instance:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.lakebase_instance_name || 'lakebase-accelerator-instance'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Database Catalog:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.uc_catalog_name || 'lakebase-accelerator-catalog'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Database Name:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.database_name || 'databricks_postgres'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Storage Catalog:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.storage_catalog || 'main'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Storage Schema:</Text>
+                  <br />
+                  <Text>{(generatedConfigs as any)?.workload_config?.storage_schema || 'default'}</Text>
+                </Col>
+                <Col span={24}>
+                  <Text strong>Tables to Sync:</Text>
+                  <br />
+                  {(() => {
+                    // Try multiple possible paths for tables data
+                    const tables = (generatedConfigs as any)?.synced_tables?.config_data?.synced_tables ||
+                      (generatedConfigs as any)?.synced_tables?.synced_tables ||
+                      (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
+                      (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
+                      (generatedConfigs as any)?.tables ||
+                      [];
 
-                          console.log('Debug - generatedConfigs:', generatedConfigs);
-                          console.log('Debug - tables found:', tables);
+                    console.log('Debug - generatedConfigs:', generatedConfigs);
+                    console.log('Debug - tables found:', tables);
 
-                          if (tables.length === 0) {
-                            return <Text type="secondary">No tables configured</Text>;
-                          }
+                    if (tables.length === 0) {
+                      return <Text type="secondary">No tables configured</Text>;
+                    }
 
-                          return (
-                            <div>
-                              <Text>{tables.length} table{tables.length !== 1 ? 's' : ''}</Text>
-                              <div style={{ marginTop: '8px' }}>
-                                {tables.map((table: any, index: number) => {
-                                  const tableName = table.table_name || table.name || `Table ${index + 1}`;
-                                  const syncMode = table.scheduling_policy || table.sync_policy || 'SNAPSHOT';
-                                  return (
-                                    <div key={index} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <Tag style={{ marginBottom: '4px' }}>
-                                        {tableName}
-                                      </Tag>
-                                      <Tag color="blue" style={{ marginBottom: '4px' }}>
-                                        {syncMode}
-                                      </Tag>
-                                    </div>
-                                  );
-                                })}
+                    return (
+                      <div>
+                        <Text>{tables.length} table{tables.length !== 1 ? 's' : ''}</Text>
+                        <div style={{ marginTop: '8px' }}>
+                          {tables.map((table: any, index: number) => {
+                            const tableName = table.table_name || table.name || `Table ${index + 1}`;
+                            const syncMode = table.scheduling_policy || table.sync_policy || 'SNAPSHOT';
+                            return (
+                              <div key={index} style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Tag style={{ marginBottom: '4px' }}>
+                                  {tableName}
+                                </Tag>
+                                <Tag color="blue" style={{ marginBottom: '4px' }}>
+                                  {syncMode}
+                                </Tag>
                               </div>
-                            </div>
-                          );
-                        })()}
-                      </Col>
-                    </Row>
-                  ),
-                },
-              ]}
-              style={{ marginBottom: '16px' }}
-            />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </Col>
+              </Row>
+            </Card>
 
             <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Alert
-                  message="Ready to Deploy"
-                  description="All configuration has been generated. Click the deploy button to start the automatic deployment process."
-                  type="success"
-                  showIcon
-                  className="databricks-alert"
-                  style={{ marginBottom: '16px' }}
-                />
-              </Col>
-
               <Col span={24}>
                 <Button
                   type="primary"
@@ -654,34 +632,36 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
             </Row>
 
             {/* Post-Deployment Information */}
-            <Alert
-              message="After Deployment: Check Actual Table Sizes"
-              description={
-                <div>
-                  <p>Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size of tables and indexes in your database:</p>
-                  <div style={{
-                    backgroundColor: '#f5f5f5',
-                    padding: '12px',
-                    borderRadius: '4px',
-                    margin: '8px 0',
-                    fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-                    fontSize: '12px',
-                    overflow: 'auto'
-                  }}>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                      {`SELECT 
+            <Collapse
+              items={[
+                {
+                  key: 'after-deployment',
+                  label: 'After Deployment: Check Actual Table Sizes',
+                  children: (
+                    <div>
+                      <p>Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size of tables and indexes in your database:</p>
+                      <div style={{
+                        backgroundColor: '#f5f5f5',
+                        padding: '12px',
+                        borderRadius: '4px',
+                        margin: '8px 0',
+                        fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+                        fontSize: '12px',
+                        overflow: 'auto'
+                      }}>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                          {`SELECT 
   pg_total_relation_size(pi.inhrelid::regclass) as size,
   pc.relname 
 FROM pg_inherits pi 
 JOIN pg_class pc ON pi.inhparent = pc.oid;`}
-                    </pre>
-                  </div>
-                  <p><strong>Note:</strong> This query will show the total size (including indexes) for each table in your Lakebase database. Run this query in Query Editor in Databricks when connected to the Lakebase database.</p>
-                </div>
-              }
-              type="info"
-              showIcon
-              className="databricks-alert"
+                        </pre>
+                      </div>
+                      <p><strong>Note:</strong> This query will show the total size (including indexes) for each table in your Lakebase database. Run this query in Query Editor in Databricks when connected to the Lakebase database.</p>
+                    </div>
+                  ),
+                },
+              ]}
               style={{ marginTop: '16px' }}
             />
           </Card>
@@ -692,18 +672,37 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
               Download configuration files and deploy manually using the Databricks CLI and Databricks Asset Bundle for more control over the deployment process.
             </Paragraph>
 
-            <Alert
-              message="Manual Deployment Steps"
-              description={
-                <div>
-                  <p>1. <strong>Download</strong> → Download the configuration files below</p>
-                  <p>2. <strong>Authenticate</strong> → Set up Databricks CLI authentication</p>
-                  <p>3. <strong>Deploy</strong> → Run the deployment command in your terminal</p>
-                </div>
-              }
-              type="warning"
-              showIcon
-              className="databricks-alert"
+            <Collapse
+              items={[
+                {
+                  key: 'manual-deployment-steps',
+                  label: 'Manual Deployment Steps',
+                  children: (
+                    <div>
+                      <p>1. <strong>Download</strong> → Download the configuration files below and save them to the correct directories:</p>
+                      <ul style={{ marginLeft: '20px', marginBottom: '16px' }}>
+                        <li><strong>databricks.yml</strong> → Save to your project root directory</li>
+                        <li><strong>synced_delta_tables.yml</strong> → Save to the <Text code>resources/</Text> directory</li>
+                        <li><strong>lakebase_instance.yml</strong> → Save to the <Text code>resources/</Text> directory</li>
+                      </ul>
+                      <p>2. <strong>Authenticate</strong> → Set up Databricks CLI authentication: <Text code>databricks auth login</Text></p>
+                      <p>3. <strong>Deploy</strong> → Run the deployment command in your terminal:</p>
+                      <Card size="small" style={{ backgroundColor: '#f5f5f5', marginTop: '8px' }}>
+                        <Space>
+                          <Text code>databricks bundle deploy --target dev</Text>
+                          <Tooltip title="Copy to clipboard">
+                            <Button
+                              size="small"
+                              icon={<CopyOutlined />}
+                              onClick={() => copyToClipboard('databricks bundle deploy --target dev')}
+                            />
+                          </Tooltip>
+                        </Space>
+                      </Card>
+                    </div>
+                  ),
+                },
+              ]}
               style={{ marginBottom: '16px' }}
             />
 
@@ -798,34 +797,6 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
               </Col>
             </Row>
 
-            <Divider />
-
-            <Title level={5}>Deployment Instructions</Title>
-            <Card size="small" style={{ backgroundColor: '#f5f5f5', marginBottom: '16px' }}>
-              <ol style={{ margin: 0, paddingLeft: '20px' }}>
-                <li>Download all configuration files above</li>
-                <li>Authenticate with Databricks CLI: <Text code>databricks auth login</Text></li>
-                <li>Run the deployment command below</li>
-              </ol>
-            </Card>
-
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Title level={5}>Deployment Command</Title>
-                <Card size="small" style={{ backgroundColor: '#f5f5f5' }}>
-                  <Space>
-                    <Text code>databricks bundle deploy --target dev</Text>
-                    <Tooltip title="Copy to clipboard">
-                      <Button
-                        size="small"
-                        icon={<CopyOutlined />}
-                        onClick={() => copyToClipboard('databricks bundle deploy --target dev')}
-                      />
-                    </Tooltip>
-                  </Space>
-                </Card>
-              </Col>
-            </Row>
           </Card>
         </div>
       )}
@@ -917,7 +888,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
             alignItems: 'center',
             marginBottom: '16px',
             padding: '12px',
-            backgroundColor: '#f0f0f0',
+            backgroundColor: '#f5f5f5',
             borderRadius: '4px'
           }}>
             {deploying ? (

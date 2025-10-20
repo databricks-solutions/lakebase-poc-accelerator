@@ -134,7 +134,7 @@ interface ThemeProviderProps {
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     const [isDark, setIsDark] = useState(() => {
         const saved = localStorage.getItem('theme');
-        return saved ? saved === 'dark' : true; // Default to dark mode
+        return saved ? saved === 'dark' : false; // Default to light mode
     });
 
     const theme = isDark ? darkTheme : lightTheme;

@@ -235,12 +235,12 @@ const LakebaseOverview: React.FC = () => {
         />
       </Card>
 
-      {/* Lakebase Performance (Advanced) - Collapsible Section */}
+      {/* Lakebase Performance - Collapsible Section */}
       <Collapse
         items={[
           {
             key: '1',
-            label: <Text strong style={{ color: theme.colors.text }}>Lakebase Performance (Advanced)</Text>,
+            label: <span style={{ ...styled.sectionTitle, marginBottom: '0' }}>Lakebase Performance (Advanced)</span>,
             children: (
               <div>
                 <Row gutter={[16, 16]}>
