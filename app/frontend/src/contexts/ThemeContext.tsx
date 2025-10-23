@@ -52,7 +52,7 @@ const lightTheme: Theme = {
         primaryHover: '#0056b3',
         border: '#dee2e6',
         borderHover: '#007bff',
-        success: '#28a745',
+        success: '#28a745 !important',
         warning: '#ffc107',
         error: '#dc3545',
         info: '#17a2b8',

@@ -60,12 +60,12 @@
 }
 
 [data-theme="dark"] .ant-card {
-  background: transparent !important;
+  background: #1a1a1a;
   border-color: var(--dark-border) !important;
 }
 
 [data-theme="dark"] .ant-card-head {
-  background: transparent !important;
+  background: #1a1a1a;
   border-bottom-color: var(--dark-border) !important;
 }
 
@@ -74,7 +74,7 @@
 }
 
 [data-theme="dark"] .ant-card-body {
-  background: transparent !important;
+  background: #1a1a1a !important;
   color: white !important;
 }
 
@@ -642,45 +642,6 @@
 /* Specific tag colors for Delta Sync cards in dark mode */
 /* Override inline styles with more specific selectors */
 
-/* Target the first card (Triggered) - Green for "Incremental, Recommended" */
-[data-theme="dark"] .ant-row .ant-col:first-child .ant-card .ant-card-extra .ant-tag {
-  background: #52c41a !important;
-  color: white !important;
-  border-color: #52c41a !important;
-}
-
-/* Target the second card (Snapshot) - Yellow for "Efficient but sync full table" */
-[data-theme="dark"] .ant-row .ant-col:nth-child(2) .ant-card .ant-card-extra .ant-tag {
-  background: #faad14 !important;
-  color: white !important;
-  border-color: #faad14 !important;
-}
-
-/* Target the third card (Continuous) - Red for "Real-time" */
-[data-theme="dark"] .ant-row .ant-col:last-child .ant-card .ant-card-extra .ant-tag {
-  background: #ff4d4f !important;
-  color: white !important;
-  border-color: #ff4d4f !important;
-}
-
-/* Alternative approach - target by card title content */
-[data-theme="dark"] .ant-card:has(.ant-card-head-title:contains("Triggered")) .ant-card-extra .ant-tag {
-  background: #52c41a !important;
-  color: white !important;
-  border-color: #52c41a !important;
-}
-
-[data-theme="dark"] .ant-card:has(.ant-card-head-title:contains("Snapshot")) .ant-card-extra .ant-tag {
-  background: #faad14 !important;
-  color: white !important;
-  border-color: #faad14 !important;
-}
-
-[data-theme="dark"] .ant-card:has(.ant-card-head-title:contains("Continuous")) .ant-card-extra .ant-tag {
-  background: #ff4d4f !important;
-  color: white !important;
-  border-color: #ff4d4f !important;
-}
 
 [data-theme="dark"] .ant-form-item-label > label {
   color: white !important;
@@ -958,8 +919,12 @@
 
 /* Tag and Badge */
 [data-theme="dark"] .ant-tag {
-  background: #2a2a2a !important;
-  color: var(--dark-text) !important;
+  background: #2a2a2a;
+  color: var(--dark-text);
+}
+
+[data-theme="dark"] .success-tag {
+  color: black !important;
 }
 
 [data-theme="dark"] .ant-badge-count {
@@ -1144,6 +1109,9 @@
   color: white !important;
 }
 
+[data-theme="dark"] .ant-card .ant-card-head .small-card {
+  background: transparent !important;
+}
 /* Ensure all text in cards is visible */
 [data-theme="dark"] .ant-card .ant-card-head {
   color: var(--dark-text) !important;
@@ -1162,7 +1130,7 @@
 }
 
 [data-theme="dark"] .ant-card .ant-card-body * {
-  color: inherit !important;
+  color: inherit;
 }
 
 /* Ensure all text in tabs is visible */
@@ -1183,7 +1151,7 @@
 }
 
 [data-theme="dark"] .ant-tabs .ant-tabs-content-holder * {
-  color: inherit !important;
+  color: inherit;
 }
 
 /* Light theme overrides */
@@ -1362,6 +1330,10 @@
   background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
 }
 
+[data-theme="dark"] .databricks-card .ant-card-head {
+  background: #1a1a1a !important;
+}
+
 .databricks-card .ant-card-head-title {
   color: var(--databricks-teal);
   font-weight: 600;
@@ -1376,6 +1348,10 @@
   text-align: center;
   border: 1px solid var(--databricks-gray-light);
   transition: all 0.3s ease;
+}
+
+.main-card-header {
+  border-radius: 16px 16px 0 0 !important;
 }
 
 /* Dark mode gradients for Qualifications cards */
@@ -1644,14 +1620,14 @@
 [data-theme="dark"] .ant-card-body *,
 [data-theme="dark"] .ant-card-actions,
 [data-theme="dark"] .ant-card-actions * {
-  color: white !important;
+  color: white;
 }
 
 [data-theme="dark"] .ant-card-body pre,
 [data-theme="dark"] .ant-card-body code,
 [data-theme="dark"] .ant-modal-body pre,
 [data-theme="dark"] .ant-modal-body code {
-  color: white !important;
+  color: white;
 }
 
 /* Override any remaining white backgrounds */
@@ -1665,7 +1641,7 @@
 [data-theme="dark"] code[style*="background-color: #fff"],
 [data-theme="dark"] code[style*="background-color: #ffffff"] {
   background: #1a1a1a !important;
-  color: white !important;
+  color: white;
 }
 
 /* Additional button text fixes - remove any black boxes */

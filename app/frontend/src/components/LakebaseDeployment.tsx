@@ -6,8 +6,6 @@ import {
   Typography,
   Row,
   Col,
-  Alert,
-  Divider,
   Space,
   Tag,
   Tooltip,
@@ -897,7 +895,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
               <div style={{
                 width: '16px',
                 height: '16px',
-                borderRadius: '50%',
+                borderRadius: '100%',
                 backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' :
                   deploymentProgress.includes('failed') ? '#ff4d4f' :
                     deploymentProgress.includes('downloaded successfully') ? '#52c41a' : '#1890ff',
