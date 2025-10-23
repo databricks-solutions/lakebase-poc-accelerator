@@ -60,12 +60,12 @@
 }
 
 [data-theme="dark"] .ant-card {
-  background: #2a2a2a !important;
+  background: transparent !important;
   border-color: var(--dark-border) !important;
 }
 
 [data-theme="dark"] .ant-card-head {
-  background: #2a2a2a !important;
+  background: transparent !important;
   border-bottom-color: var(--dark-border) !important;
 }
 
@@ -74,7 +74,7 @@
 }
 
 [data-theme="dark"] .ant-card-body {
-  background: #2a2a2a !important;
+  background: transparent !important;
   color: white !important;
 }
 
