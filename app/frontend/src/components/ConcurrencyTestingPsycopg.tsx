@@ -392,7 +392,7 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                 <InputNumber
                   min={1}
                   max={1000}
-                  style={{ width: '100%' }}
+                  style={{ width: '100%', borderRadius: '6px', border: 'pink !important'}}
                 />
               </Form.Item>
             </Col>

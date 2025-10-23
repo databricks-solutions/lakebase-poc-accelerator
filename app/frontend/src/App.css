@@ -218,6 +218,7 @@
   background: #2a2a2a !important;
   border-color: #52c41a !important;
   color: white !important;
+  margin: 2px !important;
 }
 
 [data-theme="dark"] .ant-input:focus,
@@ -238,9 +239,13 @@
 }
 
 [data-theme="dark"] .ant-input-number {
-  background: #2a2a2a !important;
+  background: transparent !important;
   border-color: #52c41a !important;
   color: white !important;
+}
+
+[data-theme="dark"] .ant-input-number-handler-wrap {
+  background: #2a2a2a !important;
 }
 
 [data-theme="dark"] .ant-input-number-input {
@@ -438,7 +443,6 @@
 }
 
 [data-theme="dark"] .ant-switch-handle {
-  background: white !important;
   border-color: white !important;
   border-radius: 50% !important;
   width: 20px !important;
@@ -449,7 +453,6 @@
 }
 
 [data-theme="dark"] .ant-switch-handle::before {
-  background: white !important;
   border-radius: 50% !important;
   width: 100% !important;
   height: 100% !important;
@@ -480,7 +483,6 @@
 }
 
 [data-theme="dark"] .ant-form-item .ant-switch-handle {
-  background: white !important;
   border-color: white !important;
 }
 
@@ -956,6 +958,7 @@
 
 /* Tag and Badge */
 [data-theme="dark"] .ant-tag {
+  background: #2a2a2a !important;
   color: var(--dark-text) !important;
 }
 
@@ -1641,7 +1644,6 @@
 [data-theme="dark"] .ant-card-body *,
 [data-theme="dark"] .ant-card-actions,
 [data-theme="dark"] .ant-card-actions * {
-  background: #2a2a2a !important;
   color: white !important;
 }
 
@@ -1649,7 +1651,6 @@
 [data-theme="dark"] .ant-card-body code,
 [data-theme="dark"] .ant-modal-body pre,
 [data-theme="dark"] .ant-modal-body code {
-  background: #1a1a1a !important;
   color: white !important;
 }
 
