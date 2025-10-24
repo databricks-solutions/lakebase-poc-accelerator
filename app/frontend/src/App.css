@@ -54,6 +54,8 @@
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
+
+
 /* Theme-aware Ant Design overrides */
 [data-theme="dark"] .ant-layout {
   background: var(--dark-bg) !important;
@@ -112,7 +114,7 @@
 }
 
 [data-theme="dark"] .ant-card-actions .ant-btn span,
-[data-theme="dark"] .ant-card-actions .ant-btn .anticon,
+[data-theme="dark"] .ant-card-actions .ant-btn ,
 [data-theme="dark"] .ant-card-actions .ant-btn * {
   color: white !important;
   text-shadow: none !important;
@@ -124,7 +126,7 @@
 }
 
 [data-theme="dark"] .ant-card-actions .ant-btn:hover span,
-[data-theme="dark"] .ant-card-actions .ant-btn:hover .anticon,
+[data-theme="dark"] .ant-card-actions .ant-btn:hover,
 [data-theme="dark"] .ant-card-actions .ant-btn:hover * {
   color: white !important;
   text-shadow: none !important;
@@ -625,8 +627,7 @@
 
 /* Force all background properties to be overridden */
 [data-theme="dark"] .ant-switch * {
-  background: inherit !important;
-  background-color: inherit !important;
+  background: inherit;
 }
 
 [data-theme="dark"] .ant-switch:not(.ant-switch-checked) * {
@@ -638,6 +639,7 @@
   background: #ff4d4f !important;
   background-color: #ff4d4f !important;
 }
+
 
 /* Specific tag colors for Delta Sync cards in dark mode */
 /* Override inline styles with more specific selectors */
@@ -759,7 +761,7 @@
 
 /* Remove black boxes around button text */
 [data-theme="dark"] .ant-btn span,
-[data-theme="dark"] .ant-btn .anticon,
+[data-theme="dark"] .ant-btn ,
 [data-theme="dark"] .ant-btn * {
   color: white !important;
   text-shadow: none !important;
@@ -771,7 +773,7 @@
 }
 
 [data-theme="dark"] .ant-btn:hover span,
-[data-theme="dark"] .ant-btn:hover .anticon,
+[data-theme="dark"] .ant-btn:hover ,
 [data-theme="dark"] .ant-btn:hover * {
   color: white !important;
   text-shadow: none !important;
@@ -923,8 +925,33 @@
   color: var(--dark-text);
 }
 
+.success-tag,
 [data-theme="dark"] .success-tag {
   color: black !important;
+  background: #52c41a !important;
+  border-color: #52c41a !important;
+  font-weight: 500 !important;
+}
+
+.acceptable-tag,
+[data-theme="dark"] .acceptable-tag {
+  color: black !important;
+  background: #ffa500 !important;
+  border-color: #ffa500 !important;
+  font-weight: 500 !important;
+}
+
+.failure-tag,
+[data-theme="dark"] .failure-tag {
+  color: white !important;
+  background: #dc3545 !important;
+  border-color: #dc3545 !important;
+  font-weight: 500 !important;
+}
+
+[data-theme="dark"] .ant-input {
+  color: white !important;
+  background: #2a2a2a !important;
 }
 
 [data-theme="dark"] .ant-badge-count {
@@ -1614,6 +1641,12 @@
   height: 100% !important;
 }
 
+[data-theme="dark"] .anticon-info-circle * {
+  color: #52c41a !important;
+}
+
+
+
 /* Comprehensive dark mode overrides for all white backgrounds - removed overly broad rule */
 
 [data-theme="dark"] .ant-card-body,
@@ -1647,7 +1680,7 @@
 /* Additional button text fixes - remove any black boxes */
 [data-theme="dark"] .ant-btn-text,
 [data-theme="dark"] .ant-btn-text span,
-[data-theme="dark"] .ant-btn-text .anticon,
+[data-theme="dark"] .ant-btn-text,
 [data-theme="dark"] .ant-btn-text * {
   color: white !important;
   text-shadow: none !important;
@@ -1661,7 +1694,7 @@
 }
 
 [data-theme="dark"] .ant-btn-primary span,
-[data-theme="dark"] .ant-btn-primary .anticon,
+[data-theme="dark"] .ant-btn-primary,
 [data-theme="dark"] .ant-btn-primary * {
   color: white !important;
   text-shadow: none !important;
@@ -1675,7 +1708,7 @@
 }
 
 [data-theme="dark"] .ant-btn-default span,
-[data-theme="dark"] .ant-btn-default .anticon,
+[data-theme="dark"] .ant-btn-default,
 [data-theme="dark"] .ant-btn-default * {
   color: white !important;
   text-shadow: none !important;

@@ -1002,6 +1002,7 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
               description={testError}
               type="error"
               showIcon
+              style={{color: '#ff4d4f'}}
             />
           </Card>
         )

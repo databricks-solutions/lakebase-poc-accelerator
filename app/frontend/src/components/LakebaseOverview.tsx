@@ -44,9 +44,9 @@ const LakebaseOverview: React.FC = () => {
         }
         type="info"
         showIcon
-        style={styled.alert}
+        style={{...styled.alert}}
       />
-
+ 
       {/* Qualifications Section */}
       <Card
         title={<span style={styled.sectionTitle}>Qualifications</span>}
@@ -163,7 +163,7 @@ const LakebaseOverview: React.FC = () => {
               title={<span style={{ color: theme.colors.text }}>Triggered</span>}
               size="small"
               classNames={{ header: 'small-card', body: ')small-card' }}
-              extra={<Tag style={{background: theme.colors.success, color: 'black'}} className='success-tag'>Incremental, Recommended</Tag>}
+              extra={<Tag className='success-tag'>Incremental, Recommended</Tag>}
             >
               <List size="small">
                 <List.Item style={{ color: theme.colors.textSecondary }}>
@@ -182,7 +182,7 @@ const LakebaseOverview: React.FC = () => {
             <Card
               title={<span style={{ color: theme.colors.text }}>Snapshot</span>}
               size="small"
-              extra={<Tag style={{background: theme.colors.warning}}>Efficient but sync full table</Tag>}
+              extra={<Tag className='acceptable-tag'>Efficient but sync full table</Tag>}
             >
               <List size="small">
                 <List.Item style={{ color: theme.colors.textSecondary }}>
@@ -201,7 +201,7 @@ const LakebaseOverview: React.FC = () => {
             <Card
               title={<span style={{ color: theme.colors.text }}>Continuous</span>}
               size="small"
-              extra={<Tag style={{background: theme.colors.error}}>Real-time, Avoid if possible</Tag>}
+              extra={<Tag className='failure-tag'>Real-time, Avoid if possible</Tag>}
             >
               <List size="small">
                 <List.Item style={{ color: theme.colors.textSecondary }}>
@@ -231,7 +231,7 @@ const LakebaseOverview: React.FC = () => {
           }
           type="info"
           showIcon
-          style={styled.alert}
+          style={{...styled.alert, color: '#52c41a'}}
         />
       </Card>
 
@@ -251,7 +251,7 @@ const LakebaseOverview: React.FC = () => {
                       type="info"
                       showIcon
                       className="databricks-alert"
-                      style={{ marginBottom: '16px' }}
+                      style={{...styled.alert, color: '#52c41a', marginBottom: '16px' }}
                     />
                   </Col>
                 </Row>

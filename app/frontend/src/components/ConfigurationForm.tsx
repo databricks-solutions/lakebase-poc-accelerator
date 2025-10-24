@@ -515,7 +515,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               name="databricks_profile"
               rules={[{ required: true, message: 'Required field' }]}
             >
-              <Input placeholder="DEFAULT" />
+              <Input placeholder="DEFAULT"autoComplete='off'/>
             </Form.Item>
           </Col>
           <Col span={12}>
@@ -523,7 +523,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               label="Lakebase Instance Name"
               name="lakebase_instance_name"
             >
-              <Input placeholder="lakebase-accelerator-instance" />
+              <Input placeholder="lakebase-accelerator-instance" autoComplete='off'/>
             </Form.Item>
           </Col>
         </Row>
@@ -541,7 +541,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               label="Database Name"
               name="database_name"
             >
-              <Input placeholder="databricks_postgres" />
+              <Input placeholder="databricks_postgres" autoComplete='off' />
             </Form.Item>
           </Col>
         </Row>

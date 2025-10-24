@@ -91,7 +91,7 @@ const darkTheme: Theme = {
         borderHover: 'rgba(57, 255, 20, 0.4)',
         success: '#39ff14',
         warning: '#ffa500',
-        error: '#ff1493',
+        error: '#dc3545',
         info: '#00ffff',
         accent1: '#39ff14',
         accent2: '#00ffff',
