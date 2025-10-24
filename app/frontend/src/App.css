@@ -91,7 +91,7 @@
   color: white !important;
 }
 
-[data-theme="dark"] .ant-card-body * {
+[data-theme="dark"] .ant-card-body *:not(.ant-form-item-explain-error) {
   color: white !important;
 }
 
@@ -112,18 +112,6 @@
   border-top: 1px solid var(--dark-border) !important;
 }
 
-[data-theme="dark"] .ant-card-actions .ant-btn {
-  background: #ff4d4f !important;
-  border-color: #ff4d4f !important;
-  color: white !important;
-}
-
-[data-theme="dark"] .ant-card-actions .ant-btn:hover {
-  background: #ff7875 !important;
-  border-color: #ff7875 !important;
-  color: white !important;
-}
-
 [data-theme="dark"] .ant-card-actions .ant-btn span,
 [data-theme="dark"] .ant-card-actions .ant-btn ,
 [data-theme="dark"] .ant-card-actions .ant-btn * {
@@ -132,20 +120,20 @@
   box-shadow: none !important;
   outline: none !important;
   border: none !important;
-  background-color: transparent !important;
-  background: transparent !important;
+  /* background-color: transparent !important;
+  background: transparent !important; */
 }
 
 [data-theme="dark"] .ant-card-actions .ant-btn:hover span,
-[data-theme="dark"] .ant-card-actions .ant-btn:hover,
+[data-theme="dark"] .ant-card-actions .ant-btn,
 [data-theme="dark"] .ant-card-actions .ant-btn:hover * {
   color: white !important;
   text-shadow: none !important;
   box-shadow: none !important;
   outline: none !important;
   border: none !important;
-  background-color: transparent !important;
-  background: transparent !important;
+  /* background-color: transparent !important;
+  background: transparent !important; */
 }
 
 [data-theme="dark"] .ant-tabs-tab {
@@ -229,6 +217,7 @@
 
 [data-theme="dark"] .ant-input {
   /* background: #2a2a2a !important; */
+  background: transparent !important;
   border-color: #52c41a !important;
   color: white !important;
   margin: 2px !important;
@@ -294,10 +283,6 @@
   background: #2a2a2a !important;
 }
 
-/* Additional form elements */
-[data-theme="dark"] .ant-input-group-wrapper {
-  /* background: #2a2a2a !important; */
-}
 
 [data-theme="dark"] .ant-input-group-wrapper .ant-input {
   /* background: #2a2a2a !important; */
@@ -732,11 +717,6 @@
   color: white !important;
 }
 
-[data-theme="dark"] .ant-btn:focus {
-  background: #ff4d4f !important;
-  border-color: #ff4d4f !important;
-  color: white !important;
-}
 
 [data-theme="dark"] .ant-btn-primary {
   background: #ff4d4f !important;
@@ -779,8 +759,6 @@
   box-shadow: none !important;
   outline: none !important;
   border: none !important;
-  background-color: transparent !important;
-  background: transparent !important;
 }
 
 [data-theme="dark"] .ant-btn:hover span,
@@ -791,8 +769,7 @@
   box-shadow: none !important;
   outline: none !important;
   border: none !important;
-  background-color: transparent !important;
-  background: transparent !important;
+
 }
 
 [data-theme="dark"] .ant-btn:focus span,
@@ -803,10 +780,15 @@
   box-shadow: none !important;
   outline: none !important;
   border: none !important;
+
+}
+
+[data-theme="dark"] .databricks-view-download,
+.databricks-view-download:hover
+.databricks-view-download:focus {
   background-color: transparent !important;
   background: transparent !important;
 }
-
 /* Table Components */
 [data-theme="dark"] .ant-table {
   background: var(--dark-surface) !important;
@@ -1021,6 +1003,8 @@
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
+  background: transparent !important;
+
 }
 
 /* Override any general input styling for affix wrapper inputs */
@@ -1029,6 +1013,7 @@
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
+  background: transparent !important;
 }
 
 [data-theme="dark"] .ant-input-affix-wrapper .ant-input:hover {
@@ -1086,14 +1071,14 @@
   color: #a0a0a0 !important;
 }
 
-/* Add spacing between form elements to prevent visual grouping */
+/* Add spacing between form elements to prevent visual grouping
 [data-theme="dark"] .ant-form-item .ant-form-item-control-input {
   margin-bottom: 8px !important;
 }
 
 [data-theme="dark"] .ant-form-item .ant-form-item-control-input-content {
   margin-bottom: 8px !important;
-}
+} */
 
 /* Add visual separation between select and input */
 [data-theme="dark"] .ant-select + .ant-input {
@@ -1651,12 +1636,13 @@
   color: #52c41a !important;
 }
 
-
-
+[data-theme="dark"] .ant-form-item-explain-error {
+  color: #ff4d4f !important;
+}
 /* Comprehensive dark mode overrides for all white backgrounds - removed overly broad rule */
 
 [data-theme="dark"] .ant-card-body,
-[data-theme="dark"] .ant-card-body *,
+[data-theme="dark"] .ant-card-body *:not(.ant-form-item-explain-error),
 [data-theme="dark"] .ant-card-actions,
 [data-theme="dark"] .ant-card-actions * {
   color: white;
@@ -1681,6 +1667,9 @@
 [data-theme="dark"] code[style*="background-color: #ffffff"] {
   background: #1a1a1a !important;
   color: white;
+}
+[data-theme="dark"] .ant-input-outlined{
+  background: transparent !important;
 }
 
 /* Additional button text fixes - remove any black boxes */
@@ -1707,8 +1696,8 @@
   box-shadow: none !important;
   outline: none !important;
   border: none !important;
-  background-color: transparent !important;
-  background: transparent !important;
+  /* background-color: transparent !important;
+  background: transparent !important; */
   -webkit-text-stroke: none !important;
   -webkit-text-fill-color: white !important;
 }
@@ -1721,8 +1710,8 @@
   box-shadow: none !important;
   outline: none !important;
   border: none !important;
-  background-color: transparent !important;
-  background: transparent !important;
+  /* background-color: transparent !important;
+  background: transparent !important; */
   -webkit-text-stroke: none !important;
   -webkit-text-fill-color: white !important;
 }

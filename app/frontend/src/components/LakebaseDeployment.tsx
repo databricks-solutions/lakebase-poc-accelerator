@@ -712,6 +712,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                   extra={<Tag className="databricks-tag-secondary">Project Root</Tag>}
                   actions={[
                     <Button
+                      className="databricks-view-download"
                       key="view"
                       type="link"
                       icon={<FileTextOutlined />}
@@ -720,6 +721,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       View
                     </Button>,
                     <Button
+                      className="databricks-view-download"
                       key="download"
                       type="link"
                       icon={<DownloadOutlined />}
@@ -741,6 +743,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                   extra={<Tag className="databricks-tag">resources/</Tag>}
                   actions={[
                     <Button
+                      className="databricks-view-download"
                       key="view"
                       type="link"
                       icon={<FileTextOutlined />}
@@ -749,6 +752,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       View
                     </Button>,
                     <Button
+                      className="databricks-view-download"
                       key="download"
                       type="link"
                       icon={<DownloadOutlined />}
@@ -770,6 +774,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                   extra={<Tag className="databricks-tag">resources/</Tag>}
                   actions={[
                     <Button
+                      className="databricks-view-download"
                       key="view"
                       type="link"
                       icon={<FileTextOutlined />}
@@ -778,6 +783,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       View
                     </Button>,
                     <Button
+                      className="databricks-view-download"
                       key="download"
                       type="link"
                       icon={<DownloadOutlined />}

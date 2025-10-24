@@ -522,6 +522,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label="Lakebase Instance Name"
               name="lakebase_instance_name"
+              rules={[{ required: true, message: 'Required field' }]}
             >
               <Input placeholder="lakebase-accelerator-instance"/>
             </Form.Item>
@@ -532,6 +533,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label="UC Catalog Name"
               name="uc_catalog_name"
+              rules={[{ required: true, message: 'Required field' }]}
             >
               <Input placeholder="lakebase_accelerator_catalog" />
             </Form.Item>
@@ -540,6 +542,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label="Database Name"
               name="database_name"
+              rules={[{ required: true, message: 'Required field' }]}
             >
               <Input placeholder="databricks_postgres"/>
             </Form.Item>
