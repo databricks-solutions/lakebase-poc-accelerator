@@ -635,6 +635,7 @@ const PgbenchDatabricks: React.FC = () => {
                 tooltip="Your Databricks workspace URL."
               >
                 <Input
+                  className="prefixedinput"
                   placeholder="https://adb-xxxxx.region.azuredatabricks.net"
                   prefix={<ClusterOutlined />}
                 />
@@ -647,6 +648,7 @@ const PgbenchDatabricks: React.FC = () => {
                 tooltip="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above."
               >
                 <Input
+                  className="prefixedinput"
                   placeholder="DEFAULT"
                   prefix={<SettingOutlined />}
                 />
@@ -680,6 +682,7 @@ const PgbenchDatabricks: React.FC = () => {
             rules={[{ required: false }]}
           >
             <Input
+              className="prefixedinput"
               placeholder="Enter Databricks cluster ID or leave empty"
               prefix={<ClusterOutlined />}
             />

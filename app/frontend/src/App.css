@@ -66,7 +66,6 @@
 }
 
 
-
 /* Theme-aware Ant Design overrides */
 [data-theme="dark"] .ant-layout {
   background: var(--dark-bg) !important;
@@ -217,7 +216,6 @@
 
 [data-theme="dark"] .ant-input {
   /* background: #2a2a2a !important; */
-  background: transparent !important;
   border-color: #52c41a !important;
   color: white !important;
   margin: 2px !important;
@@ -1003,8 +1001,6 @@
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
-  background: transparent !important;
-
 }
 
 /* Override any general input styling for affix wrapper inputs */
@@ -1668,7 +1664,7 @@
   background: #1a1a1a !important;
   color: white;
 }
-[data-theme="dark"] .ant-input-outlined{
+[data-theme="dark"] .ant-input-outlined.prefixedinput{
   background: transparent !important;
 }
 
