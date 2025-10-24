@@ -541,7 +541,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               label="Database Name"
               name="database_name"
             >
-              <Input placeholder="databricks_postgres" autoComplete='off' />
+              <Input placeholder="databricks_postgres"/>
             </Form.Item>
           </Col>
         </Row>
