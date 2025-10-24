@@ -8,6 +8,7 @@
   --light-primary: #007bff;
   --light-border: #dee2e6;
   
+  --databricks-blue: rgb(66, 153, 224);
   /* Dark Theme */
   --dark-bg: #0a0a0a;
   --dark-surface: rgba(255, 255, 255, 0.03);
@@ -1450,35 +1451,25 @@
   border-left: 4px solid var(--databricks-orange);
 }
 
-/* Tag Styling */
-.databricks-tag {
-  background: var(--databricks-orange);
-  color: white;
-  border: none;
-  font-weight: 500;
-  border-radius: 4px;
-}
+
 
 .databricks-tag-secondary {
-  background: var(--databricks-teal);
+  background: #666666 !important;
   color: white;
-  border: none;
+  border-color: #666666 !important;
   font-weight: 500;
   border-radius: 4px;
 }
 
 /* Dark mode tag overrides */
-[data-theme="dark"] .databricks-tag {
-  background: #faad14 !important;
+ .databricks-tag {
+  background: var(--databricks-blue) !important;
   color: white !important;
-  border-color: #faad14 !important;
+  border-color: var(--databricks-blue) !important;
+  font-weight: 500;
+  border-radius: 4px;
 }
 
-[data-theme="dark"] .databricks-tag-secondary {
-  background: #666666 !important;
-  color: white !important;
-  border-color: #666666 !important;
-}
 
 /* Table Styling */
 .databricks-table .ant-table-thead > tr > th {
