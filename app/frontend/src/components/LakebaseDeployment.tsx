@@ -639,7 +639,6 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                     <div>
                       <p>Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size of tables and indexes in your database:</p>
                       <div style={{
-                        backgroundColor: '#f5f5f5',
                         padding: '12px',
                         borderRadius: '4px',
                         margin: '8px 0',
@@ -685,8 +684,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       </ul>
                       <p>2. <strong>Authenticate</strong> → Set up Databricks CLI authentication: <Text code>databricks auth login</Text></p>
                       <p>3. <strong>Deploy</strong> → Run the deployment command in your terminal:</p>
-                      <Card size="small" style={{ backgroundColor: '#f5f5f5', marginTop: '8px' }}>
-                        <Space>
+                      <Space>
                           <Text code>databricks bundle deploy --target dev</Text>
                           <Tooltip title="Copy to clipboard">
                             <Button
@@ -695,8 +693,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                               onClick={() => copyToClipboard('databricks bundle deploy --target dev')}
                             />
                           </Tooltip>
-                        </Space>
-                      </Card>
+                      </Space>
                     </div>
                   ),
                 },
@@ -852,7 +849,6 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
           />
         ) : (
           <pre style={{
-            backgroundColor: '#f5f5f5',
             padding: '16px',
             borderRadius: '4px',
             maxHeight: '400px',
@@ -886,7 +882,6 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
             alignItems: 'center',
             marginBottom: '16px',
             padding: '12px',
-            backgroundColor: '#f5f5f5',
             borderRadius: '4px'
           }}>
             {deploying ? (
@@ -920,7 +915,6 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
             <div>
               <h4>Deployment Output:</h4>
               <pre style={{
-                backgroundColor: '#f5f5f5',
                 padding: '12px',
                 borderRadius: '4px',
                 maxHeight: '300px',

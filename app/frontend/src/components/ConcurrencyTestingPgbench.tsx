@@ -832,7 +832,6 @@ GROUP BY c_preferred_cust_flag;`
                         File: point_query.sql
                       </Text>
                       <pre style={{
-                        backgroundColor: '#f5f5f5',
                         padding: '12px',
                         borderRadius: '4px',
                         fontSize: '12px',
@@ -855,7 +854,6 @@ WHERE c_customer_sk = :customer_sk;`}
                         File: range_query.sql
                       </Text>
                       <pre style={{
-                        backgroundColor: '#f5f5f5',
                         padding: '12px',
                         borderRadius: '4px',
                         fontSize: '12px',
@@ -880,7 +878,6 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
                         File: agg_query.sql
                       </Text>
                       <pre style={{
-                        backgroundColor: '#f5f5f5',
                         padding: '12px',
                         borderRadius: '4px',
                         fontSize: '12px',
@@ -1010,7 +1007,7 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
                 {/* Show raw pgbench output for debugging */}
                 {testResults.execution_result?.stdout && (
                   <Card title="Raw pgbench Output" style={{ marginBottom: '16px' }} size="small">
-                    <div style={{ backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace', maxHeight: '300px', overflowY: 'auto' }}>
+                    <div style={{padding: '12px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace', maxHeight: '300px', overflowY: 'auto' }}>
                       <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
                         {testResults.execution_result.stdout}
                       </pre>
