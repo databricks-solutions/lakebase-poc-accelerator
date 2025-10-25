@@ -42,24 +42,9 @@ Databricks CLI v0.267+ is required, if you have older version, upgrade the CLI v
 $ brew update && brew upgrade databricks && databricks --version | cat
 ```
 
-3. Authenticate to your Databricks workspace, if you have not done so already:
+3. Authenticate to your Databricks workspace using OAuth Authentication (recommended), if you have not done so already:
 
-   #### Option A: Personal Access Token (PAT)
-   **Configure CLI with PAT:**
-
-   ```bash
-   databricks configure --token --profile DEFAULT
-   ```
-
-   You'll be prompted for:
-   - **Databricks Host**: `https://your-workspace.cloud.databricks.com`
-   - **Token**: Paste your generated token
-
-   This will update DEFAULT profile in `~/.databrickscfg`
-
-   #### Option B: OAuth Authentication
-
-   Configure OAuth:
+   #### Configure OAuth:
 
    ```bash
    databricks auth login --host https://your-workspace.cloud.databricks.com --profile DEFAULT
@@ -77,17 +62,6 @@ $ brew update && brew upgrade databricks && databricks --version | cat
    $ databricks auth profiles
    ```
 
-## Install pgbench for concurrency testing
-pgbench comes bundled with PostgreSQL. Install PostgreSQL client tools:
-
-#### macOS:
-```bash
-# Install PostgreSQL (includes pgbench)
-brew install postgresql
-
-# Verify installation
-pgbench --version
-```
 ## Application Features
 
 The project includes a full-stack web application for interactive workload configuration, cost estimation, and deployment automation using the Databricks Python SDK.
@@ -97,11 +71,11 @@ The project includes a full-stack web application for interactive workload confi
 - **📁 Manual Deployment**: Generate and download Databricks Asset Bundle files
 - **🧪 Concurrency Testing**: Upload and execute SQL queries for performance testing
 
-## Option 1: Starting the Web Application on Databricks Apps (Recommended for production)
+### Option 1: Starting the Web Application on Databricks Apps (Recommended for production)
 
 Follow instruction on [DEPLOY_WITH_DAB.md](./DEPLOY_WITH_DAB.md) to deploy Databricks Apps with Databricks Asset Bundle
 
-## Option 2: Starting the Web Application - self-hosted on local machine (For development)
+### Option 2: Starting the Web Application - self-hosted on local machine (For development)
 
 Ensure you have completed the [Environment Setup](#environments-setup) and authenticated with Databricks CLI.
 
