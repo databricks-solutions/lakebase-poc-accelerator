@@ -738,9 +738,14 @@ input:-internal-autofill-selected{
 }
 
 [data-theme="dark"] .ant-btn-sm, 
-[data-theme="dark"] .ant-btn-dashed{
+[data-theme="dark"] .ant-btn-sm:hover{
   background: transparent !important;
-  border: 1px solid #ff4d4f !important;
+}
+
+[data-theme="dark"] .ant-btn-dashed,
+[data-theme="dark"] .ant-btn-sm:hover  {
+  background: transparent !important;
+  border: 1px dashed #ff4d4f !important;
 }
 
 [data-theme="dark"] .ant-btn-primary {
