@@ -29,11 +29,33 @@
   --databricks-gray-dark: #374151;
 }
 
+body {
+  background-color: white;
+}
+[data-theme='dark'] body {
+  background-color: black;
+}
+
 
 
 [data-theme="dark"] input:-webkit-autofill { 
   -webkit-background-clip: text;
-  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0px 1000px transparent inset !important; 
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+input:-webkit-autofill { 
+  -webkit-background-clip: text;
+  -webkit-box-shadow: 0 0 0px 1000px white inset !important; 
+  -webkit-text-fill-color: black !important;
+}
+
+[data-theme="dark"] ::spelling-error {
+  color: white;
+}
+
+input:-internal-autofill-selected{
+  background-color: transparent !important;
 }
 
 [data-theme="dark"] input{
@@ -704,7 +726,7 @@
 /* Button Components */
 /* Button Components - Dark Mode */
 [data-theme="dark"] .ant-btn {
-  background: #ff4d4f !important;
+  background: #ff4d4f;
   border-color: #ff4d4f !important;
   color: white !important;
 }
@@ -715,6 +737,11 @@
   color: white !important;
 }
 
+[data-theme="dark"] .ant-btn-sm, 
+[data-theme="dark"] .ant-btn-dashed{
+  background: transparent !important;
+  border: 1px solid #ff4d4f !important;
+}
 
 [data-theme="dark"] .ant-btn-primary {
   background: #ff4d4f !important;
@@ -756,7 +783,7 @@
   text-shadow: none !important;
   box-shadow: none !important;
   outline: none !important;
-  border: none !important;
+  border: none;
 }
 
 [data-theme="dark"] .ant-btn:hover span,
