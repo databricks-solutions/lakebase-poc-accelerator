@@ -898,6 +898,7 @@ const PgbenchDatabricks: React.FC = () => {
                       onChange={(e) => updateQueryConfig(index, 'content', e.target.value)}
                       rows={6}
                       style={{ marginTop: 8 }}
+                      className="prefixedinput"
                     />
                   </Panel>
                 ))}

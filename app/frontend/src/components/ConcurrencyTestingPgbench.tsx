@@ -708,7 +708,7 @@ GROUP BY c_preferred_cust_flag;`
                       <Col span={16}>
                         <Form.Item label="SQL Content">
                           <Input.TextArea
-                            value={config.content}
+                            value={config.content}               
                             onChange={(e) => updateQueryConfig(index, 'content', e.target.value)}
                             placeholder="\\set variable_name random(min, max)&#10;SELECT * FROM table WHERE column = :variable_name;"
                             rows={4}
@@ -828,7 +828,7 @@ GROUP BY c_preferred_cust_flag;`
                   <Row gutter={16}>
                     <Col span={12}>
                       <Title level={5}>Example 1: Point Query</Title>
-                      <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                      <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }} className="prefixedinput">
                         File: point_query.sql
                       </Text>
                       <pre style={{
@@ -837,7 +837,7 @@ GROUP BY c_preferred_cust_flag;`
                         fontSize: '12px',
                         marginBottom: '8px',
                         overflow: 'auto'
-                      }}>
+                      }} className="prefixedinput">
                         {`\\set customer_sk random(1, 1000000)
 
 SELECT * FROM customer
@@ -850,7 +850,7 @@ WHERE c_customer_sk = :customer_sk;`}
 
                     <Col span={12}>
                       <Title level={5}>Example 2: Range Query</Title>
-                      <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                      <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }} className="prefixedinput">
                         File: range_query.sql
                       </Text>
                       <pre style={{
@@ -859,7 +859,7 @@ WHERE c_customer_sk = :customer_sk;`}
                         fontSize: '12px',
                         marginBottom: '8px',
                         overflow: 'auto'
-                      }}>
+                      }} >
                         {`\\set customer_sk random(1, 1000000)
 
 SELECT * FROM customer
@@ -874,7 +874,7 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
                   <Row gutter={16} style={{ marginTop: '16px' }}>
                     <Col span={24}>
                       <Title level={5}>Example 3: Aggregation Query</Title>
-                      <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                      <Text code style={{ fontSize: '12px', display: 'block', marginBottom: '8px' }} className="prefixedinput">
                         File: agg_query.sql
                       </Text>
                       <pre style={{
@@ -883,7 +883,7 @@ WHERE c_customer_sk BETWEEN :customer_sk AND :customer_sk + 1000;`}
                         fontSize: '12px',
                         marginBottom: '8px',
                         overflow: 'auto'
-                      }}>
+                      }} className="prefixedinput">
                         {`SELECT COUNT(*) as total_customers FROM customer;`}
                       </pre>
                       <Text type="secondary" style={{ fontSize: '11px' }}>

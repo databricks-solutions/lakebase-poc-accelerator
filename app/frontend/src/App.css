@@ -1664,6 +1664,7 @@
   background: #1a1a1a !important;
   color: white;
 }
+
 [data-theme="dark"] .ant-input-outlined.prefixedinput{
   background: transparent !important;
 }
