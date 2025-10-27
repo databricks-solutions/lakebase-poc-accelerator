@@ -6,9 +6,7 @@ import {
   Typography,
   Row,
   Col,
-  Space,
   Tag,
-  Tooltip,
   Modal,
   Input,
   Spin,
@@ -684,16 +682,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       </ul>
                       <p>2. <strong>Authenticate</strong> → Set up Databricks CLI authentication: <Text code>databricks auth login</Text></p>
                       <p>3. <strong>Deploy</strong> → Run the deployment command in your terminal:</p>
-                      <Space>
-                          <Text code>databricks bundle deploy --target dev</Text>
-                          <Tooltip title="Copy to clipboard">
-                            <Button
-                              size="small"
-                              icon={<CopyOutlined />}
-                              onClick={() => copyToClipboard('databricks bundle deploy --target dev')}
-                            />
-                          </Tooltip>
-                      </Space>
+                      <Text code>databricks bundle deploy --target dev</Text>
                     </div>
                   ),
                 },

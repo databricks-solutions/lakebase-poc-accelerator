@@ -32,6 +32,7 @@ uv pip install -r requirements.txt
 2. Install the Databricks CLI from <https://docs.databricks.com/dev-tools/cli/databricks-cli.html>
 
 ```bash
+$ brew tap databricks/tap
 $ brew install databricks
 $ databricks --version
 ```
@@ -71,15 +72,31 @@ The project includes a full-stack web application for interactive workload confi
 - **📁 Manual Deployment**: Generate and download Databricks Asset Bundle files
 - **🧪 Concurrency Testing**: Upload and execute SQL queries for performance testing
 
-### Option 1: Starting the Web Application on Databricks Apps (Recommended for production)
+### Option 1: Starting the Web Application on Databricks Apps (RECOMMENDED for production)
 
-Follow instruction on [DEPLOY_WITH_DAB.md](./DEPLOY_WITH_DAB.md) to deploy Databricks Apps with Databricks Asset Bundle
+Follow instruction on [DEPLOY_WITH_DAB.md](./DEPLOY_WITH_DAB.md) for more details on how deploy Databricks Apps with Databricks Asset Bundle, or follow Quick Deploy below
+
+#### Quick Deploy (All Steps)
+
+```bash
+# 1. Build frontend
+./npm-build.sh
+
+# 2. Deploy
+databricks bundle validate
+databricks bundle deploy
+databricks bundle run lakebase_accelerator_app
+
+# 3. Get URL
+databricks apps get <your-app-name>
+```
+
 
 ### Option 2: Starting the Web Application - self-hosted on local machine (For development)
 
 Ensure you have completed the [Environment Setup](#environments-setup) and authenticated with Databricks CLI.
 
-Then on root rirectory, run
+Then on project root directory, run
 ```
 # build frontend
 ./npm-build.sh

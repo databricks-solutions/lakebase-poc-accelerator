@@ -50,6 +50,20 @@ input:-webkit-autofill {
   -webkit-text-fill-color: black !important;
 }
 
+/* Fix autofill for prefixed inputs */
+.prefixedinput:-webkit-autofill {
+  -webkit-background-clip: text;
+  -webkit-box-shadow: 0 0 0px 1000px white inset !important;
+  -webkit-text-fill-color: black !important;
+}
+
+[data-theme="dark"] .prefixedinput:-webkit-autofill,
+[data-theme="dark"] .ant-input-outlined.prefixedinput:-webkit-autofill {
+  -webkit-background-clip: text;
+  -webkit-box-shadow: 0 0 0px 1000px transparent inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
 [data-theme="dark"] ::spelling-error {
   color: white;
 }
@@ -112,8 +126,46 @@ input:-internal-autofill-selected{
   color: white !important;
 }
 
-[data-theme="dark"] .ant-card-body *:not(.ant-form-item-explain-error) {
+/* Apply white color to most elements but exclude specific components */
+[data-theme="dark"] .ant-card-body *:not(.ant-form-item-explain-error):not(.ant-statistic):not(.ant-statistic-content-value):not(.ant-statistic-content-value *):not(.ant-statistic-content-prefix):not(.ant-statistic-content-prefix *):not(.ant-statistic-content-suffix):not(.ant-statistic-content-suffix *):not(a):not(a *) {
   color: white !important;
+}
+
+/* Style links in cards - default to green */
+[data-theme="dark"] .ant-card-body a {
+  color: #52c41a !important;
+}
+
+/* Override for specific inline colors */
+[data-theme="dark"] .ant-card-body a[style*="1890ff"],
+[data-theme="dark"] .ant-card-body ul a[style*="1890ff"] {
+  color: #1890ff !important;
+}
+
+[data-theme="dark"] .ant-card-body a:hover {
+  opacity: 0.8;
+}
+
+/* Preserve inline colors for Statistic components - allow inline styles to work */
+[data-theme="dark"] .ant-statistic-content-value,
+[data-theme="dark"] .ant-statistic-content-suffix,
+[data-theme="dark"] .ant-statistic-content-prefix {
+  /* Don't force any color, let inline styles work */
+  color: revert;
+}
+
+/* All children should inherit from parent (which may have inline styles) */
+[data-theme="dark"] .ant-statistic-content-value *,
+[data-theme="dark"] .ant-statistic-content-suffix *,
+[data-theme="dark"] .ant-statistic-content-prefix * {
+  color: inherit;
+}
+
+/* More specific rules for nested statistic content */
+[data-theme="dark"] .ant-card-body .ant-statistic-content-value,
+[data-theme="dark"] .ant-card-body .ant-statistic-content-suffix,
+[data-theme="dark"] .ant-card-body .ant-statistic-content-prefix {
+  color: revert;
 }
 
 [data-theme="dark"] .ant-card-body pre {
@@ -1699,6 +1751,82 @@ input:-internal-autofill-selected{
 
 [data-theme="dark"] .ant-input-outlined.prefixedinput{
   background: transparent !important;
+}
+
+/* Make textarea with prefixedinput class transparent in dark theme */
+[data-theme="dark"] .ant-textarea.prefixedinput{
+  background: transparent !important;
+}
+
+[data-theme="dark"] .ant-textarea.prefixedinput:focus{
+  background: transparent !important;
+}
+
+[data-theme="dark"] .ant-textarea.prefixedinput:hover{
+  background: transparent !important;
+}
+
+/* Pagination dark theme fixes */
+[data-theme="dark"] .ant-pagination-item {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .ant-pagination-item:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="dark"] .ant-pagination-item-active {
+  background: transparent !important;
+  border-color: #52c41a !important;
+}
+
+[data-theme="dark"] .ant-pagination-item-active a {
+  color: #52c41a !important;
+}
+
+/* Error message boxes in test results - make background red in dark mode */
+[data-theme="dark"] div[style*="background-color: #fff2f0"],
+[data-theme="dark"] div[style*="background: #fff2f0"] {
+  background: rgba(255, 77, 79, 0.2) !important;
+  background-color: rgba(255, 77, 79, 0.7) !important;
+  border-color: rgba(255, 77, 79, 0.5) !important;
+}
+
+/* Upload Dragger dark mode styling */
+[data-theme="dark"] .ant-upload-drag {
+  background: transparent !important;
+  border-color: #52c41a !important;
+}
+
+[data-theme="dark"] .ant-upload-drag:hover {
+  border-color: #52c41a !important;
+  background: rgba(82, 196, 26, 0.05) !important;
+}
+
+[data-theme="dark"] .ant-upload-drag-icon {
+  color: #52c41a !important;
+}
+
+[data-theme="dark"] .ant-upload-text {
+  color: white !important;
+}
+
+[data-theme="dark"] .ant-upload-hint {
+  color: #a0a0a0 !important;
+}
+
+[data-theme="dark"] .ant-pagination-prev,
+[data-theme="dark"] .ant-pagination-next,
+[data-theme="dark"] .ant-pagination-jump-prev,
+[data-theme="dark"] .ant-pagination-jump-next {
+  background: transparent !important;
+}
+
+[data-theme="dark"] .ant-pagination-prev:hover,
+[data-theme="dark"] .ant-pagination-next:hover,
+[data-theme="dark"] .ant-pagination-jump-prev:hover,
+[data-theme="dark"] .ant-pagination-jump-next:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
 }
 
 /* Additional button text fixes - remove any black boxes */

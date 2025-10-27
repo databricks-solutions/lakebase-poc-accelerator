@@ -711,7 +711,7 @@ const PgbenchDatabricks: React.FC = () => {
                       <strong>Interactive Clusters (used with local mode or for repeatable testing):</strong>
                       <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
                         <li>
-                          Require users tomanually configure as a Single node cluster with <strong>Dedicated</strong> (formerly: Single user) access mode.
+                          Require users to manually configure as a Single node cluster with <strong>Dedicated</strong> (formerly: Single user) access mode.
                         </li>
                         <li>Recommended for repeatable testing without waiting for job cluster spinup, or used with local mode. </li>
                         <li>
@@ -723,6 +723,7 @@ const PgbenchDatabricks: React.FC = () => {
                             href="https://github.com/databricks-solutions/lakebase-poc-accelerator/blob/app-dev-new/app/notebooks/init.sh"
                             target="_blank"
                             rel="noopener noreferrer"
+                            style={{ color: '#1890ff' }}
                           >
                             init script
                           </a>
@@ -998,6 +999,7 @@ const PgbenchDatabricks: React.FC = () => {
                 tooltip="Path to folder containing .sql files (e.g., /Shared/my_queries/ or /Users/user@company.com/queries/)"
               >
                 <Input
+                  className="prefixedinput"
                   prefix={<FolderOutlined />}
                   placeholder="/Shared/my_queries/"
                   addonBefore="📁"
