@@ -517,6 +517,27 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               <Input placeholder="/sql/1.0/warehouses/your-warehouse-id" />
             </Form.Item>
           </Col>
+<<<<<<< HEAD
+=======
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label={
+                <span>
+                  Databricks Profile Name{' '}
+                  <Tooltip title="Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
+              name="databricks_profile"
+              rules={[{ required: true, message: 'Required field' }]}
+            >
+              <Input placeholder="DEFAULT" />
+            </Form.Item>
+          </Col>
+>>>>>>> origin/main
           <Col span={12}>
             <Form.Item
               label="Lakebase Instance Name"

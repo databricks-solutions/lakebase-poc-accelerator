@@ -8,8 +8,14 @@ import { createStyledComponents } from './styles/theme';
 import LakebaseOverview from './components/LakebaseOverview';
 import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
+<<<<<<< HEAD
 import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import PgbenchDatabricks from './components/PgbenchDatabricks';
+=======
+import ConcurrencyTesting from './components/ConcurrencyTesting';
+import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
+import TBDTab from './components/TBDTab';
+>>>>>>> origin/main
 import DatabricksLogo from './components/DatabricksLogo';
 import ThemeToggle from './components/ThemeToggle';
 
@@ -102,7 +108,11 @@ const AppContent: React.FC = () => {
         </div>
       </Header>
 
+<<<<<<< HEAD
       <Content style={{ padding: '0' }}>
+=======
+      <Content style={{ padding: '0', background: '#fafafa' }}>
+>>>>>>> origin/main
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -123,14 +133,28 @@ const AppContent: React.FC = () => {
               children: <LakebaseDeployment generatedConfigs={generatedConfigs} />
             },
             {
+<<<<<<< HEAD
               key: 'pgbench-databricks',
               label: 'Concurrency Testing (pgbench)',
               children: <PgbenchDatabricks />
+=======
+              key: 'concurrency',
+              label: 'Concurrency Testing (pgbench)',
+              children: <ConcurrencyTesting />
+>>>>>>> origin/main
             },
             {
               key: 'concurrency-databricks',
               label: 'Concurrency Testing (psycopg)',
               children: <ConcurrencyTestingPsycopg />
+<<<<<<< HEAD
+=======
+            },
+            {
+              key: 'tbd',
+              label: 'TBD',
+              children: <TBDTab />
+>>>>>>> origin/main
             }
           ]}
           style={{

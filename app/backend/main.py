@@ -394,8 +394,13 @@ async def deploy_to_databricks(request: DeploymentRequest):
         }
 
     except Exception as e:
+<<<<<<< HEAD
         logger.error(f"Failed to start deployment: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to start deployment: {str(e)}")
+=======
+        print(f"Deployment failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
+>>>>>>> origin/main
 
 @app.get("/api/deploy/progress/{deployment_id}")
 async def get_deployment_progress(deployment_id: str):
@@ -614,6 +619,7 @@ async def upload_query_file(file: UploadFile = File(...)):
         query_identifier = file.filename.replace('.sql', '')
         validation_result = SimpleParameterParser.validate_query_format(query_content)
         
+<<<<<<< HEAD
         # Extract parameter sets from comments
         parameter_sets = []
         lines = query_content.split('\n')
@@ -626,6 +632,11 @@ async def upload_query_file(file: UploadFile = File(...)):
                 except json.JSONDecodeError:
                     parameter_sets = []
                 break
+=======
+        # Save file to app/queries_psycopg/ folder
+        queries_dir = Path(__file__).parent.parent / "queries_psycopg"
+        queries_dir.mkdir(exist_ok=True)
+>>>>>>> origin/main
         
         # Save file to temp directory for security (separate from pgbench)
         import tempfile
@@ -683,19 +694,30 @@ async def run_uploaded_tests(test_request: dict):
         if not workspace_url:
             raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
         
+<<<<<<< HEAD
         # Get all SQL files from temp directory (separate from pgbench)
         import tempfile
         temp_dir = Path(tempfile.gettempdir()) / "lakebase_psycopg_queries"
         if not temp_dir.exists():
             raise HTTPException(status_code=404, detail="No concurrency queries folder found")
+=======
+        # Get all SQL files from app/queries_psycopg/ folder
+        queries_dir = Path(__file__).parent.parent / "queries_psycopg"
+        if not queries_dir.exists():
+            raise HTTPException(status_code=404, detail="No queries_psycopg folder found")
+>>>>>>> origin/main
         
         sql_files = list(temp_dir.glob("*.sql"))
         if not sql_files:
+<<<<<<< HEAD
             raise HTTPException(status_code=404, detail="No SQL files found in concurrency queries folder")
         
         print(f"🔍 Found {len(sql_files)} SQL files in temp directory:")
         for sql_file in sql_files:
             print(f"   - {sql_file.name}")
+=======
+            raise HTTPException(status_code=404, detail="No SQL files found in queries_psycopg folder")
+>>>>>>> origin/main
         
         # Parse each SQL file and prepare queries
         execution_queries = []
@@ -1411,9 +1433,13 @@ async def get_pgbench_test_status():
             "pgbench_available": True,
             "available_endpoints": [
                 "/api/pgbench-test/upload-query",
+<<<<<<< HEAD
                 "/api/pgbench-test/run-uploaded-tests",
                 "/api/pgbench-test/run-predefined-tests",
                 "/api/pgbench-test/clear-temp-files"
+=======
+                "/api/pgbench-test/run-uploaded-tests"
+>>>>>>> origin/main
             ]
         }
 

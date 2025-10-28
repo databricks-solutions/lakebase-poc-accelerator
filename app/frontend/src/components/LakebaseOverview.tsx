@@ -1,7 +1,14 @@
 import React from 'react';
+<<<<<<< HEAD
 import { Card, Typography, Row, Col, Tag, Alert, Divider, List, Statistic, Tooltip, Collapse } from 'antd';
 import {
   CheckCircleOutlined,
+=======
+import { Card, Typography, Row, Col, Tag, Alert, Divider, List, Statistic } from 'antd';
+import {
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+>>>>>>> origin/main
   DatabaseOutlined,
   ThunderboltOutlined,
   SyncOutlined
@@ -16,6 +23,7 @@ const LakebaseOverview: React.FC = () => {
   const styled = createStyledComponents(theme);
 
   return (
+<<<<<<< HEAD
     <div style={styled.pageContainer}>
       {/* Background pattern */}
       <div style={styled.backgroundPattern} />
@@ -23,10 +31,15 @@ const LakebaseOverview: React.FC = () => {
       <Title level={2} style={styled.pageTitle}>
         Lakebase Overview
       </Title>
+=======
+    <div style={{ padding: '24px' }}>
+      <Title level={2}>Lakebase Overview</Title>
+>>>>>>> origin/main
       <Alert
         message="Official Documentation"
         description={
           <div>
+<<<<<<< HEAD
             <Text style={{ color: theme.colors.textSecondary }}>
               Please refer to the official Databricks documentation for the most up-to-date details on Lakebase database instances.
             </Text>
@@ -38,15 +51,27 @@ const LakebaseOverview: React.FC = () => {
                 style={styled.link}
               >
                 Database instance overview →
+=======
+            <Text>Please refer to the official Databricks documentation for the most up-to-date details on Lakebase database instances.</Text>
+            <div style={{ marginTop: 8 }}>
+              <a href="https://docs.databricks.com/aws/en/oltp/instances/instance" target="_blank" rel="noreferrer">
+                Database instance overview
+>>>>>>> origin/main
               </a>
             </div>
           </div>
         }
         type="info"
         showIcon
+<<<<<<< HEAD
         style={{...styled.alert}}
       />
  
+=======
+        style={{ marginBottom: '16px' }}
+      />
+
+>>>>>>> origin/main
       {/* Qualifications Section */}
       <Card
         title={<span style={styled.sectionTitle}>Qualifications</span>}
@@ -83,6 +108,7 @@ const LakebaseOverview: React.FC = () => {
           </Col>
         </Row>
 
+<<<<<<< HEAD
         <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
           <Col span={12}>
             <div style={styled.statCard(theme.colors.accent4)}>
@@ -105,13 +131,22 @@ const LakebaseOverview: React.FC = () => {
         </Row>
 
         <Divider style={styled.divider} />
+=======
+        <Divider />
+>>>>>>> origin/main
 
         <List
           header={<Title level={4} style={{ color: theme.colors.text, marginBottom: '16px', textAlign: 'left' }}>Key Features</Title>}
           dataSource={[
+<<<<<<< HEAD
             'Synchronize data from Delta tables (data lake) to Managed Postgres databases in Lakebase, enables your front-end applications and APIs to access real-time data from your data lake through a high-performance Postgres database, bridging the gap between analytical data processing and operational application needs',
             'Low-latency application serving capabilities with sub-10ms response times for front-end applications for point lookups queries',
             'Support up to 1000 connections per instance'
+=======
+            'Reverse ETL is supported: data can be synchronized from Delta tables to Postgres in Lakebase',
+            'Low-latency application serving capabilities',
+            'Recommend PrivateLink as a security best practice.'
+>>>>>>> origin/main
           ]}
           renderItem={(item) => (
             <List.Item style={styled.listItem}>
@@ -128,6 +163,99 @@ const LakebaseOverview: React.FC = () => {
         />
       </Card>
 
+<<<<<<< HEAD
+=======
+      {/* Lakebase Performance Section */}
+      <Card title="Lakebase Performance" className="databricks-card" style={{ marginBottom: '24px' }}>
+        <Row gutter={[16, 16]}>
+          <Col span={24}>
+            <Alert
+              message="Performance Assumptions"
+              description="1CU of compute capacity = 16GB Memory and uncompressed 1KB row size"
+              type="info"
+              showIcon
+              className="databricks-alert"
+              style={{ marginBottom: '16px' }}
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={[16, 16]}>
+          <Col span={12}>
+            <Card size="small" title="Latency & Connections">
+              <List size="small">
+                <List.Item>
+                  <Text strong>Latency:</Text> <Tag color="green">&lt;10ms</Tag>
+                </List.Item>
+                <List.Item>
+                  <Text strong>Max Connections:</Text> <Tag color="blue">1000</Tag>
+                </List.Item>
+              </List>
+            </Card>
+          </Col>
+          <Col span={12}>
+            <Card size="small" title="Read Performance">
+              <List size="small">
+                <List.Item>
+                  <Text strong>Read QPS:</Text> <Tag color="green">around 10K QPS point lookup</Tag>
+                </List.Item>
+                <List.Item>
+                  <Text strong>Range:</Text> <Text type="secondary">2k-30k QPS depending on data size & cache hit ratio</Text>
+                </List.Item>
+              </List>
+            </Card>
+          </Col>
+        </Row>
+
+        <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
+          <Col span={12}>
+            <Card size="small" title="Write Performance (Initial)">
+              <Statistic
+                value="15k"
+                suffix="per 1KB rows/sec per CU"
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col span={12}>
+            <Card size="small" title="Write Performance (Incremental)">
+              <Statistic
+                value="1.2k"
+                suffix="per 1KB rows/sec per CU"
+                valueStyle={{ color: '#722ed1' }}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        <Divider />
+
+        <Row gutter={[16, 16]}>
+          <Col span={8}>
+            <Statistic
+              title="Max Size Per Instance"
+              value="2TB"
+              suffix="across all databases"
+              prefix={<DatabaseOutlined />}
+            />
+          </Col>
+          <Col span={8}>
+            <Statistic
+              title="Instances per Workspace"
+              value="10"
+              prefix={<ThunderboltOutlined />}
+            />
+          </Col>
+          <Col span={8}>
+            <Statistic
+              title="Max Connections per Database"
+              value="1000"
+              prefix={<SyncOutlined />}
+            />
+          </Col>
+        </Row>
+      </Card>
+>>>>>>> origin/main
 
       {/* Delta Sync Section */}
       <Card
@@ -138,11 +266,15 @@ const LakebaseOverview: React.FC = () => {
         <Paragraph style={{ color: theme.colors.textSecondary }}>
           <Text strong style={{ color: theme.colors.text }}>Delta Sync Modes:</Text> Delta tables (data lake) can be synced to Lakebase by 3 modes: Snapshot, Triggered, Continuous.
         </Paragraph>
+<<<<<<< HEAD
         <Paragraph style={{ color: theme.colors.textSecondary }}>
           <Text strong style={{ color: theme.colors.text }}>Dataset Size Support:</Text>
           Up to 2TB in Postgres. Be aware that Delta tables are highly compressed on cloud storage, when migrated to Lakebase, the physical table size may increase by 5x-10x
         </Paragraph>
         <Paragraph style={{ color: theme.colors.textSecondary }}>
+=======
+        <Paragraph>
+>>>>>>> origin/main
           <Text>
             For additional instructions, see the official Databricks guide:
             {' '}
@@ -150,7 +282,10 @@ const LakebaseOverview: React.FC = () => {
               href="https://docs.databricks.com/aws/en/oltp/instances/sync-data/sync-table"
               target="_blank"
               rel="noreferrer"
+<<<<<<< HEAD
               style={styled.link}
+=======
+>>>>>>> origin/main
             >
               Sync data from Unity Catalog tables to a database instance
             </a>.
@@ -160,7 +295,11 @@ const LakebaseOverview: React.FC = () => {
         <Row gutter={[16, 16]}>
           <Col span={8}>
             <Card
+<<<<<<< HEAD
               title={<span style={{ color: theme.colors.text }}>Triggered</span>}
+=======
+              title="Snapshot"
+>>>>>>> origin/main
               size="small"
               classNames={{ header: 'small-card', body: ')small-card' }}
               extra={<Tag className='success-tag'>Incremental, Recommended</Tag>}
@@ -180,7 +319,11 @@ const LakebaseOverview: React.FC = () => {
           </Col>
           <Col span={8}>
             <Card
+<<<<<<< HEAD
               title={<span style={{ color: theme.colors.text }}>Snapshot</span>}
+=======
+              title="Triggered"
+>>>>>>> origin/main
               size="small"
               extra={<Tag className='acceptable-tag'>Efficient but sync full table</Tag>}
             >
@@ -199,7 +342,11 @@ const LakebaseOverview: React.FC = () => {
           </Col>
           <Col span={8}>
             <Card
+<<<<<<< HEAD
               title={<span style={{ color: theme.colors.text }}>Continuous</span>}
+=======
+              title="Continuous"
+>>>>>>> origin/main
               size="small"
               extra={<Tag className='failure-tag'>Real-time, Avoid if possible</Tag>}
             >
@@ -218,7 +365,11 @@ const LakebaseOverview: React.FC = () => {
           </Col>
         </Row>
 
+<<<<<<< HEAD
         <Divider style={styled.divider} />
+=======
+        <Divider />
+>>>>>>> origin/main
 
         <Alert
           message="Important Notes"

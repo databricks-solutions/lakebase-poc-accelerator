@@ -6,6 +6,12 @@ import {
   Typography,
   Row,
   Col,
+<<<<<<< HEAD
+=======
+  Alert,
+  Divider,
+  Space,
+>>>>>>> origin/main
   Tag,
   Modal,
   Input,
@@ -50,7 +56,11 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploymentOutput, setDeploymentOutput] = useState<string>('');
   const [deploymentModalVisible, setDeploymentModalVisible] = useState(false);
   const [deploymentSteps, setDeploymentSteps] = useState<any[]>([]);
+<<<<<<< HEAD
   const [currentStep, setCurrentStep] = useState(0);
+=======
+  const [currentStep, setCurrentStep] = useState<number>(0);
+>>>>>>> origin/main
 
   // Helper to build workspace monitor URL
   const getWorkspaceMonitorUrl = (fallback?: string): string | null => {
@@ -572,8 +582,12 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   <br />
                   {(() => {
                     // Try multiple possible paths for tables data
+<<<<<<< HEAD
                     const tables = (generatedConfigs as any)?.synced_tables?.config_data?.synced_tables ||
                       (generatedConfigs as any)?.synced_tables?.synced_tables ||
+=======
+                    const tables = (generatedConfigs as any)?.synced_tables?.synced_tables ||
+>>>>>>> origin/main
                       (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables_to_sync ||
                       (generatedConfigs as any)?.workload_config?.delta_synchronization?.tables ||
                       (generatedConfigs as any)?.tables ||
@@ -844,6 +858,10 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
           />
         ) : (
           <pre style={{
+<<<<<<< HEAD
+=======
+            backgroundColor: '#f5f5f5',
+>>>>>>> origin/main
             padding: '16px',
             borderRadius: '4px',
             maxHeight: '400px',
@@ -885,7 +903,11 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
               <div style={{
                 width: '16px',
                 height: '16px',
+<<<<<<< HEAD
                 borderRadius: '100%',
+=======
+                borderRadius: '50%',
+>>>>>>> origin/main
                 backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' :
                   deploymentProgress.includes('failed') ? '#ff4d4f' :
                     deploymentProgress.includes('downloaded successfully') ? '#52c41a' : '#1890ff',
@@ -910,6 +932,10 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
             <div>
               <h4>Deployment Output:</h4>
               <pre style={{
+<<<<<<< HEAD
+=======
+                backgroundColor: '#f5f5f5',
+>>>>>>> origin/main
                 padding: '12px',
                 borderRadius: '4px',
                 maxHeight: '300px',
