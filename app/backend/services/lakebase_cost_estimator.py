@@ -551,8 +551,8 @@ def estimate_cost_from_config(config_data: Dict[str, Any], warehouse_http_path: 
                                         warehouse_http_path,
                                         access_token,
                                     )
-                                    # Fail fast after 30 seconds to keep the UI responsive
-                                    table_sizes = future.result(timeout=30)
+                                    # Fail fast after 10 minutes to keep the UI responsive
+                                    table_sizes = future.result(timeout=10*60)
 
                                 # Clean up the temporary token after use
                                 try:

@@ -29,6 +29,7 @@ const { TextArea } = Input;
 
 interface GeneratedConfigs {
   workload_config?: WorkloadConfig;
+  cost_report?: any;
   synced_tables?: any;
   databricks_config?: any;
   lakebase_instance?: any;
@@ -40,6 +41,9 @@ interface Props {
 
 const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploying, setDeploying] = useState(false);
+
+  // Debug: Log the recommended_cu value received
+  console.log('Debug - LakebaseDeployment received recommended_cu:', (generatedConfigs as any)?.workload_config?.recommended_cu);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
@@ -136,6 +140,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
       const workloadConfig = (generatedConfigs as any)?.workload_config;
       const tablesConfig = (generatedConfigs as any)?.synced_tables;
 
+      console.log('Debug - Deployment: workloadConfig.recommended_cu =', workloadConfig?.recommended_cu);
+
       if (!workloadConfig) {
         throw new Error('Workload configuration not found. Please generate configuration first.');
       }
@@ -159,7 +165,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         tables: tables
       };
 
-      console.log('Debug - Using profile:', profileName);
+      console.log('Debug - Sending deployment request with recommended_cu:', deploymentRequest.workload_config?.recommended_cu);
 
       // Call the new deployment API
       const response = await fetch('/api/deploy', {
@@ -566,6 +572,17 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   <Text strong>Storage Schema:</Text>
                   <br />
                   <Text>{(generatedConfigs as any)?.workload_config?.storage_schema || 'default'}</Text>
+                </Col>
+                <Col span={12}>
+                  <Text strong>Capacity:</Text>
+                  <br />
+                  <Text>
+                    {(() => {
+                      const recommendedCu = (generatedConfigs as any)?.workload_config?.recommended_cu ||
+                        (generatedConfigs as any)?.cost_report?.cost_breakdown?.recommended_cu || 1;
+                      return `CU_${recommendedCu}`;
+                    })()}
+                  </Text>
                 </Col>
                 <Col span={24}>
                   <Text strong>Tables to Sync:</Text>

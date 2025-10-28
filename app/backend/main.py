@@ -291,6 +291,20 @@ async def deploy_to_databricks(request: DeploymentRequest):
     """
     try:
         import uuid
+        
+        # Log deployment request details
+        logger.info("=" * 80)
+        logger.info("DEPLOYMENT API - REQUEST RECEIVED")
+        logger.info("=" * 80)
+        logger.info(f"Deployment request received for:")
+        logger.info(f"  - Lakebase instance: {request.workload_config.lakebase_instance_name}")
+        logger.info(f"  - UC catalog: {request.workload_config.uc_catalog_name}")
+        logger.info(f"  - Database: {request.workload_config.database_name}")
+        logger.info(f"  - Recommended CU: {request.workload_config.recommended_cu}")
+        logger.info(f"  - Workspace URL: {request.workload_config.databricks_workspace_url}")
+        logger.info(f"  - Profile: {request.databricks_profile_name}")
+        logger.info(f"  - Tables to sync: {len(request.workload_config.delta_synchronization.tables_to_sync)}")
+        logger.info("=" * 80)
 
         # Generate unique deployment ID
         deployment_id = str(uuid.uuid4())
@@ -350,6 +364,10 @@ async def deploy_to_databricks(request: DeploymentRequest):
                     'workload_description': f"OLTP workload with {request.workload_config.database_instance.bulk_writes_per_second} bulk writes/sec, {request.workload_config.database_instance.reads_per_second} reads/sec",
                     'tables': request.tables
                 }
+                
+                logger.info(f"DEBUG - Config being passed to deployment service:")
+                logger.info(f"  - recommended_cu: {config['recommended_cu']}")
+                logger.info(f"  - Full config keys: {list(config.keys())}")
 
                 # Deploy the instance
                 result = await deployment_service.deploy_lakebase_instance(

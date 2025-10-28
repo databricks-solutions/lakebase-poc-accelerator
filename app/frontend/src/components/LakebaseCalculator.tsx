@@ -68,12 +68,17 @@ const LakebaseCalculator: React.FC<Props> = ({ onConfigGenerated }) => {
       ]);
 
       const generatedConfigs = {
-        workload_config: config,
+        workload_config: {
+          ...config,
+          recommended_cu: recommendedCu
+        },
         cost_report: costData,
         synced_tables: syncedTables,
         databricks_config: databricksConfig,
         lakebase_instance: lakebaseInstance
       };
+
+      console.log('Debug - LakebaseCalculator: recommended_cu =', recommendedCu, 'added to workload_config');
 
       // Notify parent component about generated configs
       if (onConfigGenerated) {

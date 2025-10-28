@@ -42,6 +42,7 @@ export interface WorkloadConfig {
   database_name: string;
   storage_catalog: string;
   storage_schema: string;
+  recommended_cu?: number;
 }
 
 export interface CostBreakdown {
