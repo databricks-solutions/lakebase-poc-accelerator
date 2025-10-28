@@ -6,11 +6,7 @@ import {
   Typography,
   Row,
   Col,
-  Alert,
-  Divider,
-  Space,
   Tag,
-  Tooltip,
   Modal,
   Input,
   Spin,
@@ -641,7 +637,6 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                     <div>
                       <p>Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size of tables and indexes in your database:</p>
                       <div style={{
-                        backgroundColor: '#f5f5f5',
                         padding: '12px',
                         borderRadius: '4px',
                         margin: '8px 0',
@@ -687,18 +682,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       </ul>
                       <p>2. <strong>Authenticate</strong> → Set up Databricks CLI authentication: <Text code>databricks auth login</Text></p>
                       <p>3. <strong>Deploy</strong> → Run the deployment command in your terminal:</p>
-                      <Card size="small" style={{ backgroundColor: '#f5f5f5', marginTop: '8px' }}>
-                        <Space>
-                          <Text code>databricks bundle deploy --target dev</Text>
-                          <Tooltip title="Copy to clipboard">
-                            <Button
-                              size="small"
-                              icon={<CopyOutlined />}
-                              onClick={() => copyToClipboard('databricks bundle deploy --target dev')}
-                            />
-                          </Tooltip>
-                        </Space>
-                      </Card>
+                      <Text code>databricks bundle deploy --target dev</Text>
                     </div>
                   ),
                 },
@@ -717,6 +701,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                   extra={<Tag className="databricks-tag-secondary">Project Root</Tag>}
                   actions={[
                     <Button
+                      className="databricks-view-download"
                       key="view"
                       type="link"
                       icon={<FileTextOutlined />}
@@ -725,6 +710,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       View
                     </Button>,
                     <Button
+                      className="databricks-view-download"
                       key="download"
                       type="link"
                       icon={<DownloadOutlined />}
@@ -746,6 +732,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                   extra={<Tag className="databricks-tag">resources/</Tag>}
                   actions={[
                     <Button
+                      className="databricks-view-download"
                       key="view"
                       type="link"
                       icon={<FileTextOutlined />}
@@ -754,6 +741,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       View
                     </Button>,
                     <Button
+                      className="databricks-view-download"
                       key="download"
                       type="link"
                       icon={<DownloadOutlined />}
@@ -775,6 +763,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                   extra={<Tag className="databricks-tag">resources/</Tag>}
                   actions={[
                     <Button
+                      className="databricks-view-download"
                       key="view"
                       type="link"
                       icon={<FileTextOutlined />}
@@ -783,6 +772,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                       View
                     </Button>,
                     <Button
+                      className="databricks-view-download"
                       key="download"
                       type="link"
                       icon={<DownloadOutlined />}
@@ -854,7 +844,6 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
           />
         ) : (
           <pre style={{
-            backgroundColor: '#f5f5f5',
             padding: '16px',
             borderRadius: '4px',
             maxHeight: '400px',
@@ -888,7 +877,6 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
             alignItems: 'center',
             marginBottom: '16px',
             padding: '12px',
-            backgroundColor: '#f5f5f5',
             borderRadius: '4px'
           }}>
             {deploying ? (
@@ -897,7 +885,7 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
               <div style={{
                 width: '16px',
                 height: '16px',
-                borderRadius: '50%',
+                borderRadius: '100%',
                 backgroundColor: deploymentProgress.includes('successfully') ? '#52c41a' :
                   deploymentProgress.includes('failed') ? '#ff4d4f' :
                     deploymentProgress.includes('downloaded successfully') ? '#52c41a' : '#1890ff',
@@ -922,7 +910,6 @@ JOIN pg_class pc ON pi.inhparent = pc.oid;`}
             <div>
               <h4>Deployment Output:</h4>
               <pre style={{
-                backgroundColor: '#f5f5f5',
                 padding: '12px',
                 borderRadius: '4px',
                 maxHeight: '300px',

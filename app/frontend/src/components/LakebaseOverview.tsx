@@ -44,13 +44,14 @@ const LakebaseOverview: React.FC = () => {
         }
         type="info"
         showIcon
-        style={styled.alert}
+        style={{...styled.alert}}
       />
-
+ 
       {/* Qualifications Section */}
       <Card
         title={<span style={styled.sectionTitle}>Qualifications</span>}
         style={styled.mainCard}
+        classNames={{ header: 'main-card-header',body: 'main-card-body' }}
       >
         <Row gutter={[16, 16]}>
           <Col span={8}>
@@ -132,6 +133,7 @@ const LakebaseOverview: React.FC = () => {
       <Card
         title={<span style={styled.sectionTitle}>Delta Sync</span>}
         style={styled.mainCard}
+        classNames={{ header: 'main-card-header',body: 'main-card-body' }}
       >
         <Paragraph style={{ color: theme.colors.textSecondary }}>
           <Text strong style={{ color: theme.colors.text }}>Delta Sync Modes:</Text> Delta tables (data lake) can be synced to Lakebase by 3 modes: Snapshot, Triggered, Continuous.
@@ -160,8 +162,8 @@ const LakebaseOverview: React.FC = () => {
             <Card
               title={<span style={{ color: theme.colors.text }}>Triggered</span>}
               size="small"
-              style={styled.syncCard}
-              extra={<Tag style={styled.tag(theme.colors.success)}>Incremental, Recommended</Tag>}
+              classNames={{ header: 'small-card', body: ')small-card' }}
+              extra={<Tag className='success-tag'>Incremental, Recommended</Tag>}
             >
               <List size="small">
                 <List.Item style={{ color: theme.colors.textSecondary }}>
@@ -180,8 +182,7 @@ const LakebaseOverview: React.FC = () => {
             <Card
               title={<span style={{ color: theme.colors.text }}>Snapshot</span>}
               size="small"
-              style={styled.syncCard}
-              extra={<Tag style={styled.tag(theme.colors.warning)}>Efficient but sync full table</Tag>}
+              extra={<Tag className='acceptable-tag'>Efficient but sync full table</Tag>}
             >
               <List size="small">
                 <List.Item style={{ color: theme.colors.textSecondary }}>
@@ -200,8 +201,7 @@ const LakebaseOverview: React.FC = () => {
             <Card
               title={<span style={{ color: theme.colors.text }}>Continuous</span>}
               size="small"
-              style={styled.syncCard}
-              extra={<Tag style={styled.tag(theme.colors.error)}>Real-time</Tag>}
+              extra={<Tag className='failure-tag'>Real-time, Avoid if possible</Tag>}
             >
               <List size="small">
                 <List.Item style={{ color: theme.colors.textSecondary }}>
@@ -231,7 +231,7 @@ const LakebaseOverview: React.FC = () => {
           }
           type="info"
           showIcon
-          style={styled.alert}
+          style={{...styled.alert, color: '#52c41a'}}
         />
       </Card>
 
@@ -251,7 +251,7 @@ const LakebaseOverview: React.FC = () => {
                       type="info"
                       showIcon
                       className="databricks-alert"
-                      style={{ marginBottom: '16px' }}
+                      style={{...styled.alert, color: '#52c41a', marginBottom: '16px' }}
                     />
                   </Col>
                 </Row>

@@ -52,7 +52,7 @@ const lightTheme: Theme = {
         primaryHover: '#0056b3',
         border: '#dee2e6',
         borderHover: '#007bff',
-        success: '#28a745',
+        success: '#28a745 !important',
         warning: '#ffc107',
         error: '#dc3545',
         info: '#17a2b8',
@@ -91,7 +91,7 @@ const darkTheme: Theme = {
         borderHover: 'rgba(57, 255, 20, 0.4)',
         success: '#39ff14',
         warning: '#ffa500',
-        error: '#ff1493',
+        error: '#dc3545',
         info: '#00ffff',
         accent1: '#39ff14',
         accent2: '#00ffff',
@@ -133,8 +133,8 @@ interface ThemeProviderProps {
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     const [isDark, setIsDark] = useState(() => {
-        const saved = localStorage.getItem('theme');
-        return saved ? saved === 'dark' : false; // Default to light mode
+        // Always default to light mode
+        return false;
     });
 
     const theme = isDark ? darkTheme : lightTheme;

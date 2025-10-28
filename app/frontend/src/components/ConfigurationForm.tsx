@@ -488,6 +488,23 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label={
                 <span>
+                  Databricks Profile Name{' '}
+                  <Tooltip title="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
+                    <InfoCircleOutlined />
+                  </Tooltip>
+                </span>
+              }
+              name="databricks_profile"
+            >
+              <Input placeholder="DEFAULT" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              label={
+                <span>
                   Warehouse HTTP Path{' '}
                   <Tooltip title="SQL warehouse HTTP path for table size calculation (e.g., /sql/1.0/warehouses/your-warehouse-id)">
                     <InfoCircleOutlined />
@@ -500,28 +517,11 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               <Input placeholder="/sql/1.0/warehouses/your-warehouse-id" />
             </Form.Item>
           </Col>
-        </Row>
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item
-              label={
-                <span>
-                  Databricks Profile Name{' '}
-                  <Tooltip title="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
-                    <InfoCircleOutlined />
-                  </Tooltip>
-                </span>
-              }
-              name="databricks_profile"
-              rules={[{ required: true, message: 'Required field' }]}
-            >
-              <Input placeholder="DEFAULT" />
-            </Form.Item>
-          </Col>
           <Col span={12}>
             <Form.Item
               label="Lakebase Instance Name"
               name="lakebase_instance_name"
+              rules={[{ required: true, message: 'Required field' }]}
             >
               <Input placeholder="lakebase-accelerator-instance" />
             </Form.Item>
@@ -532,6 +532,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label="UC Catalog Name"
               name="uc_catalog_name"
+              rules={[{ required: true, message: 'Required field' }]}
             >
               <Input placeholder="lakebase_accelerator_catalog" />
             </Form.Item>
@@ -540,6 +541,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
             <Form.Item
               label="Database Name"
               name="database_name"
+              rules={[{ required: true, message: 'Required field' }]}
             >
               <Input placeholder="databricks_postgres" />
             </Form.Item>

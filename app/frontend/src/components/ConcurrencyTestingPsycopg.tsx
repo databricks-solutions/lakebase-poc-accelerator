@@ -74,7 +74,7 @@ SELECT COUNT(*) as total_customers FROM customer;`
       content: `-- PARAMETERS: [["N"], ["Y"]]
 -- EXEC_COUNT: 100
 
-SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
+SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_flag;`
     }
   ]);
 
@@ -177,7 +177,7 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
       console.log('All form field names:', Object.keys(formValues));
 
       // Validate required fields manually to avoid workspace_url validation issues
-      const requiredFields = ['databricks_profile', 'workspace_url', 'instance_name', 'concurrency_level'];
+      const requiredFields = ['workspace_url', 'instance_name', 'concurrency_level'];
       const missingFields = requiredFields.filter(field => !formValues[field]);
 
       console.log('Missing fields check:', missingFields);
@@ -306,8 +306,6 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
         onFinish={handleRunTest}
         initialValues={{
           databricks_profile: "DEFAULT",
-          instance_name: "lakebase-accelerator-instance",
-          database_name: "databricks_postgres",
           concurrency_level: 10,
           DB_POOL_SIZE: 5,
           DB_MAX_OVERFLOW: 10,
@@ -349,7 +347,6 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                   </span>
                 }
                 name="databricks_profile"
-                rules={[{ required: true, message: 'Please enter Databricks CLI profile name, not required for Databricks Apps' }]}
               >
                 <Input placeholder="DEFAULT" />
               </Form.Item>
@@ -392,7 +389,7 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                 <InputNumber
                   min={1}
                   max={1000}
-                  style={{ width: '100%' }}
+                  style={{ width: '100%', borderRadius: '6px', border: 'pink !important' }}
                 />
               </Form.Item>
             </Col>
@@ -567,6 +564,7 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
                       onChange={(e) => updateQueryConfig(index, 'content', e.target.value)}
                       rows={8}
                       style={{ marginTop: 8, fontFamily: 'monospace' }}
+                      className="prefixedinput"
                     />
                   </Panel>
                 ))}
@@ -586,38 +584,32 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
             <>
               <Alert
                 message="Upload SQL Query Files"
-                description="Upload one or more .sql files. Each file should contain PostgreSQL queries with proper parameterization. Predefined queries are not used in this mode."
+                description={
+                  <>
+                    Upload one or more <code>.sql</code> files. Each file should contain PostgreSQL queries with proper parameterization. Predefined queries are not used in this mode.
+                  </>
+                }
                 type="info"
                 showIcon
-                style={{ marginBottom: '16px' }}
+                icon={<InfoCircleOutlined />}
+                style={{ marginBottom: 16 }}
               />
 
-              <Upload
+              <Upload.Dragger
+                multiple
                 accept=".sql"
                 beforeUpload={handleBeforeUpload}
                 showUploadList={false}
-                multiple
-                style={{ width: '100%' }}
+                style={{ marginBottom: 16 }}
               >
-                <div
-                  style={{
-                    border: '2px dashed #d9d9d9',
-                    borderRadius: '6px',
-                    padding: '40px',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    backgroundColor: '#fafafa'
-                  }}
-                >
-                  <UploadOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
-                  <div style={{ fontSize: '16px', marginBottom: '8px' }}>
-                    Click or drag SQL files to upload
-                  </div>
-                  <div style={{ color: '#666' }}>
-                    Upload .sql files with your PostgreSQL queries
-                  </div>
-                </div>
-              </Upload>
+                <p className="ant-upload-drag-icon">
+                  <UploadOutlined style={{ fontSize: 48, color: '#1890ff' }} />
+                </p>
+                <p className="ant-upload-text">Click or drag SQL files to upload</p>
+                <p className="ant-upload-hint">
+                  Upload .sql files with your PostgreSQL queries
+                </p>
+              </Upload.Dragger>
 
               {/* Uploaded Files Display */}
               {uploadedFiles.length > 0 && (
@@ -1002,6 +994,7 @@ SELECT * FROM customer where c_preferred_cust_flag = %s limit 1000;`
               description={testError}
               type="error"
               showIcon
+              style={{ color: '#ff4d4f' }}
             />
           </Card>
         )

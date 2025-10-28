@@ -135,17 +135,6 @@ export const createStyledComponents = (theme: Theme) => ({
     fontWeight: '500',
   }),
 
-  // Sync mode cards
-  syncCard: {
-    background: theme.surface,
-    border: `1px solid ${theme.colors.border}`,
-    borderRadius: '12px',
-    '&:hover': {
-      borderColor: theme.colors.borderHover,
-      boxShadow: theme.shadows.cardHover,
-    },
-  },
-
   // Collapse styles
   collapse: {
     background: theme.surface,

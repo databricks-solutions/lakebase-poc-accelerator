@@ -635,6 +635,7 @@ const PgbenchDatabricks: React.FC = () => {
                 tooltip="Your Databricks workspace URL."
               >
                 <Input
+                  className="prefixedinput"
                   placeholder="https://adb-xxxxx.region.azuredatabricks.net"
                   prefix={<ClusterOutlined />}
                 />
@@ -647,6 +648,7 @@ const PgbenchDatabricks: React.FC = () => {
                 tooltip="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above."
               >
                 <Input
+                  className="prefixedinput"
                   placeholder="DEFAULT"
                   prefix={<SettingOutlined />}
                 />
@@ -680,6 +682,7 @@ const PgbenchDatabricks: React.FC = () => {
             rules={[{ required: false }]}
           >
             <Input
+              className="prefixedinput"
               placeholder="Enter Databricks cluster ID or leave empty"
               prefix={<ClusterOutlined />}
             />
@@ -708,7 +711,7 @@ const PgbenchDatabricks: React.FC = () => {
                       <strong>Interactive Clusters (used with local mode or for repeatable testing):</strong>
                       <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 20 }}>
                         <li>
-                          Require users tomanually configure as a Single node cluster with <strong>Dedicated</strong> (formerly: Single user) access mode.
+                          Require users to manually configure as a Single node cluster with <strong>Dedicated</strong> (formerly: Single user) access mode.
                         </li>
                         <li>Recommended for repeatable testing without waiting for job cluster spinup, or used with local mode. </li>
                         <li>
@@ -720,6 +723,7 @@ const PgbenchDatabricks: React.FC = () => {
                             href="https://github.com/databricks-solutions/lakebase-poc-accelerator/blob/app-dev-new/app/notebooks/init.sh"
                             target="_blank"
                             rel="noopener noreferrer"
+                            style={{ color: '#1890ff' }}
                           >
                             init script
                           </a>
@@ -895,6 +899,7 @@ const PgbenchDatabricks: React.FC = () => {
                       onChange={(e) => updateQueryConfig(index, 'content', e.target.value)}
                       rows={6}
                       style={{ marginTop: 8 }}
+                      className="prefixedinput"
                     />
                   </Panel>
                 ))}
@@ -994,6 +999,7 @@ const PgbenchDatabricks: React.FC = () => {
                 tooltip="Path to folder containing .sql files (e.g., /Shared/my_queries/ or /Users/user@company.com/queries/)"
               >
                 <Input
+                  className="prefixedinput"
                   prefix={<FolderOutlined />}
                   placeholder="/Shared/my_queries/"
                   addonBefore="📁"
