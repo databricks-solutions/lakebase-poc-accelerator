@@ -553,7 +553,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               label={
                 <span>
                   Storage Catalog{' '}
-                  <Tooltip title="Unity Catalog where synced table data will be stored during processing">
+                  <Tooltip title="Unity Catalog used to store Lakebase-synced table data during processing, and where the event log table will be created.">
                     <InfoCircleOutlined />
                   </Tooltip>
                 </span>
@@ -569,7 +569,7 @@ const ConfigurationForm: React.FC<Props> = ({ onSubmit, loading }) => {
               label={
                 <span>
                   Storage Schema{' '}
-                  <Tooltip title="Schema within the storage catalog where synced table data will be stored during processing">
+                  <Tooltip title="Schema within the storage catalog where synced table data will be stored during processing, and where the event log table will be created">
                     <InfoCircleOutlined />
                   </Tooltip>
                 </span>

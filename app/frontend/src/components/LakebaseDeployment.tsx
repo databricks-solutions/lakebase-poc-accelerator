@@ -649,10 +649,10 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               items={[
                 {
                   key: 'after-deployment',
-                  label: 'After Deployment: Check Actual Table Sizes',
+                  label: 'After Deployment',
                   children: (
                     <div>
-                      <p>Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size of tables and indexes in your database:</p>
+                      <p><strong>Check actual Postgres table sizes:</strong> Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size in bytes of tables and indexes in your database. Run this query in Query Editor in Databricks when connected to the Lakebase database.</p>
                       <div style={{
                         padding: '12px',
                         borderRadius: '4px',
@@ -669,7 +669,16 @@ FROM pg_inherits pi
 JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                         </pre>
                       </div>
-                      <p><strong>Note:</strong> This query will show the total size (including indexes) for each table in your Lakebase database. Run this query in Query Editor in Databricks when connected to the Lakebase database.</p>
+                      <p>
+                        <strong>Check Delta table sync event log:</strong> You can also check the event log for the Delta table sync to see the pipeline progress and errors by running:<br />
+                        <code>
+                          select * from &lt;storage_catalog&gt;.&lt;storage_schema&gt;.event_log_&lt;pipeline_id&gt;
+                        </code>
+                        <br />
+                        <span style={{ fontSize: '12px', color: '#888' }}>
+                          Replace <code>&lt;storage_catalog&gt;</code>, <code>&lt;storage_schema&gt;</code>, and <code>&lt;pipeline_id&gt;</code> with your actual catalog, schema, and pipeline ID (use underscore instead of hyphen for pipeline ID).
+                        </span>
+                      </p>
                     </div>
                   ),
                 },
