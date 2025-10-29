@@ -720,7 +720,7 @@ const PgbenchDatabricks: React.FC = () => {
                         <li>
                           Make sure to attach the{' '}
                           <a
-                            href="https://github.com/databricks-solutions/lakebase-poc-accelerator/blob/app-dev-new/app/notebooks/init.sh"
+                            href="https://github.com/databricks-solutions/lakebase-poc-accelerator/blob/main/app/notebooks/init.sh"
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ color: '#1890ff' }}
