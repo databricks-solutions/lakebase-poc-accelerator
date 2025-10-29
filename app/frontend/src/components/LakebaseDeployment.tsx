@@ -29,6 +29,7 @@ const { TextArea } = Input;
 
 interface GeneratedConfigs {
   workload_config?: WorkloadConfig;
+  cost_report?: any;
   synced_tables?: any;
   databricks_config?: any;
   lakebase_instance?: any;
@@ -40,6 +41,9 @@ interface Props {
 
 const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploying, setDeploying] = useState(false);
+
+  // Debug: Log the recommended_cu value received
+  console.log('Debug - LakebaseDeployment received recommended_cu:', (generatedConfigs as any)?.workload_config?.recommended_cu);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
@@ -136,6 +140,8 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
       const workloadConfig = (generatedConfigs as any)?.workload_config;
       const tablesConfig = (generatedConfigs as any)?.synced_tables;
 
+      console.log('Debug - Deployment: workloadConfig.recommended_cu =', workloadConfig?.recommended_cu);
+
       if (!workloadConfig) {
         throw new Error('Workload configuration not found. Please generate configuration first.');
       }
@@ -159,7 +165,7 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
         tables: tables
       };
 
-      console.log('Debug - Using profile:', profileName);
+      console.log('Debug - Sending deployment request with recommended_cu:', deploymentRequest.workload_config?.recommended_cu);
 
       // Call the new deployment API
       const response = await fetch('/api/deploy', {
@@ -567,6 +573,17 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
                   <br />
                   <Text>{(generatedConfigs as any)?.workload_config?.storage_schema || 'default'}</Text>
                 </Col>
+                <Col span={12}>
+                  <Text strong>Capacity:</Text>
+                  <br />
+                  <Text>
+                    {(() => {
+                      const recommendedCu = (generatedConfigs as any)?.workload_config?.recommended_cu ||
+                        (generatedConfigs as any)?.cost_report?.cost_breakdown?.recommended_cu || 1;
+                      return `CU_${recommendedCu}`;
+                    })()}
+                  </Text>
+                </Col>
                 <Col span={24}>
                   <Text strong>Tables to Sync:</Text>
                   <br />
@@ -632,10 +649,10 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
               items={[
                 {
                   key: 'after-deployment',
-                  label: 'After Deployment: Check Actual Table Sizes',
+                  label: 'After Deployment',
                   children: (
                     <div>
-                      <p>Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size of tables and indexes in your database:</p>
+                      <p><strong>Check actual Postgres table sizes:</strong> Once your Lakebase instance is deployed and tables are synced, you can run this PostgreSQL query to estimate the actual size in bytes of tables and indexes in your database. Run this query in Query Editor in Databricks when connected to the Lakebase database.</p>
                       <div style={{
                         padding: '12px',
                         borderRadius: '4px',
@@ -652,7 +669,16 @@ FROM pg_inherits pi
 JOIN pg_class pc ON pi.inhparent = pc.oid;`}
                         </pre>
                       </div>
-                      <p><strong>Note:</strong> This query will show the total size (including indexes) for each table in your Lakebase database. Run this query in Query Editor in Databricks when connected to the Lakebase database.</p>
+                      <p>
+                        <strong>Check Delta table sync event log:</strong> You can also check the event log for the Delta table sync to see the pipeline progress and errors by running:<br />
+                        <code>
+                          select * from &lt;storage_catalog&gt;.&lt;storage_schema&gt;.event_log_&lt;pipeline_id&gt;
+                        </code>
+                        <br />
+                        <span style={{ fontSize: '12px', color: '#888' }}>
+                          Replace <code>&lt;storage_catalog&gt;</code>, <code>&lt;storage_schema&gt;</code>, and <code>&lt;pipeline_id&gt;</code> with your actual catalog, schema, and pipeline ID (use underscore instead of hyphen for pipeline ID).
+                        </span>
+                      </p>
                     </div>
                   ),
                 },

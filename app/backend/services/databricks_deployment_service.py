@@ -301,6 +301,8 @@ class DatabricksDeploymentService:
 
             # Create new database instance
             cu_count = config.get('recommended_cu', 1)
+            
+            logger.info(f"DEBUG - Deployment service: recommended_cu = {cu_count}, capacity = CU_{cu_count}")
 
             # Map CU count to valid capacity values (CU_1, CU_2, CU_4, CU_8)
             if cu_count <= 1:
