@@ -26,3 +26,15 @@ APP_README.md
 
 # Source folder
 scratch/
+
+# .NET sample project artifacts
+code-samples/AuthDemoDotNet/**/bin/
+code-samples/AuthDemoDotNet/**/obj/
+code-samples/AuthDemoDotNet/**/TestResults/
+code-samples/AuthDemoDotNet/.vs/
+code-samples/AuthDemoDotNet/.idea/
+code-samples/AuthDemoDotNet/.vscode/
+code-samples/AuthDemoDotNet/**/*.user
+code-samples/AuthDemoDotNet/**/*.suo
+code-samples/AuthDemoDotNet/**/*.userosscache
+code-samples/AuthDemoDotNet/**/*.sln.docstates
