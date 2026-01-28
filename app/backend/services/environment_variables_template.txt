@@ -1,0 +1,14 @@
+PROVISIONED_LAKEBASE_INSTANCE_NAME=<provisioned lakebase instance name - example: fe-shared-demo>
+PROVISIONED_LAKEBASE_DATABASE=<provisioned lakebase database name - example: databricks_postgres>
+PROVISIONED_DATABRICKS_PROFILE=DEFAULT
+PROVISIONED_DATABRICKS_WORKSPACE_URL=https://e2-demo-field-eng.cloud.databricks.com/
+PROVISIONED_DATABRICKS_WORKSPACE_URL=<provisioned lakebase workspace url - example: https://cust-success.cloud.databricks.com/>
+
+
+
+AUTOSCALING_PGHOST=<autoscaling lakebase pghost - example: ep-big-house-d2b5b5ut.database.us-west-2.cloud.databricks.com>
+AUTOSCALING_PGDATABASE=<provisioned lakebase database name - example: databricks_postgres>
+AUTOSCALING_PGUSER=<autoscaling lakebase user - example: analyst>
+AUTOSCALING_PGPASSWORD=<autoscaling lakebase pasword - example: erh_OLYf4Ko3tAfh>
+AUTOSCALING_PGSSLMODE=require
+AUTOSCALING_PGCHANNELBINDING=require
