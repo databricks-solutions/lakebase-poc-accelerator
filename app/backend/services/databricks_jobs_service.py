@@ -1583,6 +1583,10 @@ class DatabricksJobsService:
             # Detect autoscaling mode (used by CLI scripts with autoscaling: prefix)
             is_autoscaling = lakebase_instance_name.startswith('autoscaling:')
             
+            # CRITICAL: Explicitly set use_autoscaling parameter for notebook
+            # Must be string "true" or "false", not boolean, for proper parsing
+            parameters["use_autoscaling"] = "true" if is_autoscaling else "false"
+            
             # Get or create reusable pgbench job (created once, updated if cluster config changes)
             # Job is namespaced by app name. Single job per app, auto-updates on cluster type change.
             job_id = self._get_or_create_pgbench_job(cluster_id, is_autoscaling=is_autoscaling)
