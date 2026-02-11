@@ -1039,7 +1039,7 @@ class DatabricksJobsService:
             logger.error(f"Error parsing pgbench results: {e}")
             return None
     
-    def _get_or_create_pgbench_job(self, cluster_id: Optional[str]) -> str:
+    def _get_or_create_pgbench_job(self, cluster_id: Optional[str], is_autoscaling: bool = False) -> str:
         """Get existing pgbench job or create/update it based on cluster configuration.
         
         The job is reusable across all test runs with different parameters.
@@ -1047,6 +1047,7 @@ class DatabricksJobsService:
         
         Args:
             cluster_id: Cluster ID to use (None for auto job cluster)
+            is_autoscaling: If True, uses autoscaling job name, otherwise provisioned
             
         Returns:
             Job ID string
@@ -1058,8 +1059,11 @@ class DatabricksJobsService:
             import os
             app_name = os.getenv('DATABRICKS_APP_NAME', 'lakebase_app')
             
-            # Single job name per app (not split by cluster type)
-            job_name = f"{app_name}_pgbench_job"
+            # Separate job names for provisioned vs autoscaling
+            if is_autoscaling:
+                job_name = f"{app_name}_autoscaling_pgbench_job"
+            else:
+                job_name = f"{app_name}_pgbench_job"
             
             print(f"PGBENCH_JOB: Using job name: {job_name}")
             print(f"PGBENCH_JOB: Cluster config - Interactive: {bool(cluster_id)}")
@@ -1576,15 +1580,21 @@ class DatabricksJobsService:
                     parameters["query_config"] = query_json
                     parameters["query_source"] = "inline"
             
+            # Detect autoscaling mode (used by CLI scripts with autoscaling: prefix)
+            is_autoscaling = lakebase_instance_name.startswith('autoscaling:')
+            
             # Get or create reusable pgbench job (created once, updated if cluster config changes)
             # Job is namespaced by app name. Single job per app, auto-updates on cluster type change.
-            job_id = self._get_or_create_pgbench_job(cluster_id)
-            logger.info(f"PGBENCH_JOB: Using job {job_id} for this test run")
+            job_id = self._get_or_create_pgbench_job(cluster_id, is_autoscaling=is_autoscaling)
+            logger.info(f"PGBENCH_JOB: Using job {job_id} for this test run (autoscaling={is_autoscaling})")
             
             # Get job name for response
             import os
             app_name = os.getenv('DATABRICKS_APP_NAME', 'lakebase_app')
-            job_name = f"{app_name}_pgbench_job"
+            if is_autoscaling:
+                job_name = f"{app_name}_autoscaling_pgbench_job"
+            else:
+                job_name = f"{app_name}_pgbench_job"
             
             # Run the job with test-specific parameters
             run_id = self.run_job(job_id, parameters)
@@ -1614,6 +1624,146 @@ class DatabricksJobsService:
             
         except Exception as e:
             logger.error(f"Failed to submit pgbench job: {e}")
+            raise
+    
+    def submit_autoscaling_pgbench_job(self, 
+                                      pghost: str,
+                                      pgport: int,
+                                      pgdatabase: str,
+                                      pguser: str,
+                                      pgpassword: str,
+                                      pgsslmode: str,
+                                      cluster_id: Optional[str],
+                                      pgbench_config: Dict[str, Any],
+                                      query_configs: Optional[List[Dict[str, Any]]] = None,
+                                      query_workspace_path: Optional[str] = None) -> Dict[str, Any]:
+        """Submit an autoscaling pgbench job with direct PostgreSQL credentials
+        
+        Args:
+            pghost: PostgreSQL host endpoint
+            pgport: PostgreSQL port
+            pgdatabase: Database name
+            pguser: PostgreSQL username
+            pgpassword: PostgreSQL password
+            pgsslmode: SSL mode
+            cluster_id: Cluster ID to run on (None for auto job cluster)
+            pgbench_config: pgbench configuration parameters
+            query_configs: List of query configurations (for upload approach)
+            query_workspace_path: Workspace path to queries folder (for workspace approach)
+            
+        Returns:
+            Dictionary with job_id, run_id, and workspace URLs
+        """
+        try:
+            print(f"AUTOSCALING_PGBENCH: Submitting job with pghost={pghost}, pguser={pguser}")
+            
+            # Use fixed notebook path (same as provisioned)
+            notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
+            
+            # Upload latest notebook to ensure autoscaling fixes are applied
+            print(f"AUTOSCALING_PGBENCH: Uploading latest notebook version to {notebook_path}")
+            import os
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(current_dir)
+            
+            # Try to find the notebook file
+            possible_paths = [
+                os.path.join(current_dir, '..', '..', 'notebooks', 'pgbench_parameterized.ipynb'),
+                os.path.join(parent_dir, '..', 'notebooks', 'pgbench_parameterized.ipynb'),
+                '/app/notebooks/pgbench_parameterized.ipynb',
+            ]
+            
+            notebook_path_local = None
+            for path in possible_paths:
+                abs_path = os.path.abspath(path)
+                if os.path.exists(abs_path):
+                    notebook_path_local = abs_path
+                    print(f"AUTOSCALING_PGBENCH: Found notebook at: {notebook_path_local}")
+                    break
+            
+            if notebook_path_local:
+                with open(notebook_path_local, 'r') as f:
+                    notebook_content = f.read()
+                self.upload_notebook(notebook_path, notebook_content)
+                print(f"AUTOSCALING_PGBENCH: Successfully uploaded notebook")
+            else:
+                print(f"AUTOSCALING_PGBENCH: WARNING - Could not find notebook file, using existing version")
+            
+            # Build parameters for autoscaling endpoint
+            parameters = {
+                # Required by notebook (even in autoscaling mode)
+                "lakebase_instance_name": f"autoscaling:{pghost}",  # Dummy value for compatibility
+                "database_name": pgdatabase,
+                
+                # PostgreSQL connection parameters (autoscaling-specific)
+                "pghost": pghost,
+                "pgport": str(pgport),
+                "pgdatabase": pgdatabase,
+                "pguser": pguser,
+                "pgpassword": pgpassword,
+                "pgsslmode": pgsslmode,
+                "use_autoscaling": "true",  # Flag to indicate autoscaling mode
+                
+                # pgbench configuration
+                "pgbench_clients": str(pgbench_config.get("pgbench_clients", 8)),
+                "pgbench_jobs": str(pgbench_config.get("pgbench_jobs", 8)),
+                "pgbench_duration": str(pgbench_config.get("pgbench_duration", 30)),
+                "pgbench_progress_interval": str(pgbench_config.get("pgbench_progress_interval", 5)),
+                "pgbench_protocol": pgbench_config.get("pgbench_protocol", "prepared"),
+                "pgbench_per_statement_latency": str(pgbench_config.get("pgbench_per_statement_latency", True)),
+                "pgbench_detailed_logging": str(pgbench_config.get("pgbench_detailed_logging", True)),
+                "pgbench_connect_per_transaction": str(pgbench_config.get("pgbench_connect_per_transaction", False)),
+            }
+            
+            # Handle query source
+            if query_workspace_path:
+                parameters["query_workspace_path"] = query_workspace_path
+                query_source = "workspace"
+            elif query_configs:
+                # Upload queries to workspace (same logic as provisioned)
+                query_json = json.dumps(query_configs)
+                
+                if len(query_json) > 8192:  # 8KB threshold
+                    # Upload to workspace
+                    query_folder_path = f"/Shared/pgbench_resources/autoscaling_queries_{int(time.time())}"
+                    self._upload_queries_to_workspace(query_configs, query_folder_path)
+                    parameters["query_workspace_path"] = query_folder_path
+                    query_source = "workspace"
+                else:
+                    # Pass inline (note: singular 'query_config' to match notebook parameter)
+                    parameters["query_config"] = query_json
+                    query_source = "inline"
+            else:
+                raise ValueError("Either query_configs or query_workspace_path must be provided")
+            
+            print(f"AUTOSCALING_PGBENCH: Query source: {query_source}")
+            
+            # Get or create autoscaling job (separate from provisioned)
+            job_id = self._get_or_create_pgbench_job(cluster_id, is_autoscaling=True)
+            
+            # Run the job with autoscaling parameters
+            run_id = self.run_job(job_id, parameters)
+            
+            # Generate workspace links
+            workspace_url = self._get_workspace_url()
+            job_run_url = f"{workspace_url}#job/{job_id}/run/{run_id}"
+            job_url = f"{workspace_url}#job/{job_id}"
+            
+            result = {
+                "job_id": job_id,
+                "run_id": run_id,
+                "notebook_path": notebook_path,
+                "status": "submitted",
+                "job_run_url": job_run_url,
+                "job_url": job_url,
+                "workspace_url": workspace_url
+            }
+            
+            logger.info(f"AUTOSCALING_PGBENCH: Job submitted successfully: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to submit autoscaling pgbench job: {e}")
             raise
     
     def delete_job(self, job_id: str) -> bool:

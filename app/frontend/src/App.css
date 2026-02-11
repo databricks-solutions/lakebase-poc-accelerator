@@ -1873,6 +1873,49 @@ input:-internal-autofill-selected{
   -webkit-text-fill-color: white !important;
 }
 
+/* Horizontal Scrollable Tabs */
+.ant-tabs-nav {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(0, 0, 0, 0.3) rgba(0, 0, 0, 0.1) !important;
+}
+
+.ant-tabs-nav::-webkit-scrollbar {
+  height: 8px !important;
+}
+
+.ant-tabs-nav::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1) !important;
+  border-radius: 4px !important;
+}
+
+.ant-tabs-nav::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-radius: 4px !important;
+}
+
+.ant-tabs-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme="dark"] .ant-tabs-nav::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .ant-tabs-nav::-webkit-scrollbar-thumb {
+  background: rgba(82, 196, 26, 0.5) !important;
+}
+
+[data-theme="dark"] .ant-tabs-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(82, 196, 26, 0.7) !important;
+}
+
+/* Ensure tabs don't wrap */
+.ant-tabs-nav-list {
+  flex-wrap: nowrap !important;
+}
+
 /* Print Styles */
 @media print {
   .databricks-header {

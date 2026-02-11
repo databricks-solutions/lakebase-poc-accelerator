@@ -83,9 +83,9 @@ class PgbenchJobDeployer:
         print("="*70)
         
         try:
-            # Set custom job name for Provisioned
-            # Note: DatabricksJobsService adds '_job' suffix, so we set the base name
-            os.environ['DATABRICKS_APP_NAME'] = 'provisioned_pgbench_test'
+            # Set app name to match web app (creates lakebase_app_pgbench_job)
+            # Note: DatabricksJobsService adds '_pgbench_job' suffix
+            os.environ['DATABRICKS_APP_NAME'] = 'lakebase_app'
             
             # Initialize without workspace URL (will use default profile)
             self.jobs_service = DatabricksJobsService()

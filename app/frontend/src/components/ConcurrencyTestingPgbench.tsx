@@ -62,22 +62,23 @@ const ConcurrencyTestingPgbench: React.FC = () => {
       weight: 60,
       content: `\\set c_customer_sk random(0, 999)
 SELECT *
-FROM databricks_postgres.public.customer
+FROM public.customer
 WHERE c_customer_sk = :c_customer_sk;`
     },
     {
       name: 'range',
       weight: 30,
-      content: `\\set c_current_hdemo_sk random(1, 700)
+      content: `\\set c_start random(1, 11)
+\\set c_end :c_start + 10
 SELECT count(*)
-FROM databricks_postgres.public.customer
-WHERE c_current_hdemo_sk BETWEEN :c_current_hdemo_sk AND :c_current_hdemo_sk + 1000;`
+FROM public.customer
+WHERE c_current_hdemo_sk BETWEEN :c_start AND :c_end;`
     },
     {
       name: 'agg',
       weight: 10,
       content: `SELECT c_preferred_cust_flag, count(*)
-FROM databricks_postgres.public.customer
+FROM public.customer
 GROUP BY c_preferred_cust_flag;`
     }
   ]);

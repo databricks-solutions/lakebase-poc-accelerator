@@ -11,6 +11,7 @@ import LakebaseDeployment from './components/LakebaseDeployment';
 import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import ConcurrencyTestingPsycopgAutoscaling from './components/ConcurrencyTestingPsycopgAutoscaling';
 import PgbenchDatabricks from './components/PgbenchDatabricks';
+import PgbenchDatabricksAutoscaling from './components/PgbenchDatabricksAutoscaling';
 import DatabricksLogo from './components/DatabricksLogo';
 import ThemeToggle from './components/ThemeToggle';
 
@@ -129,6 +130,11 @@ const AppContent: React.FC = () => {
               children: <PgbenchDatabricks />
             },
             {
+              key: 'pgbench-autoscaling',
+              label: 'Autoscaling Concurrency Testing (pgbench)',
+              children: <PgbenchDatabricksAutoscaling />
+            },
+            {
               key: 'concurrency-databricks',
               label: 'Concurrency Testing (psycopg)',
               children: <ConcurrencyTestingPsycopg />
@@ -149,12 +155,18 @@ const AppContent: React.FC = () => {
             border: `1px solid ${theme.colors.border}`
           }}
           size="large"
+          tabBarGutter={8}
           tabBarStyle={{
             background: theme.surface,
             margin: 0,
             padding: '0 24px',
             borderBottom: `1px solid ${theme.colors.border}`,
-            borderRadius: '16px 16px 0 0'
+            borderRadius: '16px 16px 0 0',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            flexWrap: 'nowrap'
           }}
         />
       </Content>

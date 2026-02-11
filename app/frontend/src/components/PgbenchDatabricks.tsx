@@ -100,17 +100,17 @@ const PgbenchDatabricks: React.FC = () => {
   const [queryConfigs, setQueryConfigs] = useState<QueryConfig[]>([
     {
       name: 'point',
-      content: '\\set c_customer_sk random(0, 999)\nSELECT *\nFROM databricks_postgres.public.customer\nWHERE c_customer_sk = :c_customer_sk;',
+      content: '\\set c_customer_sk random(0, 999)\nSELECT *\nFROM public.customer\nWHERE c_customer_sk = :c_customer_sk;',
       weight: 60
     },
     {
       name: 'range',
-      content: '\\set c_current_hdemo_sk random(1, 700)\nSELECT count(*)\nFROM databricks_postgres.public.customer\nWHERE c_current_hdemo_sk BETWEEN :c_current_hdemo_sk AND :c_current_hdemo_sk + 1000;',
+      content: '\\set c_start random(1, 11)\n\\set c_end :c_start + 10\nSELECT count(*)\nFROM public.customer\nWHERE c_current_hdemo_sk BETWEEN :c_start AND :c_end;',
       weight: 30
     },
     {
       name: 'agg',
-      content: 'SELECT c_preferred_cust_flag, count(*)\nFROM databricks_postgres.public.customer\nGROUP BY c_preferred_cust_flag;',
+      content: 'SELECT c_preferred_cust_flag, count(*)\nFROM public.customer\nGROUP BY c_preferred_cust_flag;',
       weight: 10
     }
   ]);
