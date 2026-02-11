@@ -341,7 +341,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
                   { pattern: /^ep-.*\.databricks\.com$/, message: 'Must be autoscaling endpoint (ep-*.databricks.com)' }
                 ]}
               >
-                <Input placeholder="ep-little-credit-d1b9b5ul.database.us-west-2.cloud.databricks.com" />
+                <Input placeholder="your-autosc-lakebase-123.database.us-west-2.cloud.databricks.com" />
               </Form.Item>
             </Col>
             <Col span={6}>

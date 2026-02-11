@@ -19,6 +19,20 @@ app/test_queries/*
 app/queries/**
 app/queries_psycopg/**
 
+# Build artifacts
+build/
+app/frontend/build/
+*.pyc
+*.pyo
+*.pyd
+
+# Node modules
+node_modules/
+app/frontend/node_modules/
+
+# Terminals output
+terminals/
+
 # Documentation and sample files
 sample_workload_config.yml
 LAKEBASE_BENCHMARK.md

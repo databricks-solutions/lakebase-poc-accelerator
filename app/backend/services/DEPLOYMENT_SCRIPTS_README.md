@@ -59,7 +59,7 @@ python3 deploy_provisioned_pgbench_job.py
 ### Required Configuration in `.env`
 
 ```bash
-PROVISIONED_LAKEBASE_INSTANCE_NAME=fe-shared-demo
+PROVISIONED_LAKEBASE_INSTANCE_NAME=lakebase-instance-name
 PROVISIONED_LAKEBASE_DATABASE=databricks_postgres
 PROVISIONED_DATABRICKS_WORKSPACE_URL=https://cust-success.cloud.databricks.com/
 ```
@@ -97,7 +97,7 @@ python3 deploy_autoscaling_pgbench_job.py
 ### Required Configuration in `.env`
 
 ```bash
-AUTOSCALING_PGHOST=ep-big-house-d2b5b5ut.database.us-west-2.cloud.databricks.com
+AUTOSCALING_PGHOST=your-autosc-lakebase-123.database.us-west-2.cloud.databricks.com
 AUTOSCALING_PGDATABASE=databricks_postgres
 AUTOSCALING_PGUSER=analyst
 AUTOSCALING_PGPASSWORD=erh_OLYf4Ko3tAfh
@@ -144,7 +144,7 @@ python3 deploy_provisioned_psycopg.py
 ### Required Configuration in `.env`
 
 ```bash
-PROVISIONED_LAKEBASE_INSTANCE_NAME=fe-shared-demo
+PROVISIONED_LAKEBASE_INSTANCE_NAME=lakebase-instance-name
 PROVISIONED_LAKEBASE_DATABASE=databricks_postgres
 ```
 
@@ -186,7 +186,7 @@ python3 deploy_autoscaling_psycopg.py
 ### Required Configuration in `.env`
 
 ```bash
-AUTOSCALING_PGHOST=ep-big-house-d2b5b5ut.database.us-west-2.cloud.databricks.com
+AUTOSCALING_PGHOST=your-autosc-lakebase-123.database.us-west-2.cloud.databricks.com
 AUTOSCALING_PGDATABASE=databricks_postgres
 AUTOSCALING_PGUSER=analyst
 AUTOSCALING_PGPASSWORD=erh_OLYf4Ko3tAfh
