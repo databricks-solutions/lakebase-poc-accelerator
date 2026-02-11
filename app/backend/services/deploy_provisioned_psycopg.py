@@ -14,14 +14,26 @@ from databricks.sdk import WorkspaceClient
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+# Try multiple locations: same directory as script, then project root
+script_dir = os.path.dirname(os.path.abspath(__file__))
+env_paths = [
+    os.path.join(script_dir, '.env'),  # Same dir as script
+    os.path.abspath(os.path.join(script_dir, '..', '..', '..', '.env')),  # Project root
+]
+for env_path in env_paths:
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        print(f"✅ Loaded environment from: {env_path}")
+        break
 
-# Add backend services to path
-backend_path = os.path.join(os.path.dirname(__file__), 'app', 'backend')
-if backend_path not in sys.path:
-    sys.path.insert(0, backend_path)
+# Add backend directory to path for imports
+# Handle both running from services dir and from project root
+current_dir = os.path.dirname(os.path.abspath(__file__))
+backend_dir = os.path.abspath(os.path.join(current_dir, '..'))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
 
-# Import services
+# Import services (now they're in parent directory)
 from services.lakebase_connection_service import LakebaseConnectionService
 from utils.parameter_parser import SimpleParameterParser
 

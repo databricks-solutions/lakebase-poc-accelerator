@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Typography, Row, Col, Tag, Alert, Divider, List, Statistic, Tooltip, Collapse } from 'antd';
+import { Card, Typography, Row, Col, Tag, Alert, Divider, List, Statistic, Collapse } from 'antd';
 import {
   CheckCircleOutlined,
   DatabaseOutlined,

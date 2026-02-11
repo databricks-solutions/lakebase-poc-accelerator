@@ -43,21 +43,27 @@ from databricks.sdk import WorkspaceClient
 # Try to load .env file if python-dotenv is available
 try:
     from dotenv import load_dotenv
-    # Load .env file from current directory or parent
-    env_path = os.path.join(os.path.dirname(__file__), '.env')
-    if os.path.exists(env_path):
-        load_dotenv(env_path)
-        print(f"✅ Loaded environment from: {env_path}")
-    else:
-        load_dotenv()  # Try to find .env in parent directories
+    # Try multiple locations: same directory as script, then project root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    env_paths = [
+        os.path.join(script_dir, '.env'),  # Same dir as script
+        os.path.abspath(os.path.join(script_dir, '..', '..', '..', '.env')),  # Project root
+    ]
+    for env_path in env_paths:
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+            print(f"✅ Loaded environment from: {env_path}")
+            break
 except ImportError:
     # python-dotenv not installed, that's okay - use environment variables
     pass
 
-# Add backend services to path
-backend_path = os.path.join(os.path.dirname(__file__), 'app', 'backend')
-if backend_path not in sys.path:
-    sys.path.insert(0, backend_path)
+# Add backend directory to path for imports
+# Handle both running from services dir and from project root
+current_dir = os.path.dirname(os.path.abspath(__file__))
+backend_dir = os.path.abspath(os.path.join(current_dir, '..'))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
 
 # Now import after path is set
 from services.databricks_jobs_service import DatabricksJobsService
@@ -281,7 +287,7 @@ def main():
     
     # Validate required environment variables
     # Check for PROVISIONED_ prefix first, then fall back to non-prefixed for backward compatibility
-    INSTANCE_NAME = os.getenv('PROVISIONED_LAKEBASE_INSTANCE_NAME')
+    INSTANCE_NAME = os.getenv('PROVISIONED_LAKEBASE_INSTANCE_NAME') or os.getenv('LAKEBASE_INSTANCE_NAME')
     if not INSTANCE_NAME:
         print("\n❌ Error: PROVISIONED_LAKEBASE_INSTANCE_NAME (or LAKEBASE_INSTANCE_NAME) environment variable is required")
         print("\nPlease set your environment variables:")
@@ -295,7 +301,7 @@ def main():
         sys.exit(1)
     
     # Configuration with defaults
-    DATABASE_NAME = os.getenv('PROVISIONED_LAKEBASE_DATABASE') or os.getenv('databricks_postgres')
+    DATABASE_NAME = os.getenv('PROVISIONED_LAKEBASE_DATABASE') or os.getenv('LAKEBASE_DATABASE', 'databricks_postgres')
     CLUSTER_ID = os.getenv('DATABRICKS_CLUSTER_ID', None)  # None = auto job cluster
     PROFILE = os.getenv('DATABRICKS_PROFILE', 'DEFAULT')
     

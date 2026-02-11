@@ -53,7 +53,9 @@ const LakebaseDeployment: React.FC<Props> = ({ generatedConfigs }) => {
   const [deploymentProgress, setDeploymentProgress] = useState<string>('');
   const [deploymentOutput, setDeploymentOutput] = useState<string>('');
   const [deploymentModalVisible, setDeploymentModalVisible] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [deploymentSteps, setDeploymentSteps] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [currentStep, setCurrentStep] = useState(0);
 
   // Helper to build workspace monitor URL

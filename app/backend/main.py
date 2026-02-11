@@ -1046,6 +1046,367 @@ async def get_concurrency_test_status():
             "error": str(e)
         }
 
+# Autoscaling Concurrency Testing Endpoints
+
+@app.post("/api/concurrency-test/autoscaling/upload-query")
+async def upload_autoscaling_query_file(file: UploadFile = File(...)):
+    """
+    Upload and parse a SQL query file for autoscaling testing.
+    
+    Args:
+        file: SQL file to upload
+        
+    Returns:
+        Parsed query information
+    """
+    try:
+        if not file.filename.endswith('.sql'):
+            raise HTTPException(status_code=400, detail="File must be a .sql file")
+        
+        content = await file.read()
+        query_content = content.decode('utf-8')
+        
+        query_identifier = file.filename.replace('.sql', '')
+        validation_result = SimpleParameterParser.validate_query_format(query_content)
+        
+        # Extract parameter sets from comments
+        parameter_sets = []
+        lines = query_content.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('-- PARAMETERS:'):
+                json_str = line.replace('-- PARAMETERS:', '').strip()
+                try:
+                    parameter_sets = json.loads(json_str)
+                except json.JSONDecodeError:
+                    parameter_sets = []
+                break
+        
+        # Save to separate temp directory for autoscaling
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_autoscaling_psycopg_queries"
+        temp_dir.mkdir(exist_ok=True)
+        
+        file_path = temp_dir / file.filename
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(query_content)
+        
+        return {
+            "query_identifier": query_identifier,
+            "query_content": query_content,
+            "parameter_count": len(parameter_sets),
+            "is_valid": validation_result["is_valid"],
+            "error_message": validation_result["error_message"],
+            "saved_path": str(file_path)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"File upload failed: {str(e)}")
+
+@app.post("/api/concurrency-test/autoscaling/run-uploaded-tests")
+async def run_autoscaling_uploaded_tests(test_request: dict):
+    """
+    Run concurrency tests using uploaded SQL files with autoscaling endpoint.
+    
+    Args:
+        test_request: Test configuration with PostgreSQL connection parameters
+        
+    Returns:
+        ConcurrencyTestReport with test results
+    """
+    try:
+        # Extract PostgreSQL connection parameters
+        pghost = test_request.get("pghost")
+        pgdatabase = test_request.get("pgdatabase", "databricks_postgres")
+        pguser = test_request.get("pguser")
+        pgpassword = test_request.get("pgpassword")
+        pgport = test_request.get("pgport", 5432)
+        pgsslmode = test_request.get("pgsslmode", "require")
+        concurrency_level = test_request.get("concurrency_level", 10)
+
+        if not pghost or not pguser or not pgpassword:
+            raise HTTPException(status_code=400, detail="pghost, pguser, and pgpassword are required")
+
+        # Get uploaded SQL files
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_autoscaling_psycopg_queries"
+        if not temp_dir.exists():
+            raise HTTPException(status_code=404, detail="No autoscaling queries folder found")
+        
+        sql_files = list(temp_dir.glob("*.sql"))
+        if not sql_files:
+            raise HTTPException(status_code=404, detail="No SQL files found")
+        
+        # Parse SQL files
+        execution_queries = []
+        for sql_file in sql_files:
+            content = sql_file.read_text(encoding='utf-8')
+            lines = content.split('\n')
+            
+            sql_lines = []
+            parameter_sets = []
+            exec_count = 5
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('-- PARAMETERS:'):
+                    json_str = line.replace('-- PARAMETERS:', '').strip()
+                    try:
+                        parameter_sets = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        parameter_sets = []
+                elif line.startswith('-- EXEC_COUNT:'):
+                    exec_count = int(line.replace('-- EXEC_COUNT:', '').strip())
+                elif not line.startswith('--'):
+                    sql_lines.append(line)
+            
+            sql_content = '\n'.join(sql_lines).strip()
+            
+            # Create test scenarios
+            test_scenarios = []
+            if parameter_sets:
+                for i, params in enumerate(parameter_sets, 1):
+                    test_scenarios.append({
+                        "name": f"scenario_{i}",
+                        "parameters": params,
+                        "execution_count": exec_count,
+                    })
+            else:
+                test_scenarios.append({
+                    "name": "scenario_1", 
+                    "parameters": [],
+                    "execution_count": exec_count,
+                })
+            
+            execution_queries.append({
+                "query_identifier": sql_file.stem,
+                "query_content": sql_content,
+                "test_scenarios": test_scenarios
+            })
+        
+        if not execution_queries:
+            raise HTTPException(status_code=400, detail="No valid queries found")
+        
+        # Initialize autoscaling connection service
+        from services.autoscaling_connection_service import AutoscalingConnectionService
+        
+        connection_service = AutoscalingConnectionService()
+        
+        pool_config = {
+            "base_pool_size": max(1, concurrency_level // 4),
+            "max_overflow": concurrency_level,
+            "pool_timeout": 30,
+            "pool_recycle": 3600,
+            "command_timeout": 30
+        }
+        
+        # Initialize with direct PostgreSQL parameters
+        pool_initialized = await connection_service.initialize_connection_pool(
+            pghost=pghost,
+            pgport=pgport,
+            pgdatabase=pgdatabase,
+            pguser=pguser,
+            pgpassword=pgpassword,
+            pgsslmode=pgsslmode,
+            pool_config=pool_config
+        )
+        
+        if not pool_initialized:
+            raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
+        
+        # Execute concurrent queries
+        report = await connection_service.execute_concurrent_queries(
+            queries=execution_queries,
+            concurrency_level=concurrency_level
+        )
+        
+        connection_service.close_connection_pool()
+        
+        return report
+        
+    except Exception as e:
+        try:
+            connection_service.close_connection_pool()
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Autoscaling test failed: {str(e)}")
+
+@app.post("/api/concurrency-test/autoscaling/run-predefined-tests")
+async def run_autoscaling_predefined_tests(test_request: dict):
+    """
+    Run concurrency tests using predefined queries with autoscaling endpoint.
+    
+    Args:
+        test_request: Test configuration with PostgreSQL connection parameters
+        
+    Returns:
+        ConcurrencyTestReport with test results
+    """
+    try:
+        # Extract PostgreSQL connection parameters
+        pghost = test_request.get("pghost")
+        pgdatabase = test_request.get("pgdatabase", "databricks_postgres")
+        pguser = test_request.get("pguser")
+        pgpassword = test_request.get("pgpassword")
+        pgport = test_request.get("pgport", 5432)
+        pgsslmode = test_request.get("pgsslmode", "require")
+        concurrency_level = test_request.get("concurrency_level", 10)
+        query_configs = test_request.get("query_configs", [])
+
+        if not pghost or not pguser or not pgpassword:
+            raise HTTPException(status_code=400, detail="pghost, pguser, and pgpassword are required")
+
+        if not query_configs:
+            raise HTTPException(status_code=400, detail="No predefined queries provided")
+        
+        # Parse predefined queries
+        execution_queries = []
+        for query_config in query_configs:
+            query_content = query_config.get("content", "")
+            query_name = query_config.get("name", "unnamed_query")
+            
+            lines = query_content.split('\n')
+            parameter_sets = []
+            exec_count = 5
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('-- PARAMETERS:'):
+                    json_str = line.replace('-- PARAMETERS:', '').strip()
+                    try:
+                        parameter_sets = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        parameter_sets = []
+                elif line.startswith('-- EXEC_COUNT:'):
+                    exec_count = int(line.replace('-- EXEC_COUNT:', '').strip())
+            
+            # Create test scenarios
+            test_scenarios = []
+            if parameter_sets:
+                for i, params in enumerate(parameter_sets, 1):
+                    test_scenarios.append({
+                        "name": f"scenario_{i}",
+                        "parameters": params,
+                        "execution_count": exec_count,
+                    })
+            else:
+                test_scenarios.append({
+                    "name": "scenario_1", 
+                    "parameters": [],
+                    "execution_count": exec_count,
+                })
+            
+            execution_queries.append({
+                "query_identifier": query_name,
+                "query_content": query_content,
+                "test_scenarios": test_scenarios
+            })
+        
+        if not execution_queries:
+            raise HTTPException(status_code=400, detail="No valid queries found")
+        
+        # Initialize autoscaling connection service
+        from services.autoscaling_connection_service import AutoscalingConnectionService
+        
+        connection_service = AutoscalingConnectionService()
+        
+        pool_config = {
+            "base_pool_size": max(1, concurrency_level // 4),
+            "max_overflow": concurrency_level,
+            "pool_timeout": 30,
+            "pool_recycle": 3600,
+            "command_timeout": 30
+        }
+        
+        # Initialize with direct PostgreSQL parameters
+        pool_initialized = await connection_service.initialize_connection_pool(
+            pghost=pghost,
+            pgport=pgport,
+            pgdatabase=pgdatabase,
+            pguser=pguser,
+            pgpassword=pgpassword,
+            pgsslmode=pgsslmode,
+            pool_config=pool_config
+        )
+        
+        if not pool_initialized:
+            raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
+        
+        # Execute concurrent queries
+        report = await connection_service.execute_concurrent_queries(
+            queries=execution_queries,
+            concurrency_level=concurrency_level
+        )
+        
+        connection_service.close_connection_pool()
+        
+        return report
+        
+    except Exception as e:
+        try:
+            connection_service.close_connection_pool()
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Autoscaling predefined test failed: {str(e)}")
+
+@app.post("/api/concurrency-test/autoscaling/clear-temp-files")
+async def clear_autoscaling_temp_files():
+    """
+    Clear all temporary SQL files from the autoscaling concurrency testing temp directory.
+    
+    Returns:
+        Success message
+    """
+    try:
+        import tempfile
+        
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_autoscaling_psycopg_queries"
+        
+        if temp_dir.exists():
+            for sql_file in temp_dir.glob("*.sql"):
+                sql_file.unlink()
+                print(f"Deleted autoscaling temp file: {sql_file}")
+            
+            return {"message": "Autoscaling temporary files cleared successfully", "files_cleared": True}
+        else:
+            return {"message": "No temp directory found", "files_cleared": False}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear temp files: {str(e)}")
+
+@app.delete("/api/concurrency-test/autoscaling/delete-query")
+async def delete_autoscaling_query_file(request: dict):
+    """
+    Delete an autoscaling query file from temp directory.
+    
+    Args:
+        request: Dictionary containing file_path
+        
+    Returns:
+        Success message
+    """
+    try:
+        file_path = request.get('file_path')
+        if not file_path:
+            raise HTTPException(status_code=400, detail="file_path is required")
+
+        import tempfile
+        temp_dir = Path(tempfile.gettempdir()) / "lakebase_autoscaling_psycopg_queries"
+        file_to_delete = Path(file_path)
+
+        # Security check
+        if not str(file_to_delete).startswith(str(temp_dir)):
+            raise HTTPException(status_code=400, detail="Invalid file path")
+
+        if file_to_delete.exists():
+            file_to_delete.unlink()
+            return {"message": f"File {file_to_delete.name} deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="File not found")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File deletion failed: {str(e)}")
+
 # pgbench Testing Endpoints
 
 @app.delete("/api/pgbench-test/delete-query")
