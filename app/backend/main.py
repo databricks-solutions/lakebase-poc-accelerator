@@ -669,10 +669,13 @@ async def upload_query_file(file: UploadFile = File(...)):
 @app.post("/api/concurrency-test/run-uploaded-tests")
 async def run_uploaded_tests(test_request: dict):
     """
-    Run concurrency tests using uploaded SQL files from app/queries_psycopg/ folder.
+    Run concurrency tests using uploaded SQL files.
+    Supports both OAuth (provisioned) and PostgreSQL (autoscaling) authentication.
     
     Args:
-        test_request: Test configuration with databricks_profile, instance_name, database_name, concurrency_level
+        test_request: Test configuration with either:
+            - OAuth: databricks_profile, workspace_url, instance_name, database_name, concurrency_level
+            - PostgreSQL: pghost, pgdatabase, pguser, pgpassword, pgport, pgsslmode, concurrency_level
         
     Returns:
         ConcurrencyTestReport with test results and metrics
@@ -681,25 +684,29 @@ async def run_uploaded_tests(test_request: dict):
         # Debug: Log the incoming request
         print(f"🔍 Incoming test_request: {test_request}")
         
-        # Extract test configuration
-        databricks_profile = test_request.get("databricks_profile", "DEFAULT")
+        # Detect authentication method
+        pghost = test_request.get("pghost")
+        pguser = test_request.get("pguser")
+        pgpassword = test_request.get("pgpassword")
         workspace_url = test_request.get("workspace_url")
         instance_name = test_request.get("instance_name")
-        database_name = test_request.get("database_name", "databricks_postgres")
+        
+        use_postgres_auth = bool(pghost and pguser and pgpassword)
+        use_oauth_auth = bool(workspace_url and instance_name)
+        
+        print(f"🔍 Authentication method detection:")
+        print(f"   PostgreSQL auth: {use_postgres_auth}")
+        print(f"   OAuth auth: {use_oauth_auth}")
+        
+        # Extract common configuration
+        database_name = test_request.get("database_name") or test_request.get("pgdatabase", "databricks_postgres")
         concurrency_level = test_request.get("concurrency_level", 10)
-
-        print(f"🔍 Extracted values:")
-        print(f"   databricks_profile: {databricks_profile}")
-        print(f"   workspace_url: {workspace_url}")
-        print(f"   instance_name: {instance_name}")
-        print(f"   database_name: {database_name}")
-        print(f"   concurrency_level: {concurrency_level}")
-
-        if not instance_name:
-            raise HTTPException(status_code=400, detail="instance_name is required")
-
-        if not workspace_url:
-            raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
+        
+        if not use_postgres_auth and not use_oauth_auth:
+            raise HTTPException(
+                status_code=400, 
+                detail="Either PostgreSQL credentials (pghost, pguser, pgpassword) or OAuth credentials (workspace_url, instance_name) are required"
+            )
         
         # Get all SQL files from temp directory (separate from pgbench)
         import tempfile
@@ -772,48 +779,79 @@ async def run_uploaded_tests(test_request: dict):
         if not execution_queries:
             raise HTTPException(status_code=400, detail="No valid queries found")
         
-        # Initialize connection service
-        connection_service = LakebaseConnectionService()
-        
-        # Initialize connection pool
+        # Initialize connection pool based on authentication method
         pool_config = {
             "base_pool_size": max(1, concurrency_level // 4),
             "max_overflow": concurrency_level,
             "pool_timeout": 30,
             "pool_recycle": 3600,
-            "command_timeout": 30,
-            "ssl_mode": "require"
+            "command_timeout": 30
         }
         
-        try:
-            pool_initialized = await connection_service.initialize_connection_pool(
-                workspace_url=workspace_url,
-                instance_name=instance_name,
-                database=database_name,
-                pool_config=pool_config,
-                profile=databricks_profile
-            )
+        if use_postgres_auth:
+            # Use direct PostgreSQL connection
+            print("🔐 Initializing database connection...")
+            from services.autoscaling_connection_service import AutoscalingConnectionService
             
-            if not pool_initialized:
-                raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
-        except Exception as e:
-            # Provide more specific error details
-            error_message = str(e)
-            if "Resource not found" in error_message:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Lakebase instance '{instance_name}' not found or not accessible with profile '{databricks_profile}'. Please verify the instance name and your Databricks profile configuration."
+            connection_service = AutoscalingConnectionService()
+            
+            pgport = test_request.get("pgport", 5432)
+            pgsslmode = test_request.get("pgsslmode", "require")
+            
+            try:
+                pool_initialized = await connection_service.initialize_connection_pool(
+                    pghost=pghost,
+                    pgport=pgport,
+                    pgdatabase=database_name,
+                    pguser=pguser,
+                    pgpassword=pgpassword,
+                    pgsslmode=pgsslmode,
+                    pool_config=pool_config
                 )
-            elif "profile" in error_message.lower():
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid Databricks profile '{databricks_profile}'. Please check your Databricks CLI configuration."
-                )
-            else:
+                
+                if not pool_initialized:
+                    raise HTTPException(status_code=500, detail="Failed to initialize PostgreSQL connection pool")
+            except Exception as e:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Connection initialization failed: {error_message}"
+                    detail=f"PostgreSQL connection initialization failed: {str(e)}"
                 )
+        else:
+            # Use OAuth authentication (provisioned Lakebase)
+            print("🔐 Initializing database connection...")
+            connection_service = LakebaseConnectionService()
+            databricks_profile = test_request.get("databricks_profile", "DEFAULT")
+            pool_config["ssl_mode"] = "require"
+            
+            try:
+                pool_initialized = await connection_service.initialize_connection_pool(
+                    workspace_url=workspace_url,
+                    instance_name=instance_name,
+                    database=database_name,
+                    pool_config=pool_config,
+                    profile=databricks_profile
+                )
+                
+                if not pool_initialized:
+                    raise HTTPException(status_code=500, detail="Failed to initialize OAuth connection pool")
+            except Exception as e:
+                # Provide more specific error details
+                error_message = str(e)
+                if "Resource not found" in error_message:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Lakebase instance '{instance_name}' not found or not accessible with profile '{databricks_profile}'. Please verify the instance name and your Databricks profile configuration."
+                    )
+                elif "profile" in error_message.lower():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid Databricks profile '{databricks_profile}'. Please check your Databricks CLI configuration."
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"OAuth connection initialization failed: {error_message}"
+                    )
         
         # Execute concurrent queries
         report = await connection_service.execute_concurrent_queries(
@@ -838,9 +876,12 @@ async def run_uploaded_tests(test_request: dict):
 async def run_predefined_tests(test_request: dict):
     """
     Run concurrency tests using predefined queries.
+    Supports both OAuth (provisioned) and PostgreSQL (autoscaling) authentication.
     
     Args:
-        test_request: Test configuration with databricks_profile, instance_name, database_name, concurrency_level, query_configs
+        test_request: Test configuration with either:
+            - OAuth: databricks_profile, workspace_url, instance_name, database_name, concurrency_level, query_configs
+            - PostgreSQL: pghost, pgdatabase, pguser, pgpassword, pgport, pgsslmode, concurrency_level, query_configs
         
     Returns:
         ConcurrencyTestReport with test results and metrics
@@ -849,27 +890,30 @@ async def run_predefined_tests(test_request: dict):
         # Debug: Log the incoming request
         print(f"🔍 Incoming predefined test_request: {test_request}")
         
-        # Extract test configuration
-        databricks_profile = test_request.get("databricks_profile", "DEFAULT")
+        # Detect authentication method
+        pghost = test_request.get("pghost")
+        pguser = test_request.get("pguser")
+        pgpassword = test_request.get("pgpassword")
         workspace_url = test_request.get("workspace_url")
         instance_name = test_request.get("instance_name")
-        database_name = test_request.get("database_name", "databricks_postgres")
+        
+        use_postgres_auth = bool(pghost and pguser and pgpassword)
+        use_oauth_auth = bool(workspace_url and instance_name)
+        
+        print(f"🔍 Authentication method detection:")
+        print(f"   PostgreSQL auth: {use_postgres_auth}")
+        print(f"   OAuth auth: {use_oauth_auth}")
+        
+        # Extract common configuration
+        database_name = test_request.get("database_name") or test_request.get("pgdatabase", "databricks_postgres")
         concurrency_level = test_request.get("concurrency_level", 10)
         query_configs = test_request.get("query_configs", [])
-
-        print(f"🔍 Extracted values:")
-        print(f"   databricks_profile: {databricks_profile}")
-        print(f"   workspace_url: {workspace_url}")
-        print(f"   instance_name: {instance_name}")
-        print(f"   database_name: {database_name}")
-        print(f"   concurrency_level: {concurrency_level}")
-        print(f"   query_configs count: {len(query_configs)}")
-
-        if not instance_name:
-            raise HTTPException(status_code=400, detail="instance_name is required")
-
-        if not workspace_url:
-            raise HTTPException(status_code=400, detail="workspace_url is required. Please provide your Databricks workspace URL.")
+        
+        if not use_postgres_auth and not use_oauth_auth:
+            raise HTTPException(
+                status_code=400, 
+                detail="Either PostgreSQL credentials (pghost, pguser, pgpassword) or OAuth credentials (workspace_url, instance_name) are required"
+            )
 
         if not query_configs:
             raise HTTPException(status_code=400, detail="No predefined queries provided")
@@ -927,48 +971,79 @@ async def run_predefined_tests(test_request: dict):
         if not execution_queries:
             raise HTTPException(status_code=400, detail="No valid predefined queries found")
         
-        # Initialize connection service
-        connection_service = LakebaseConnectionService()
-        
-        # Initialize connection pool
+        # Initialize connection pool based on authentication method
         pool_config = {
             "base_pool_size": max(1, concurrency_level // 4),
             "max_overflow": concurrency_level,
             "pool_timeout": 30,
             "pool_recycle": 3600,
-            "command_timeout": 30,
-            "ssl_mode": "require"
+            "command_timeout": 30
         }
         
-        try:
-            pool_initialized = await connection_service.initialize_connection_pool(
-                workspace_url=workspace_url,
-                instance_name=instance_name,
-                database=database_name,
-                pool_config=pool_config,
-                profile=databricks_profile
-            )
+        if use_postgres_auth:
+            # Use direct PostgreSQL connection
+            print("🔐 Initializing database connection...")
+            from services.autoscaling_connection_service import AutoscalingConnectionService
             
-            if not pool_initialized:
-                raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
-        except Exception as e:
-            # Provide more specific error details
-            error_message = str(e)
-            if "Resource not found" in error_message:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Lakebase instance '{instance_name}' not found or not accessible with profile '{databricks_profile}'. Please verify the instance name and your Databricks profile configuration."
+            connection_service = AutoscalingConnectionService()
+            
+            pgport = test_request.get("pgport", 5432)
+            pgsslmode = test_request.get("pgsslmode", "require")
+            
+            try:
+                pool_initialized = await connection_service.initialize_connection_pool(
+                    pghost=pghost,
+                    pgport=pgport,
+                    pgdatabase=database_name,
+                    pguser=pguser,
+                    pgpassword=pgpassword,
+                    pgsslmode=pgsslmode,
+                    pool_config=pool_config
                 )
-            elif "profile" in error_message.lower():
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid Databricks profile '{databricks_profile}'. Please check your Databricks CLI configuration."
-                )
-            else:
+                
+                if not pool_initialized:
+                    raise HTTPException(status_code=500, detail="Failed to initialize PostgreSQL connection pool")
+            except Exception as e:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Connection initialization failed: {error_message}"
+                    detail=f"PostgreSQL connection initialization failed: {str(e)}"
                 )
+        else:
+            # Use OAuth authentication (provisioned Lakebase)
+            print("🔐 Initializing database connection...")
+            connection_service = LakebaseConnectionService()
+            databricks_profile = test_request.get("databricks_profile", "DEFAULT")
+            pool_config["ssl_mode"] = "require"
+            
+            try:
+                pool_initialized = await connection_service.initialize_connection_pool(
+                    workspace_url=workspace_url,
+                    instance_name=instance_name,
+                    database=database_name,
+                    pool_config=pool_config,
+                    profile=databricks_profile
+                )
+                
+                if not pool_initialized:
+                    raise HTTPException(status_code=500, detail="Failed to initialize OAuth connection pool")
+            except Exception as e:
+                # Provide more specific error details
+                error_message = str(e)
+                if "Resource not found" in error_message:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Lakebase instance '{instance_name}' not found or not accessible with profile '{databricks_profile}'. Please verify the instance name and your Databricks profile configuration."
+                    )
+                elif "profile" in error_message.lower():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid Databricks profile '{databricks_profile}'. Please check your Databricks CLI configuration."
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"OAuth connection initialization failed: {error_message}"
+                    )
         
         # Execute concurrent queries
         report = await connection_service.execute_concurrent_queries(

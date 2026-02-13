@@ -99,7 +99,7 @@ class AutoscalingConnectionService:
                 result = conn.execute(text("SELECT 1"))
                 result.fetchone()
             
-            print(f"✅ Autoscaling connection pool initialized")
+            print(f"✅ Connection pool initialized")
             print(f"   Host: {pghost}")
             print(f"   Database: {pgdatabase}")
             print(f"   User: {pguser}")
@@ -109,7 +109,7 @@ class AutoscalingConnectionService:
             return True
             
         except Exception as e:
-            print(f"❌ Failed to initialize autoscaling connection pool: {e}")
+            print(f"❌ Failed to initialize connection pool: {e}")
             return False
 
     @contextmanager
@@ -129,13 +129,13 @@ class AutoscalingConnectionService:
         finally:
             connection.close()
 
-    async def execute_query(
+    def _execute_query_sync(
         self,
         query: str,
         parameters: Optional[List[Any]] = None
     ) -> Dict[str, Any]:
         """
-        Execute a single query with optional parameters.
+        Synchronous query execution (to be called from thread pool).
         
         Args:
             query: SQL query to execute
@@ -193,6 +193,25 @@ class AutoscalingConnectionService:
                 "error_message": error_msg,
                 "error_type": error_type
             }
+    
+    async def execute_query(
+        self,
+        query: str,
+        parameters: Optional[List[Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute a single query with optional parameters (async wrapper).
+        
+        Args:
+            query: SQL query to execute
+            parameters: Query parameters (if any)
+            
+        Returns:
+            Dictionary with execution results
+        """
+        # Run blocking database call in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._execute_query_sync, query, parameters)
 
     async def execute_concurrent_queries(
         self,
@@ -210,7 +229,7 @@ class AutoscalingConnectionService:
             Comprehensive test report
         """
         print(f"\n{'='*70}")
-        print("🚀 Starting Autoscaling Concurrent Query Testing")
+        print("🚀 Starting Concurrent Query Testing")
         print(f"{'='*70}\n")
         
         print(f"📋 Test Configuration:")
@@ -335,7 +354,7 @@ class AutoscalingConnectionService:
         }
         
         print(f"\n{'='*70}")
-        print("✅ Autoscaling Concurrent Query Testing Complete")
+        print("✅ Concurrent Query Testing Complete")
         print(f"{'='*70}\n")
         print(f"📊 Results:")
         print(f"   Total Queries: {len(results)}")
@@ -375,4 +394,4 @@ class AutoscalingConnectionService:
         if self._engine:
             self._engine.dispose()
             self._engine = None
-            print("🔒 Autoscaling connection pool closed")
+            print("🔒 Connection pool closed")

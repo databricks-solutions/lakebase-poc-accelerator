@@ -9,7 +9,6 @@ import LakebaseOverview from './components/LakebaseOverview';
 import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
 import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
-import ConcurrencyTestingPsycopgAutoscaling from './components/ConcurrencyTestingPsycopgAutoscaling';
 import PgbenchDatabricks from './components/PgbenchDatabricks';
 import PgbenchDatabricksAutoscaling from './components/PgbenchDatabricksAutoscaling';
 import DatabricksLogo from './components/DatabricksLogo';
@@ -135,14 +134,9 @@ const AppContent: React.FC = () => {
               children: <PgbenchDatabricksAutoscaling />
             },
             {
-              key: 'concurrency-databricks',
+              key: 'concurrency-psycopg',
               label: 'Concurrency Testing (psycopg)',
               children: <ConcurrencyTestingPsycopg />
-            },
-            {
-              key: 'concurrency-autoscaling',
-              label: 'Autoscaling Concurrency Testing (psycopg)',
-              children: <ConcurrencyTestingPsycopgAutoscaling />
             }
           ]}
           style={{

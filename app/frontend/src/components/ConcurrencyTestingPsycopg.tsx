@@ -105,14 +105,12 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
     formData.append('file', file);
 
     try {
-      console.log('Sending request to /api/concurrency-test/upload-query');
       const response = await fetch('/api/concurrency-test/upload-query', {
         method: 'POST',
         body: formData,
       });
 
       console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -129,7 +127,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
         return false;
       }
 
-      // Add to uploaded files list (simplified - no parameter configuration needed)
+      // Add to uploaded files list
       setUploadedFiles(prev => [...prev, {
         name: result.query_identifier,
         content: result.query_content,
@@ -138,7 +136,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
       }]);
 
       message.success(`Query "${result.query_identifier}" uploaded and saved successfully`);
-      return false; // Prevent default upload behavior
+      return false;
     } catch (error) {
       console.error('Upload error:', error);
       message.error(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -170,17 +168,12 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
       console.log('Button clicked! Starting test execution...');
       console.log('Uploaded files:', uploadedFiles);
 
-      // Get form values without validation first to see what we have
       const formValues = form.getFieldsValue();
       console.log('Form values (raw):', formValues);
-      console.log('workspace_url specifically:', formValues.workspace_url);
-      console.log('All form field names:', Object.keys(formValues));
 
-      // Validate required fields manually to avoid workspace_url validation issues
-      const requiredFields = ['workspace_url', 'instance_name', 'concurrency_level'];
+      // Validate required fields
+      const requiredFields = ['pghost', 'pgdatabase', 'pguser', 'pgpassword', 'concurrency_level'];
       const missingFields = requiredFields.filter(field => !formValues[field]);
-
-      console.log('Missing fields check:', missingFields);
 
       if (missingFields.length > 0) {
         message.error(`Please fill in the following required fields: ${missingFields.join(', ')}`);
@@ -200,21 +193,25 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
 
       setIsTestRunning(true);
       setTestResults(null);
-      setTestError(null); // Clear any previous errors
+      setTestError(null);
 
+      // Build test config with PostgreSQL credentials
       const testConfig = {
-        databricks_profile: formValues.databricks_profile,
-        workspace_url: formValues.workspace_url,
-        instance_name: formValues.instance_name,
-        database_name: formValues.database_name || 'databricks_postgres',
+        pghost: formValues.pghost,
+        pgdatabase: formValues.pgdatabase || 'databricks_postgres',
+        pguser: formValues.pguser,
+        pgpassword: formValues.pgpassword,
+        pgport: formValues.pgport || 5432,
+        pgsslmode: formValues.pgsslmode || 'require',
+        pgchannelbinding: formValues.pgchannelbinding || 'require',
         concurrency_level: formValues.concurrency_level || 10,
         query_source: querySource,
-        // Only include query_configs for predefined mode, never for upload mode
         ...(querySource === 'predefined' && { query_configs: queryConfigs })
       };
 
       console.log('Sending test config:', testConfig);
 
+      // Use unified endpoints
       const endpoint = querySource === 'predefined'
         ? '/api/concurrency-test/run-predefined-tests'
         : '/api/concurrency-test/run-uploaded-tests';
@@ -240,7 +237,6 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
             console.error('Error response:', errorData);
             errorMessage = errorData.detail || 'Test execution failed';
           } catch (e) {
-            // If response is not JSON (e.g., HTML error page), try to get text
             try {
               const errorText = await response.text();
               console.error('Non-JSON error response:', errorText);
@@ -253,14 +249,14 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
 
         setTestError(errorMessage);
         message.error(`Test execution failed: ${errorMessage}`);
-        return; // Don't throw, just return to show error in UI
+        return;
       }
 
       const results = await response.json();
       console.log('Test results:', results);
       setTestResults(results);
-      setTestError(null); // Clear any previous errors on success
-      message.success(`Concurrency test completed successfully! Executed ${uploadedFiles.length} uploaded queries.`);
+      setTestError(null);
+      message.success(`Concurrency test completed successfully!`);
 
     } catch (error) {
       console.error('Test execution error:', error);
@@ -268,7 +264,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
 
       if (error instanceof Error) {
         if (error.message.includes('504')) {
-          errorMessage = 'Request timed out. The test may be taking too long. Try reducing concurrency level,  test duration or scaling up lakebase instance.';
+          errorMessage = 'Request timed out. The test may be taking too long. Try reducing concurrency level or test duration.';
         } else if (error.message.includes('Unexpected token')) {
           errorMessage = 'Server returned invalid response. The test may have timed out or encountered an error.';
         } else {
@@ -294,8 +290,8 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
         <Paragraph style={{ marginBottom: 0 }}>
           <ul>
             <li>Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.</li>
-            <li>This provides flexible, customizable concurrency testing with detailed performance metrics.</li>
-            <li>If running on Databricks Apps, ensure the app service principal has permission to access the database. In Databricks Workspace, navigate to your Lakebase Instance &gt; Permissions &gt; Add PostgreSQL Role, search for the App Service Principal, and grant it the databricks_superuser role.</li>
+            <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase instances using standard PostgreSQL authentication.</li>
+            <li>Provides flexible, customizable concurrency testing with detailed performance metrics.</li>
           </ul>
         </Paragraph>
       </div>
@@ -305,15 +301,16 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
         layout="vertical"
         onFinish={handleRunTest}
         initialValues={{
-          databricks_profile: "DEFAULT",
+          pgport: 5432,
+          pgsslmode: "require",
+          pgchannelbinding: "require",
           concurrency_level: 10,
           DB_POOL_SIZE: 5,
           DB_MAX_OVERFLOW: 10,
           DB_POOL_TIMEOUT: 30,
           DB_COMMAND_TIMEOUT: 60,
           DB_POOL_RECYCLE_INTERVAL: 3600,
-          DB_POOL_PRE_PING: true,
-          DB_SSL_MODE: "require"
+          DB_POOL_PRE_PING: true
         }}
       >
         {/* Connection Configuration */}
@@ -329,47 +326,35 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                label="Databricks Workspace URL"
-                name="workspace_url"
-                rules={[{ required: true, message: 'Please enter Databricks workspace URL' }]}
-              >
-                <Input placeholder="https://your-workspace.cloud.databricks.com" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
                 label={
                   <span>
-                    Databricks Profile Name
-                    <Tooltip title="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above.">
+                    PostgreSQL Host (Endpoint)
+                    <Tooltip title="Lakebase endpoint hostname (e.g., ep-*.databricks.com for autoscaling or instance DNS for provisioned)">
                       <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
                     </Tooltip>
                   </span>
                 }
-                name="databricks_profile"
-              >
-                <Input placeholder="DEFAULT" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="Lakebase Instance Name"
-                name="instance_name"
+                name="pghost"
                 rules={[
-                  { required: true, message: 'Please enter instance name' },
-                  { pattern: /^[a-zA-Z0-9-]+$/, message: 'Only alphanumeric characters and hyphens allowed' }
+                  { required: true, message: 'Please enter PostgreSQL host' }
                 ]}
               >
-                <Input placeholder="lakebase-accelerator-instance" />
+                <Input placeholder="ep-your-autoscaling-endpoint.databricks.com" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={6}>
+              <Form.Item
+                label="PostgreSQL Port"
+                name="pgport"
+              >
+                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
               <Form.Item
                 label="Database Name"
-                name="database_name"
+                name="pgdatabase"
+                rules={[{ required: true, message: 'Please enter database name' }]}
               >
                 <Input placeholder="databricks_postgres" />
               </Form.Item>
@@ -378,6 +363,55 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
 
           <Row gutter={16}>
             <Col span={12}>
+              <Form.Item
+                label="PostgreSQL User"
+                name="pguser"
+                rules={[{ required: true, message: 'Please enter PostgreSQL user' }]}
+              >
+                <Input placeholder="analyst" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="PostgreSQL Password"
+                name="pgpassword"
+                rules={[{ required: true, message: 'Please enter PostgreSQL password' }]}
+              >
+                <Input.Password 
+                  placeholder="Enter password" 
+                  visibilityToggle
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                label="SSL Mode"
+                name="pgsslmode"
+              >
+                <Select>
+                  <Option value="require">Require</Option>
+                  <Option value="prefer">Prefer</Option>
+                  <Option value="allow">Allow</Option>
+                  <Option value="disable">Disable</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label="Channel Binding"
+                name="pgchannelbinding"
+              >
+                <Select>
+                  <Option value="require">Require</Option>
+                  <Option value="prefer">Prefer</Option>
+                  <Option value="disable">Disable</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
               <Form.Item
                 label="Concurrent Connections"
                 name="concurrency_level"
@@ -389,7 +423,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
                 <InputNumber
                   min={1}
                   max={1000}
-                  style={{ width: '100%', borderRadius: '6px', border: 'pink !important' }}
+                  style={{ width: '100%' }}
                 />
               </Form.Item>
             </Col>
