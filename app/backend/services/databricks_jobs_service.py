@@ -1039,7 +1039,7 @@ class DatabricksJobsService:
             logger.error(f"Error parsing pgbench results: {e}")
             return None
     
-    def _get_or_create_pgbench_job(self, cluster_id: Optional[str], is_autoscaling: bool = False) -> str:
+    def _get_or_create_pgbench_job(self, cluster_id: Optional[str]) -> str:
         """Get existing pgbench job or create/update it based on cluster configuration.
         
         The job is reusable across all test runs with different parameters.
@@ -1047,7 +1047,6 @@ class DatabricksJobsService:
         
         Args:
             cluster_id: Cluster ID to use (None for auto job cluster)
-            is_autoscaling: If True, uses autoscaling job name, otherwise provisioned
             
         Returns:
             Job ID string
@@ -1059,11 +1058,8 @@ class DatabricksJobsService:
             import os
             app_name = os.getenv('DATABRICKS_APP_NAME', 'lakebase_app')
             
-            # Separate job names for provisioned vs autoscaling
-            if is_autoscaling:
-                job_name = f"{app_name}_autoscaling_pgbench_job"
-            else:
-                job_name = f"{app_name}_pgbench_job"
+            # Unified job name for all pgbench tests
+            job_name = f"{app_name}_pgbench_job"
             
             print(f"PGBENCH_JOB: Using job name: {job_name}")
             print(f"PGBENCH_JOB: Cluster config - Interactive: {bool(cluster_id)}")
@@ -1366,271 +1362,8 @@ class DatabricksJobsService:
             logger.error(f"PGBENCH_JOB: Failed to get/create job: {e}")
             raise
     
-    def submit_pgbench_job(self, 
-                          lakebase_instance_name: str,
-                          database_name: str,
-                          cluster_id: Optional[str],
-                          pgbench_config: Dict[str, Any],
-                          query_configs: Optional[List[Dict[str, Any]]] = None,
-                          query_workspace_path: Optional[str] = None) -> Dict[str, Any]:
-        """Submit a complete pgbench job with hybrid query source support
-        
-        Args:
-            lakebase_instance_name: Name of Lakebase instance
-            database_name: Database name
-            cluster_id: Cluster ID to run on (None for auto job cluster)
-            pgbench_config: pgbench configuration parameters
-            query_configs: List of query configurations (for upload approach)
-            query_workspace_path: Workspace path to queries folder (for workspace approach)
-            
-        Returns:
-            Dictionary with job_id, run_id, and workspace URLs
-            
-        Note:
-            Either query_configs OR query_workspace_path must be provided.
-            If query_configs size > 8KB, queries are automatically uploaded to workspace.
-        """
-        try:
-            # Log cluster_id for debugging (using print for app logs visibility)
-            print(f"CLUSTER_ID_DEBUG: Received cluster_id={repr(cluster_id)}, type={type(cluster_id)}, bool={bool(cluster_id)}")
-            if cluster_id:
-                print(f"CLUSTER_ID_DEBUG: cluster_id.strip()={repr(cluster_id.strip())}, bool(strip)={bool(cluster_id.strip())}")
-            
-            # Use fixed notebook path in workspace for reusability (not per-job)
-            notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
-            
-            # Read the parameterized notebook content
-            import os
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            parent_dir = os.path.dirname(current_dir)
-            grandparent_dir = os.path.dirname(parent_dir)
-            
-            print(f"NOTEBOOK_PATH: Current file directory: {current_dir}")
-            print(f"NOTEBOOK_PATH: Parent directory: {parent_dir}")
-            print(f"NOTEBOOK_PATH: Grandparent directory: {grandparent_dir}")
-            print(f"NOTEBOOK_PATH: Current working directory: {os.getcwd()}")
-            
-            # Try multiple possible notebook locations for different deployment environments
-            # PRIORITY: Look for original .ipynb files first (JSON format), then Databricks converted format
-            possible_paths = [
-                # Original source .ipynb files (JSON format) - PRIORITY
-                os.path.join(current_dir, '..', '..', 'notebooks', 'pgbench_parameterized.ipynb'),
-                os.path.join(os.path.dirname(current_dir), '..', '..', 'notebooks', 'pgbench_parameterized.ipynb'),
-                '/app/notebooks/pgbench_parameterized.ipynb',
-                os.path.join('/app', 'notebooks', 'pgbench_parameterized.ipynb'),
-                # Databricks converted format (will be converted to JSON) - FALLBACK
-                os.path.join(current_dir, '..', '..', 'notebooks', 'pgbench_parameterized'),
-                os.path.join(os.path.dirname(current_dir), '..', '..', 'notebooks', 'pgbench_parameterized'),
-                '/app/notebooks/pgbench_parameterized',
-                os.path.join('/app', 'notebooks', 'pgbench_parameterized')
-            ]
-            
-            print(f"NOTEBOOK_PATH: Will try {len(possible_paths)} possible paths:")
-            for i, path in enumerate(possible_paths, 1):
-                abs_path = os.path.abspath(path)
-                print(f"NOTEBOOK_PATH: Path {i}: {path} -> {abs_path}")
-            
-            notebook_path_local = None
-            for path in possible_paths:
-                abs_path = os.path.abspath(path)
-                print(f"NOTEBOOK_PATH: Trying path: {abs_path}")
-                if os.path.exists(abs_path):
-                    notebook_path_local = abs_path
-                    print(f"NOTEBOOK_PATH: Found notebook at: {notebook_path_local}")
-                    break
-            
-            if not notebook_path_local:
-                available_paths = "\n".join(f"  - {os.path.abspath(p)}" for p in possible_paths)
-                
-                # List files in each directory we checked
-                directory_listings = []
-                checked_dirs = set()
-                for path in possible_paths:
-                    abs_path = os.path.abspath(path)
-                    dir_path = os.path.dirname(abs_path)
-                    if dir_path not in checked_dirs:
-                        checked_dirs.add(dir_path)
-                        try:
-                            if os.path.exists(dir_path):
-                                files = os.listdir(dir_path)
-                                directory_listings.append(f"  {dir_path}: {files}")
-                            else:
-                                directory_listings.append(f"  {dir_path}: [DIRECTORY DOES NOT EXIST]")
-                        except Exception as e:
-                            directory_listings.append(f"  {dir_path}: [ERROR LISTING: {e}]")
-                
-                listings_text = "\n".join(directory_listings) if directory_listings else "No directories found to list"
-                
-                raise FileNotFoundError(
-                    f"Could not find pgbench_parameterized.ipynb in any of these locations:\n{available_paths}\n"
-                    f"Current working directory: {os.getcwd()}\n"
-                    f"Current file directory: {current_dir}\n"
-                    f"Directory listings:\n{listings_text}"
-                )
-            
-            # Read the notebook file - no validation needed, just use as-is
-            try:
-                print(f"NOTEBOOK: Reading from path: {notebook_path_local}")
-                with open(notebook_path_local, 'r') as f:
-                    notebook_content = f.read()
-                
-                print(f"NOTEBOOK: Successfully read notebook file from: {notebook_path_local}")
-                print(f"NOTEBOOK: File length: {len(notebook_content)} characters")
-                print(f"NOTEBOOK: First 200 chars: {notebook_content[:200]}")
-                print(f"NOTEBOOK: Last 100 chars: {notebook_content[-100:]}")
-                
-                # Basic validation - check if it looks like a notebook
-                if len(notebook_content.strip()) == 0:
-                    raise ValueError("Notebook file is empty")
-                
-                # Check if it starts with typical notebook structure
-                import json
-                try:
-                    parsed = json.loads(notebook_content)
-                    print(f"NOTEBOOK: Valid JSON structure")
-                    if 'cells' in parsed:
-                        print(f"NOTEBOOK: Contains {len(parsed['cells'])} cells")
-                    if 'nbformat' in parsed:
-                        print(f"NOTEBOOK: Notebook format version: {parsed['nbformat']}")
-                    else:
-                        print(f"NOTEBOOK: WARNING - No nbformat field found")
-                except json.JSONDecodeError as e:
-                    print(f"NOTEBOOK: File is in Databricks source format, not JSON: {e}")
-                    print(f"NOTEBOOK: Converting from Databricks format to Jupyter notebook format")
-                    
-                    # Convert Databricks source format to Jupyter notebook JSON
-                    notebook_content = self._convert_databricks_to_jupyter(notebook_content)
-                    print(f"NOTEBOOK: Converted to Jupyter format, new length: {len(notebook_content)}")
-                    
-            except (FileNotFoundError, ValueError) as e:
-                print(f"NOTEBOOK ERROR: Failed to read notebook file: {e}")
-                print(f"NOTEBOOK ERROR: Cannot proceed without the actual pgbench_parameterized.ipynb")
-                raise Exception(f"Failed to load pgbench notebook: {e}. Cannot create job without the actual notebook file.")
-            
-            # Always upload notebook to ensure latest version is used (overwrite=True in upload_notebook)
-            # This ensures bug fixes and updates are immediately reflected
-            client = self._get_client()
-            logger.info(f"NOTEBOOK: Uploading latest version to {notebook_path}")
-            self.upload_notebook(notebook_path, notebook_content)
-            logger.info(f"NOTEBOOK: Successfully uploaded/updated notebook at {notebook_path}")
-            
-            # Prepare job parameters - handle both query sources
-            parameters = {
-                "lakebase_instance_name": lakebase_instance_name,
-                "database_name": database_name,
-                **pgbench_config
-            }
-            
-            # Validate that at least one query source is provided
-            if not query_configs and not query_workspace_path:
-                raise ValueError("Either query_configs or query_workspace_path must be provided")
-            
-            if query_workspace_path:
-                # Approach 2: User provided workspace path
-                logger.info(f"QUERY_SOURCE: Using workspace path: {query_workspace_path}")
-                
-                # Validate path exists and is accessible
-                try:
-                    client = self._get_client()
-                    client.workspace.get_status(query_workspace_path)
-                    logger.info(f"QUERY_SOURCE: Workspace path validated successfully")
-                except Exception as e:
-                    raise Exception(f"Cannot access workspace path '{query_workspace_path}': {str(e)}. "
-                                  f"Please ensure the path exists and the app service principal has read access.")
-                
-                parameters["query_workspace_path"] = query_workspace_path
-                parameters["query_source"] = "workspace"
-                
-            else:
-                # Approach 1: Uploaded queries - use hybrid size-based strategy
-                query_json = json.dumps(query_configs)
-                query_size_kb = len(query_json) / 1024
-                
-                logger.info(f"QUERY_SOURCE: Uploaded queries, size: {query_size_kb:.2f} KB")
-                
-                # 8KB threshold (safe margin below 10KB limit)
-                if len(query_json) > 8000:
-                    # Large query set - upload to workspace
-                    logger.info(f"QUERY_SOURCE: Query size exceeds 8KB, uploading to workspace")
-                    
-                    # Generate unique path for this query set
-                    timestamp = int(time.time())
-                    queries_workspace_path = f"/Shared/pgbench_queries/queries_{timestamp}.json"
-                    
-                    # Create parent directory
-                    queries_dir = "/Shared/pgbench_queries"
-                    self._create_workspace_directory(queries_dir)
-                    
-                    # Upload queries as JSON file
-                    client = self._get_client()
-                    client.workspace.upload(
-                        path=queries_workspace_path,
-                        content=query_json.encode('utf-8'),
-                        format=ImportFormat.AUTO,
-                        overwrite=True
-                    )
-                    
-                    logger.info(f"QUERY_SOURCE: Uploaded queries to {queries_workspace_path}")
-                    
-                    parameters["query_config_path"] = queries_workspace_path
-                    parameters["query_source"] = "workspace_file"
-                else:
-                    # Small query set - pass inline as parameter
-                    logger.info(f"QUERY_SOURCE: Query size OK, passing as inline parameter")
-                    parameters["query_config"] = query_json
-                    parameters["query_source"] = "inline"
-            
-            # Detect autoscaling mode (used by CLI scripts with autoscaling: prefix)
-            is_autoscaling = lakebase_instance_name.startswith('autoscaling:')
-            
-            # CRITICAL: Explicitly set use_autoscaling parameter for notebook
-            # Must be string "true" or "false", not boolean, for proper parsing
-            parameters["use_autoscaling"] = "true" if is_autoscaling else "false"
-            
-            # Get or create reusable pgbench job (created once, updated if cluster config changes)
-            # Job is namespaced by app name. Single job per app, auto-updates on cluster type change.
-            job_id = self._get_or_create_pgbench_job(cluster_id, is_autoscaling=is_autoscaling)
-            logger.info(f"PGBENCH_JOB: Using job {job_id} for this test run (autoscaling={is_autoscaling})")
-            
-            # Get job name for response
-            import os
-            app_name = os.getenv('DATABRICKS_APP_NAME', 'lakebase_app')
-            if is_autoscaling:
-                job_name = f"{app_name}_autoscaling_pgbench_job"
-            else:
-                job_name = f"{app_name}_pgbench_job"
-            
-            # Run the job with test-specific parameters
-            run_id = self.run_job(job_id, parameters)
-            
-            # Generate workspace links
-            workspace_url = self._get_workspace_url()
-            job_run_url = f"{workspace_url}#job/{job_id}/run/{run_id}"
-            job_url = f"{workspace_url}#job/{job_id}"
-            
-            logger.info(f"JOB_LINKS: Generated workspace_url: {workspace_url}")
-            logger.info(f"JOB_LINKS: Generated job_url: {job_url}")
-            logger.info(f"JOB_LINKS: Generated job_run_url: {job_run_url}")
-            
-            result = {
-                "job_id": job_id,
-                "run_id": run_id,
-                "job_name": job_name,  # Dynamic job name (namespaced by app and cluster type)
-                "notebook_path": notebook_path,
-                "status": "submitted",
-                "job_run_url": job_run_url,
-                "job_url": job_url,
-                "workspace_url": workspace_url
-            }
-            
-            logger.info(f"JOB_SUBMISSION: Returning result: {result}")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Failed to submit pgbench job: {e}")
-            raise
     
-    def submit_autoscaling_pgbench_job(self, 
+    def submit_pgbench_job(self, 
                                       pghost: str,
                                       pgport: int,
                                       pgdatabase: str,
@@ -1641,7 +1374,11 @@ class DatabricksJobsService:
                                       pgbench_config: Dict[str, Any],
                                       query_configs: Optional[List[Dict[str, Any]]] = None,
                                       query_workspace_path: Optional[str] = None) -> Dict[str, Any]:
-        """Submit an autoscaling pgbench job with direct PostgreSQL credentials
+        """Submit a pgbench job using PostgreSQL credentials.
+        
+        Unified entry point for both provisioned and autoscaling Lakebase:
+        connect with pghost, pguser, pgpassword. Same customer table schema and
+        queries are used for both instance types.
         
         Args:
             pghost: PostgreSQL host endpoint
@@ -1656,16 +1393,16 @@ class DatabricksJobsService:
             query_workspace_path: Workspace path to queries folder (for workspace approach)
             
         Returns:
-            Dictionary with job_id, run_id, and workspace URLs
+            Dictionary with job_id, run_id, job_name, and workspace URLs
         """
         try:
-            print(f"AUTOSCALING_PGBENCH: Submitting job with pghost={pghost}, pguser={pguser}")
+            print(f"PGBENCH_JOB: Submitting job with pghost={pghost}, pguser={pguser}")
             
-            # Use fixed notebook path (same as provisioned)
+            # Use fixed notebook path
             notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
             
-            # Upload latest notebook to ensure autoscaling fixes are applied
-            print(f"AUTOSCALING_PGBENCH: Uploading latest notebook version to {notebook_path}")
+            # Upload latest notebook version
+            print(f"PGBENCH_JOB: Uploading latest notebook version to {notebook_path}")
             import os
             current_dir = os.path.dirname(os.path.abspath(__file__))
             parent_dir = os.path.dirname(current_dir)
@@ -1682,31 +1419,30 @@ class DatabricksJobsService:
                 abs_path = os.path.abspath(path)
                 if os.path.exists(abs_path):
                     notebook_path_local = abs_path
-                    print(f"AUTOSCALING_PGBENCH: Found notebook at: {notebook_path_local}")
+                    print(f"PGBENCH_JOB: Found notebook at: {notebook_path_local}")
                     break
             
             if notebook_path_local:
                 with open(notebook_path_local, 'r') as f:
                     notebook_content = f.read()
                 self.upload_notebook(notebook_path, notebook_content)
-                print(f"AUTOSCALING_PGBENCH: Successfully uploaded notebook")
+                print(f"PGBENCH_JOB: Successfully uploaded notebook")
             else:
-                print(f"AUTOSCALING_PGBENCH: WARNING - Could not find notebook file, using existing version")
+                print(f"PGBENCH_JOB: WARNING - Could not find notebook file, using existing version")
             
-            # Build parameters for autoscaling endpoint
+            # Build parameters with PostgreSQL credentials
             parameters = {
-                # Required by notebook (even in autoscaling mode)
-                "lakebase_instance_name": f"autoscaling:{pghost}",  # Dummy value for compatibility
+                # Database info
+                "lakebase_instance_name": pghost,  # Use pghost as identifier
                 "database_name": pgdatabase,
                 
-                # PostgreSQL connection parameters (autoscaling-specific)
+                # PostgreSQL connection parameters
                 "pghost": pghost,
                 "pgport": str(pgport),
                 "pgdatabase": pgdatabase,
                 "pguser": pguser,
                 "pgpassword": pgpassword,
                 "pgsslmode": pgsslmode,
-                "use_autoscaling": "true",  # Flag to indicate autoscaling mode
                 
                 # pgbench configuration
                 "pgbench_clients": str(pgbench_config.get("pgbench_clients", 8)),
@@ -1729,7 +1465,7 @@ class DatabricksJobsService:
                 
                 if len(query_json) > 8192:  # 8KB threshold
                     # Upload to workspace
-                    query_folder_path = f"/Shared/pgbench_resources/autoscaling_queries_{int(time.time())}"
+                    query_folder_path = f"/Shared/pgbench_resources/queries_{int(time.time())}"
                     self._upload_queries_to_workspace(query_configs, query_folder_path)
                     parameters["query_workspace_path"] = query_folder_path
                     query_source = "workspace"
@@ -1740,13 +1476,18 @@ class DatabricksJobsService:
             else:
                 raise ValueError("Either query_configs or query_workspace_path must be provided")
             
-            print(f"AUTOSCALING_PGBENCH: Query source: {query_source}")
+            print(f"PGBENCH_JOB: Query source: {query_source}")
             
-            # Get or create autoscaling job (separate from provisioned)
-            job_id = self._get_or_create_pgbench_job(cluster_id, is_autoscaling=True)
+            # Get or create unified pgbench job
+            job_id = self._get_or_create_pgbench_job(cluster_id)
             
-            # Run the job with autoscaling parameters
+            # Run the job with parameters
             run_id = self.run_job(job_id, parameters)
+            
+            # Job name for response (namespaced by app)
+            import os
+            app_name = os.getenv('DATABRICKS_APP_NAME', 'lakebase_app')
+            job_name = f"{app_name}_pgbench_job"
             
             # Generate workspace links
             workspace_url = self._get_workspace_url()
@@ -1756,6 +1497,7 @@ class DatabricksJobsService:
             result = {
                 "job_id": job_id,
                 "run_id": run_id,
+                "job_name": job_name,
                 "notebook_path": notebook_path,
                 "status": "submitted",
                 "job_run_url": job_run_url,
@@ -1763,11 +1505,11 @@ class DatabricksJobsService:
                 "workspace_url": workspace_url
             }
             
-            logger.info(f"AUTOSCALING_PGBENCH: Job submitted successfully: {result}")
+            logger.info(f"PGBENCH_JOB: Job submitted successfully: {result}")
             return result
             
         except Exception as e:
-            logger.error(f"Failed to submit autoscaling pgbench job: {e}")
+            logger.error(f"Failed to submit pgbench job: {e}")
             raise
     
     def delete_job(self, job_id: str) -> bool:

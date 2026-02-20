@@ -287,14 +287,21 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
           <DatabaseOutlined style={{ marginRight: '8px' }} />
           Concurrency Testing (psycopg)
         </Title>
-        <Paragraph style={{ marginBottom: 0 }}>
-          <ul>
-            <li>Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.</li>
-            <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase instances using standard PostgreSQL authentication.</li>
-            <li>Provides flexible, customizable concurrency testing with detailed performance metrics.</li>
-          </ul>
-        </Paragraph>
-      </div>
+      <Paragraph style={{ marginBottom: 0 }}>
+        <ul>
+          <li>Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.</li>
+          <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase instances using standard PostgreSQL authentication.</li>
+          <li>Provides flexible, customizable concurrency testing with detailed performance metrics.</li>
+        </ul>
+      </Paragraph>
+      <Alert
+        message="Simple Setup"
+        description="This test runs directly in the app using PostgreSQL connections. No Databricks authentication or job submission required - just provide your database credentials."
+        type="success"
+        showIcon
+        style={{ marginTop: 16 }}
+      />
+    </div>
 
       <Form
         form={form}

@@ -10,7 +10,6 @@ import LakebaseCalculator from './components/LakebaseCalculator';
 import LakebaseDeployment from './components/LakebaseDeployment';
 import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import PgbenchDatabricks from './components/PgbenchDatabricks';
-import PgbenchDatabricksAutoscaling from './components/PgbenchDatabricksAutoscaling';
 import DatabricksLogo from './components/DatabricksLogo';
 import ThemeToggle from './components/ThemeToggle';
 
@@ -127,11 +126,6 @@ const AppContent: React.FC = () => {
               key: 'pgbench-databricks',
               label: 'Concurrency Testing (pgbench)',
               children: <PgbenchDatabricks />
-            },
-            {
-              key: 'pgbench-autoscaling',
-              label: 'Autoscaling Concurrency Testing (pgbench)',
-              children: <PgbenchDatabricksAutoscaling />
             },
             {
               key: 'concurrency-psycopg',

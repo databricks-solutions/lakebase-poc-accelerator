@@ -45,8 +45,12 @@ interface QueryConfig {
 }
 
 interface JobSubmissionRequest {
-  lakebase_instance_name: string;
-  database_name: string;
+  pghost: string;
+  pgport: number;
+  pgdatabase: string;
+  pguser: string;
+  pgpassword: string;
+  pgsslmode: string;
   cluster_id: string;
   workspace_url: string;
   databricks_profile: string;
@@ -124,8 +128,12 @@ const PgbenchDatabricks: React.FC = () => {
     try {
       // Build base job request
       const jobRequest: JobSubmissionRequest = {
-        lakebase_instance_name: values.lakebase_instance_name,
-        database_name: values.database_name || 'databricks_postgres',
+        pghost: values.pghost,
+        pgport: values.pgport || 5432,
+        pgdatabase: values.pgdatabase || 'databricks_postgres',
+        pguser: values.pguser,
+        pgpassword: values.pgpassword,
+        pgsslmode: values.pgsslmode || 'require',
         cluster_id: values.cluster_id,
         workspace_url: values.workspace_url,
         databricks_profile: values.databricks_profile || 'DEFAULT',
@@ -600,19 +608,36 @@ const PgbenchDatabricks: React.FC = () => {
       </Paragraph>
       <Paragraph>
         <ul>
-          <li>Run pgbench performance tests against your Lakebase instance using Databricks compute clusters.</li>
+          <li>Run pgbench performance tests against your Lakebase database using Databricks compute clusters.</li>
+          <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase instances using standard PostgreSQL authentication.</li>
           <li>This will create and submit a Databricks job that executes the pgbench test with your specified parameters.</li>
           <li>Choose this option to test higher concurrency by scaling up the number of driver CPU cores in your Databricks cluster.</li>
-          <li>If running on Databricks Apps, ensure the app's service principal has permission to access the database. In Databricks Workspace, navigate to your <strong>Lakebase Instance &gt; Permissions &gt; Add PostgreSQL Role, search for the App Service Principal, and grant it the databricks_superuser role.</strong></li>
         </ul>
       </Paragraph>
+      <Alert
+        message="Requirements"
+        description={
+          <>
+            To submit Databricks jobs, you need <strong>Databricks authentication</strong>:
+            <ul style={{ marginTop: 8, marginBottom: 0 }}>
+              <li>If running as <strong>Databricks App</strong>: Authentication is automatic (uses DATABRICKS_HOST env var)</li>
+              <li>If running <strong>locally</strong>: Requires Databricks CLI configured with a profile</li>
+            </ul>
+          </>
+        }
+        type="info"
+        showIcon
+        style={{ marginBottom: 24 }}
+      />
 
       <Form
         form={form}
         layout="vertical"
         onFinish={handleSubmitJob}
         initialValues={{
-          database_name: 'databricks_postgres',
+          pgport: 5432,
+          pgdatabase: 'databricks_postgres',
+          pgsslmode: 'require',
           pgbench_clients: 8,
           pgbench_jobs: 8,
           pgbench_duration: 30,
@@ -629,10 +654,8 @@ const PgbenchDatabricks: React.FC = () => {
               <Form.Item
                 name="workspace_url"
                 label="Databricks Workspace URL"
-                rules={[
-                  { required: true, message: 'Please enter your Databricks workspace URL' }
-                ]}
-                tooltip="Your Databricks workspace URL."
+                rules={[{ required: true, message: 'Please enter your Databricks workspace URL' }]}
+                tooltip="Required for submitting jobs and generating clickable links to job runs."
               >
                 <Input
                   className="prefixedinput"
@@ -645,7 +668,7 @@ const PgbenchDatabricks: React.FC = () => {
               <Form.Item
                 name="databricks_profile"
                 label="Databricks Profile Name"
-                tooltip="[Not required if run on Databricks Apps] Databricks CLI profile used for authentication. This should match the profile configured on your machine and align with the Databricks Workspace URL above."
+                tooltip="Optional. Databricks CLI profile for authentication. Only needed if running locally (not as Databricks App)."
               >
                 <Input
                   className="prefixedinput"
@@ -659,19 +682,69 @@ const PgbenchDatabricks: React.FC = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="lakebase_instance_name"
-                label="Lakebase Instance Name"
-                rules={[{ required: true, message: 'Please enter the Lakebase instance name' }]}
+                name="pghost"
+                label="PostgreSQL Host (Endpoint)"
+                rules={[{ required: true, message: 'Please enter PostgreSQL host' }]}
+                tooltip="Lakebase endpoint hostname (e.g., ep-*.databricks.com for autoscaling or instance DNS for provisioned)"
               >
-                <Input placeholder="e.g., ak-lakebase-accelerator-instance" />
+                <Input placeholder="ep-your-endpoint.databricks.com" />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                name="pgport"
+                label="PostgreSQL Port"
+              >
+                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                name="pgdatabase"
+                label="Database Name"
+                rules={[{ required: true, message: 'Please enter database name' }]}
+              >
+                <Input placeholder="databricks_postgres" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="pguser"
+                label="PostgreSQL User"
+                rules={[{ required: true, message: 'Please enter PostgreSQL user' }]}
+              >
+                <Input placeholder="analyst" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
-                name="database_name"
-                label="Database Name"
+                name="pgpassword"
+                label="PostgreSQL Password"
+                rules={[{ required: true, message: 'Please enter PostgreSQL password' }]}
               >
-                <Input placeholder="databricks_postgres" />
+                <Input.Password 
+                  placeholder="Enter password" 
+                  visibilityToggle
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="pgsslmode"
+                label="SSL Mode"
+              >
+                <Select>
+                  <Option value="require">Require</Option>
+                  <Option value="prefer">Prefer</Option>
+                  <Option value="allow">Allow</Option>
+                  <Option value="disable">Disable</Option>
+                </Select>
               </Form.Item>
             </Col>
           </Row>

@@ -14,8 +14,7 @@ cp environment_variables_template.txt .env
 nano .env
 
 # 3. Run any script - it will automatically load the .env file
-python3 deploy_provisioned_pgbench_job.py
-python3 deploy_autoscaling_pgbench_job.py
+python3 deploy_pgbench_job.py
 python3 deploy_provisioned_psycopg.py
 python3 deploy_autoscaling_psycopg.py
 ```
@@ -24,16 +23,15 @@ python3 deploy_autoscaling_psycopg.py
 
 | Script | Purpose | Instance Type | Test Method |
 |--------|---------|---------------|-------------|
-| `deploy_provisioned_pgbench_job.py` | pgbench benchmark via Databricks Jobs | Provisioned | Databricks Job |
-| `deploy_autoscaling_pgbench_job.py` | pgbench benchmark via Databricks Jobs | Autoscaling | Databricks Job |
+| `deploy_pgbench_job.py` | pgbench benchmark via Databricks Jobs | Provisioned or Autoscaling | Databricks Job |
 | `deploy_provisioned_psycopg.py` | Concurrent query testing | Provisioned | Direct Python |
 | `deploy_autoscaling_psycopg.py` | Concurrent query testing | Autoscaling | Direct Python |
 
 ## When to Use Each Script
 
-### pgbench Scripts (Databricks Jobs)
-Use when you want to:
-- Run standardized pgbench benchmarks
+### pgbench Script (Databricks Jobs)
+Use `deploy_pgbench_job.py` when you want to:
+- Run standardized pgbench benchmarks (works for both Provisioned and Autoscaling Lakebase)
 - Test TPS (transactions per second) and latency
 - Have tests run remotely on Databricks infrastructure
 - Get results through Databricks Jobs UI
@@ -47,92 +45,59 @@ Use when you want to:
 
 ---
 
-## 1. Provisioned Lakebase with pgbench
+## 1. pgbench (Provisioned or Autoscaling)
+
+Single script `deploy_pgbench_job.py` for both instance types. Uses PostgreSQL credentials (PGUSER, PGPASSWORD). Provide host either directly (PGHOST) or via instance name (LAKEBASE_INSTANCE_NAME).
 
 ### Usage
 
 ```bash
-# Script automatically loads .env file
-python3 deploy_provisioned_pgbench_job.py
+# Load .env and run
+python3 deploy_pgbench_job.py
 ```
 
-### Required Configuration in `.env`
+### Option A: Direct host (Autoscaling or any endpoint)
 
 ```bash
-PROVISIONED_LAKEBASE_INSTANCE_NAME=lakebase-instance-name
-PROVISIONED_LAKEBASE_DATABASE=databricks_postgres
-PROVISIONED_DATABRICKS_WORKSPACE_URL=https://cust-success.cloud.databricks.com/
+PGHOST=ep-xxx.databricks.com   # or provisioned instance hostname
+PGUSER=analyst
+PGPASSWORD=your-password
+PGDATABASE=databricks_postgres  # optional, default above
+python3 deploy_pgbench_job.py
 ```
 
-### Optional Configuration in `.env`
+### Option B: Provisioned instance name (host resolved via API)
 
 ```bash
-DATABRICKS_PROFILE=DEFAULT     # Databricks CLI profile
-PGBENCH_CLIENTS=5              # Number of concurrent clients
-PGBENCH_JOBS=4                 # Number of worker threads
-PGBENCH_DURATION=30            # Test duration in seconds
-DATABRICKS_CLUSTER_ID=...      # Use existing cluster (optional)
+LAKEBASE_INSTANCE_NAME=my-instance
+PGUSER=analyst
+PGPASSWORD=your-password
+PGDATABASE=databricks_postgres  # optional
+python3 deploy_pgbench_job.py
+```
+
+### Optional configuration
+
+```bash
+PGPORT=5432                    # default 5432
+PGSSLMODE=require              # default require
+DATABRICKS_PROFILE=DEFAULT
+PGBENCH_CLIENTS=5
+PGBENCH_JOBS=4
+PGBENCH_DURATION=30
+DATABRICKS_CLUSTER_ID=...      # optional; omit for auto job cluster
 ```
 
 ### What It Does
 
-1. Connects to your Databricks workspace
-2. Verifies the Lakebase instance exists
-3. Creates a Databricks Job with pgbench installed
-4. Submits the job with your test configuration
-5. Monitors execution and displays results
-6. Shows TPS, latency (avg, p95, p99), and per-query statistics
+1. Connects to your Databricks workspace (and resolves host from instance name if using LAKEBASE_INSTANCE_NAME)
+2. Submits a pgbench job with your PostgreSQL credentials and test config
+3. Monitors execution with real-time status updates
+4. Displays TPS, latency, and per-query statistics
 
 ---
 
-## 2. Autoscaling Lakebase with pgbench
-
-### Usage
-
-```bash
-# Script automatically loads .env file
-python3 deploy_autoscaling_pgbench_job.py
-```
-
-### Required Configuration in `.env`
-
-```bash
-AUTOSCALING_PGHOST=your-autosc-lakebase-123.database.us-west-2.cloud.databricks.com
-AUTOSCALING_PGDATABASE=databricks_postgres
-AUTOSCALING_PGUSER=analyst
-AUTOSCALING_PGPASSWORD=erh_OLYf4Ko3tAfh
-```
-
-### Optional Configuration in `.env`
-
-```bash
-AUTOSCALING_PGPORT=5432              # PostgreSQL port
-AUTOSCALING_PGSSLMODE=require        # SSL mode
-AUTOSCALING_PGCHANNELBINDING=require # Channel binding
-DATABRICKS_PROFILE=DEFAULT           # Databricks CLI profile
-PGBENCH_CLIENTS=5                    # Number of concurrent clients
-PGBENCH_JOBS=4                       # Number of worker threads
-PGBENCH_DURATION=30                  # Test duration in seconds
-DATABRICKS_CLUSTER_ID=...            # Use existing cluster (optional)
-```
-
-### What It Does
-
-1. Validates compute endpoint hostname (ep-* format)
-2. Creates PostgreSQL connection configuration
-3. Submits pgbench job to Databricks
-4. Monitors execution with real-time status updates
-5. Displays comprehensive performance metrics
-
-### Notes
-
-- Autoscaling endpoints use direct PostgreSQL connections
-- Hostname format: `ep-<id>.databricks.com`
-- Supports both OAuth tokens and password authentication
-
----
-
-## 3. Provisioned Lakebase with psycopg
+## 2. Provisioned Lakebase with psycopg
 
 ### Usage
 
@@ -174,7 +139,7 @@ The script includes:
 
 ---
 
-## 4. Autoscaling Lakebase with psycopg
+## 3. Autoscaling Lakebase with psycopg
 
 ### Usage
 

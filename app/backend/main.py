@@ -670,7 +670,7 @@ async def upload_query_file(file: UploadFile = File(...)):
 async def run_uploaded_tests(test_request: dict):
     """
     Run concurrency tests using uploaded SQL files.
-    Supports both OAuth (provisioned) and PostgreSQL (autoscaling) authentication.
+    Supports both OAuth and PostgreSQL authentication methods.
     
     Args:
         test_request: Test configuration with either:
@@ -876,7 +876,7 @@ async def run_uploaded_tests(test_request: dict):
 async def run_predefined_tests(test_request: dict):
     """
     Run concurrency tests using predefined queries.
-    Supports both OAuth (provisioned) and PostgreSQL (autoscaling) authentication.
+    Supports both OAuth and PostgreSQL authentication methods.
     
     Args:
         test_request: Test configuration with either:
@@ -1880,11 +1880,17 @@ async def get_pgbench_test_status():
 # Databricks Jobs API Endpoints
 
 class JobSubmissionRequest(BaseModel):
-    lakebase_instance_name: str = Field(..., description="Lakebase instance name")
-    database_name: str = Field("databricks_postgres", description="Database name")
+    # PostgreSQL credentials (required for pgbench - same for provisioned and autoscaling)
+    pghost: str = Field(..., description="PostgreSQL host endpoint")
+    pguser: str = Field(..., description="PostgreSQL username")
+    pgpassword: str = Field(..., description="PostgreSQL password")
+    pgport: Optional[int] = Field(5432, description="PostgreSQL port")
+    pgdatabase: Optional[str] = Field("databricks_postgres", description="Database name")
+    pgsslmode: Optional[str] = Field("require", description="SSL mode")
+    # Common fields
     cluster_id: Optional[str] = Field(None, description="Databricks cluster ID (optional - will create job cluster if not provided)")
-    workspace_url: str = Field(..., description="Databricks workspace URL")
-    databricks_profile: str = Field("DEFAULT", description="Databricks CLI profile name")
+    workspace_url: str = Field(..., description="Databricks workspace URL (required for submitting jobs)")
+    databricks_profile: Optional[str] = Field("DEFAULT", description="Databricks CLI profile name (optional - only needed when running locally)")
     pgbench_config: Dict[str, Any] = Field(..., description="pgbench configuration")
     query_configs: Optional[List[Dict[str, Any]]] = Field(None, description="Query configurations (for upload approach)")
     query_workspace_path: Optional[str] = Field(None, description="Workspace path to queries folder (for workspace approach)")
@@ -1969,55 +1975,48 @@ async def get_static_clusters():
 @app.post("/api/databricks/submit-pgbench-job")
 async def submit_pgbench_job(request: JobSubmissionRequest):
     """
-    Submit a pgbench job to Databricks
+    Submit a pgbench job to Databricks using PostgreSQL credentials.
+    Unified for both provisioned and autoscaling Lakebase: use pghost, pguser, pgpassword.
     
     Args:
-        request: Job submission configuration
+        request: Job submission with PostgreSQL credentials and pgbench config
         
     Returns:
-        Job submission result with job_id and run_id
+        Job submission result with job_id, run_id, job_name, and workspace URLs
     """
     try:
-        # Initialize service with workspace URL and profile from request
         jobs_service = DatabricksJobsService(
             profile=request.databricks_profile,
             workspace_url=request.workspace_url
         )
-        
         result = jobs_service.submit_pgbench_job(
-            lakebase_instance_name=request.lakebase_instance_name,
-            database_name=request.database_name,
+            pghost=request.pghost,
+            pgport=request.pgport or 5432,
+            pgdatabase=request.pgdatabase or "databricks_postgres",
+            pguser=request.pguser,
+            pgpassword=request.pgpassword,
+            pgsslmode=request.pgsslmode or "require",
             cluster_id=request.cluster_id,
             pgbench_config=request.pgbench_config,
             query_configs=request.query_configs,
             query_workspace_path=request.query_workspace_path
         )
-        
         return result
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to submit job: {str(e)}")
 
 @app.post("/api/pgbench-test/autoscaling/submit-job")
 async def submit_autoscaling_pgbench_job(request: AutoscalingJobSubmissionRequest):
     """
-    Submit an autoscaling pgbench job to Databricks with direct PostgreSQL credentials
-    
-    Args:
-        request: Autoscaling job submission configuration with PostgreSQL credentials
-        
-    Returns:
-        Job submission result with job_id and run_id
+    Submit a pgbench job (autoscaling endpoint). Uses same unified submit_pgbench_job
+    with PostgreSQL credentials. Kept for backward compatibility with autoscaling UI.
     """
     try:
-        # Initialize service with workspace URL and profile from request
         jobs_service = DatabricksJobsService(
             profile=request.databricks_profile,
             workspace_url=request.workspace_url
         )
-        
-        # Submit autoscaling pgbench job with PostgreSQL credentials
-        result = jobs_service.submit_autoscaling_pgbench_job(
+        result = jobs_service.submit_pgbench_job(
             pghost=request.pghost,
             pgport=request.pgport,
             pgdatabase=request.pgdatabase,
@@ -2029,11 +2028,9 @@ async def submit_autoscaling_pgbench_job(request: AutoscalingJobSubmissionReques
             query_configs=request.query_configs,
             query_workspace_path=request.query_workspace_path
         )
-        
         return result
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to submit autoscaling pgbench job: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to submit pgbench job: {str(e)}")
 
 @app.get("/api/databricks/job-status/{run_id}")
 async def get_job_status(run_id: str):
