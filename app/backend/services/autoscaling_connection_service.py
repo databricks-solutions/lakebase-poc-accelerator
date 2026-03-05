@@ -8,6 +8,8 @@ Unlike provisioned Lakebase, autoscaling uses standard PostgreSQL authentication
 import asyncio
 import time
 from typing import List, Dict, Any, Optional
+from urllib.parse import quote_plus
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.exc import SQLAlchemyError
@@ -60,9 +62,12 @@ class AutoscalingConnectionService:
             self._pgdatabase = pgdatabase
             self._pguser = pguser
             
-            # Build connection string
+            # Build connection string (quote user/password so tokens with @, :, /, etc. work)
+            safe_user = quote_plus(pguser)
+            safe_password = quote_plus(pgpassword)
+            safe_db = quote_plus(pgdatabase)
             self._connection_string = (
-                f"postgresql://{pguser}:{pgpassword}@{pghost}:{pgport}/{pgdatabase}"
+                f"postgresql://{safe_user}:{safe_password}@{pghost}:{pgport}/{safe_db}"
                 f"?sslmode={pgsslmode}"
             )
             
@@ -110,7 +115,7 @@ class AutoscalingConnectionService:
             
         except Exception as e:
             print(f"❌ Failed to initialize connection pool: {e}")
-            return False
+            raise
 
     @contextmanager
     def get_connection(self):

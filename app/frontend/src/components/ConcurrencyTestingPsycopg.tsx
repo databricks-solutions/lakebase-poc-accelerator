@@ -38,8 +38,11 @@ interface QueryConfig {
   content: string;
 }
 
+type AuthMethod = 'password' | 'oauth';
+
 const ConcurrencyTestingPsycopg: React.FC = () => {
   const [form] = Form.useForm();
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('password');
   const [querySource, setQuerySource] = useState<'predefined' | 'upload'>('predefined');
   const [uploadedFiles, setUploadedFiles] = useState<Array<{
     name: string;
@@ -171,13 +174,33 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
       const formValues = form.getFieldsValue();
       console.log('Form values (raw):', formValues);
 
-      // Validate required fields
-      const requiredFields = ['pghost', 'pgdatabase', 'pguser', 'pgpassword', 'concurrency_level'];
-      const missingFields = requiredFields.filter(field => !formValues[field]);
+      const currentAuthMethod = (formValues.auth_method || authMethod) as AuthMethod;
 
-      if (missingFields.length > 0) {
-        message.error(`Please fill in the following required fields: ${missingFields.join(', ')}`);
-        return;
+      // Validate required fields by auth method
+      if (currentAuthMethod === 'oauth') {
+        if (!(formValues.access_token || '').trim()) {
+          message.error('Enter the Postgres OAuth token from Lakebase Connect (Copy OAuth token).');
+          return;
+        }
+        if (!(formValues.endpoint_host || '').trim()) {
+          message.error('Enter the endpoint host from the Lakebase Connect dialog.');
+          return;
+        }
+        if (!(formValues.postgres_user_name || '').trim()) {
+          message.error('Enter your Postgres user (Databricks email or username) for OAuth.');
+          return;
+        }
+        if (!formValues.concurrency_level) {
+          message.error('Please enter concurrency level.');
+          return;
+        }
+      } else {
+        const requiredPg = ['pghost', 'pgdatabase', 'pguser', 'pgpassword', 'concurrency_level'];
+        const missing = requiredPg.filter(f => !formValues[f]);
+        if (missing.length > 0) {
+          message.error(`Please fill in the following required fields: ${missing.join(', ')}`);
+          return;
+        }
       }
 
       // Check if we have queries to run
@@ -195,19 +218,32 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
       setTestResults(null);
       setTestError(null);
 
-      // Build test config with PostgreSQL credentials
-      const testConfig = {
-        pghost: formValues.pghost,
-        pgdatabase: formValues.pgdatabase || 'databricks_postgres',
-        pguser: formValues.pguser,
-        pgpassword: formValues.pgpassword,
-        pgport: formValues.pgport || 5432,
-        pgsslmode: formValues.pgsslmode || 'require',
-        pgchannelbinding: formValues.pgchannelbinding || 'require',
+      // Build test config by auth method
+      const baseConfig = {
         concurrency_level: formValues.concurrency_level || 10,
         query_source: querySource,
         ...(querySource === 'predefined' && { query_configs: queryConfigs })
       };
+
+      const testConfig = currentAuthMethod === 'oauth'
+        ? {
+            auth_method: 'oauth' as const,
+            access_token: (formValues.access_token || '').trim(),
+            endpoint_host: (formValues.endpoint_host || '').trim(),
+            database_name: formValues.pgdatabase || formValues.database_name || 'databricks_postgres',
+            ...(formValues.postgres_user_name?.trim() && { postgres_user_name: formValues.postgres_user_name.trim() }),
+            ...baseConfig
+          }
+        : {
+            pghost: formValues.pghost,
+            pgdatabase: formValues.pgdatabase || 'databricks_postgres',
+            pguser: formValues.pguser,
+            pgpassword: formValues.pgpassword,
+            pgport: formValues.pgport || 5432,
+            pgsslmode: formValues.pgsslmode || 'require',
+            pgchannelbinding: formValues.pgchannelbinding || 'require',
+            ...baseConfig
+          };
 
       console.log('Sending test config:', testConfig);
 
@@ -290,14 +326,15 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
       <Paragraph style={{ marginBottom: 0 }}>
         <ul>
           <li>Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.</li>
-          <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase instances using standard PostgreSQL authentication.</li>
-          <li>Provides flexible, customizable concurrency testing with detailed performance metrics.</li>
+          <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase instances.</li>
+          <li>Authenticate with <strong>username &amp; password</strong> or <strong>OAuth</strong> (Databricks profile); both use the same psycopg2 driver.</li>
+          <li>Flexible, customizable concurrency testing with detailed performance metrics.</li>
         </ul>
       </Paragraph>
       <Alert
-        message="Simple Setup"
-        description="This test runs directly in the app using PostgreSQL connections. No Databricks authentication or job submission required - just provide your database credentials."
-        type="success"
+        message="Authentication"
+        description="Use username &amp; password for direct PostgreSQL credentials, or OAuth to use your Databricks CLI profile — the backend fetches a short-lived token and connects with psycopg2."
+        type="info"
         showIcon
         style={{ marginTop: 16 }}
       />
@@ -308,6 +345,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
         layout="vertical"
         onFinish={handleRunTest}
         initialValues={{
+          auth_method: 'password',
           pgport: 5432,
           pgsslmode: "require",
           pgchannelbinding: "require",
@@ -330,95 +368,163 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
           }
           style={{ marginBottom: '24px' }}
         >
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label={
-                  <span>
-                    PostgreSQL Host (Endpoint)
-                    <Tooltip title="Lakebase endpoint hostname (e.g., ep-*.databricks.com for autoscaling or instance DNS for provisioned)">
-                      <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
-                    </Tooltip>
-                  </span>
-                }
-                name="pghost"
-                rules={[
-                  { required: true, message: 'Please enter PostgreSQL host' }
-                ]}
-              >
-                <Input placeholder="ep-your-autoscaling-endpoint.databricks.com" />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                label="PostgreSQL Port"
-                name="pgport"
-              >
-                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                label="Database Name"
-                name="pgdatabase"
-                rules={[{ required: true, message: 'Please enter database name' }]}
-              >
-                <Input placeholder="databricks_postgres" />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            name="auth_method"
+            label="Authentication"
+          >
+            <Radio.Group
+              optionType="button"
+              onChange={(e) => setAuthMethod(e.target.value)}
+              options={[
+                { label: 'Username & password', value: 'password' },
+                { label: 'OAuth (Databricks)', value: 'oauth' }
+              ]}
+            />
+          </Form.Item>
+
+          {authMethod === 'oauth' ? (
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span>
+                        Postgres OAuth token
+                        <Tooltip title="From Lakebase: project → Connect → OAuth → Copy OAuth token. Use as password for the connection.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="access_token"
+                    rules={[{ required: true, message: 'Required' }]}
+                  >
+                    <Input.Password
+                      placeholder="Paste token from Lakebase Connect"
+                      visibilityToggle
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span>
+                        Endpoint host
+                        <Tooltip title="From the same Lakebase Connect dialog (e.g. ep-xxx.databricks.com).">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="endpoint_host"
+                    rules={[{ required: true, message: 'Required' }]}
+                  >
+                    <Input placeholder="ep-xxx.databricks.com" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="Database name" name="pgdatabase">
+                    <Input placeholder="databricks_postgres" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span>
+                        Postgres user (Databricks identity)
+                        <Tooltip title="Your Databricks email or username — the identity that has the Postgres role in the Lakebase project. Required for OAuth.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="postgres_user_name"
+                    rules={[{ required: true, message: 'Required for OAuth' }]}
+                  >
+                    <Input placeholder="e.g. your-email@company.com" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </>
+          ) : (
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span>
+                        PostgreSQL Host (Endpoint)
+                        <Tooltip title="Lakebase endpoint hostname (e.g., ep-*.databricks.com for autoscaling or instance DNS for provisioned)">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="pghost"
+                    rules={[{ required: true, message: 'Please enter PostgreSQL host' }]}
+                  >
+                    <Input placeholder="ep-your-autoscaling-endpoint.databricks.com" />
+                  </Form.Item>
+                </Col>
+                <Col span={6}>
+                  <Form.Item label="PostgreSQL Port" name="pgport">
+                    <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={6}>
+                  <Form.Item
+                    label="Database Name"
+                    name="pgdatabase"
+                    rules={[{ required: true, message: 'Please enter database name' }]}
+                  >
+                    <Input placeholder="databricks_postgres" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label="PostgreSQL User"
+                    name="pguser"
+                    rules={[{ required: true, message: 'Please enter PostgreSQL user' }]}
+                  >
+                    <Input placeholder="analyst" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label="PostgreSQL Password"
+                    name="pgpassword"
+                    rules={[{ required: true, message: 'Please enter PostgreSQL password' }]}
+                  >
+                    <Input.Password placeholder="Enter password" visibilityToggle />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item label="SSL Mode" name="pgsslmode">
+                    <Select>
+                      <Option value="require">Require</Option>
+                      <Option value="prefer">Prefer</Option>
+                      <Option value="allow">Allow</Option>
+                      <Option value="disable">Disable</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item label="Channel Binding" name="pgchannelbinding">
+                    <Select>
+                      <Option value="require">Require</Option>
+                      <Option value="prefer">Prefer</Option>
+                      <Option value="disable">Disable</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+            </>
+          )}
 
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="PostgreSQL User"
-                name="pguser"
-                rules={[{ required: true, message: 'Please enter PostgreSQL user' }]}
-              >
-                <Input placeholder="analyst" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label="PostgreSQL Password"
-                name="pgpassword"
-                rules={[{ required: true, message: 'Please enter PostgreSQL password' }]}
-              >
-                <Input.Password 
-                  placeholder="Enter password" 
-                  visibilityToggle
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                label="SSL Mode"
-                name="pgsslmode"
-              >
-                <Select>
-                  <Option value="require">Require</Option>
-                  <Option value="prefer">Prefer</Option>
-                  <Option value="allow">Allow</Option>
-                  <Option value="disable">Disable</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                label="Channel Binding"
-                name="pgchannelbinding"
-              >
-                <Select>
-                  <Option value="require">Require</Option>
-                  <Option value="prefer">Prefer</Option>
-                  <Option value="disable">Disable</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={8}>
+            <Col span={authMethod === 'oauth' ? 12 : 8}>
               <Form.Item
                 label="Concurrent Connections"
                 name="concurrency_level"
@@ -427,11 +533,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
                   { type: 'number', min: 1, max: 1000, message: 'Must be between 1 and 1000' }
                 ]}
               >
-                <InputNumber
-                  min={1}
-                  max={1000}
-                  style={{ width: '100%' }}
-                />
+                <InputNumber min={1} max={1000} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
