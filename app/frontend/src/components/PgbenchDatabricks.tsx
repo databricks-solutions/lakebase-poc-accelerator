@@ -19,7 +19,8 @@ import {
   Upload,
   Alert,
   Statistic,
-  Divider
+  Divider,
+  Tooltip
 } from 'antd';
 import { PlayCircleOutlined, ClusterOutlined, DatabaseOutlined, SettingOutlined, UploadOutlined, FolderOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
@@ -44,16 +45,22 @@ interface QueryConfig {
   weight: number;
 }
 
+type AuthMethod = 'password' | 'oauth';
+
 interface JobSubmissionRequest {
-  pghost: string;
-  pgport: number;
-  pgdatabase: string;
-  pguser: string;
-  pgpassword: string;
-  pgsslmode: string;
-  cluster_id: string;
+  auth_method?: AuthMethod;
+  pghost?: string;
+  pgport?: number;
+  pgdatabase?: string;
+  pguser?: string;
+  pgpassword?: string;
+  pgsslmode?: string;
+  access_token?: string;
+  endpoint_host?: string;
+  postgres_user_name?: string;
+  cluster_id?: string;
   workspace_url: string;
-  databricks_profile: string;
+  databricks_profile?: string;
   pgbench_config: PgbenchConfig;
   query_configs?: QueryConfig[];
   query_workspace_path?: string;
@@ -76,6 +83,7 @@ const PgbenchDatabricks: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('password');
   const [querySource, setQuerySource] = useState<'predefined' | 'upload' | 'workspace'>('predefined');
   const [uploadedQueries, setUploadedQueries] = useState<QueryConfig[]>([]);
   const [uploadSummary, setUploadSummary] = useState<string>('');
@@ -122,32 +130,61 @@ const PgbenchDatabricks: React.FC = () => {
 
 
   const handleSubmitJob = async (values: any) => {
+    const currentAuth = (values.auth_method || authMethod) as AuthMethod;
+    if (currentAuth === 'oauth') {
+      if (!(values.access_token || '').trim()) {
+        message.error('Enter the Postgres OAuth token from Lakebase Connect.');
+        return;
+      }
+      if (!(values.endpoint_host || '').trim()) {
+        message.error('Enter the endpoint host from the Lakebase Connect dialog.');
+        return;
+      }
+      if (!(values.postgres_user_name || '').trim()) {
+        message.error('Enter the Postgres user (Databricks email or username) for OAuth.');
+        return;
+      }
+    } else {
+      if (!(values.pghost || '').trim() || !(values.pguser || '').trim() || !(values.pgpassword || '').trim()) {
+        message.error('Enter PostgreSQL host, user, and password.');
+        return;
+      }
+    }
+
     setLoading(true);
     setJobStatus({ status: 'pending', message: 'Submitting job...' });
 
     try {
-      // Build base job request
+      const pgbenchConfig = {
+        pgbench_clients: values.pgbench_clients,
+        pgbench_jobs: values.pgbench_jobs,
+        pgbench_duration: values.pgbench_duration,
+        pgbench_progress_interval: values.pgbench_progress_interval,
+        pgbench_protocol: values.pgbench_protocol,
+        pgbench_per_statement_latency: values.pgbench_per_statement_latency,
+        pgbench_detailed_logging: values.pgbench_detailed_logging,
+        pgbench_connect_per_transaction: values.pgbench_connect_per_transaction,
+      };
       const jobRequest: JobSubmissionRequest = {
-        pghost: values.pghost,
-        pgport: values.pgport || 5432,
-        pgdatabase: values.pgdatabase || 'databricks_postgres',
-        pguser: values.pguser,
-        pgpassword: values.pgpassword,
-        pgsslmode: values.pgsslmode || 'require',
-        cluster_id: values.cluster_id,
         workspace_url: values.workspace_url,
         databricks_profile: values.databricks_profile || 'DEFAULT',
-        pgbench_config: {
-          pgbench_clients: values.pgbench_clients,
-          pgbench_jobs: values.pgbench_jobs,
-          pgbench_duration: values.pgbench_duration,
-          pgbench_progress_interval: values.pgbench_progress_interval,
-          pgbench_protocol: values.pgbench_protocol,
-          pgbench_per_statement_latency: values.pgbench_per_statement_latency,
-          pgbench_detailed_logging: values.pgbench_detailed_logging,
-          pgbench_connect_per_transaction: values.pgbench_connect_per_transaction,
-        }
+        pgbench_config: pgbenchConfig,
+        cluster_id: values.cluster_id,
+        pgdatabase: values.pgdatabase || 'databricks_postgres',
       };
+      if (currentAuth === 'oauth') {
+        jobRequest.auth_method = 'oauth';
+        jobRequest.access_token = (values.access_token || '').trim();
+        jobRequest.endpoint_host = (values.endpoint_host || '').trim();
+        jobRequest.postgres_user_name = (values.postgres_user_name || '').trim();
+      } else {
+        jobRequest.auth_method = 'password';
+        jobRequest.pghost = values.pghost?.trim();
+        jobRequest.pgport = values.pgport || 5432;
+        jobRequest.pguser = values.pguser?.trim();
+        jobRequest.pgpassword = values.pgpassword;
+        jobRequest.pgsslmode = values.pgsslmode || 'require';
+      }
 
       // Add query source based on selection
       if (querySource === 'workspace') {
@@ -202,8 +239,8 @@ const PgbenchDatabricks: React.FC = () => {
           workspace_url: result.workspace_url
         });
 
-        // Start polling for job status
-        pollJobStatus(result.run_id);
+        // Start polling for job status (use same workspace + profile as submit)
+        pollJobStatus(result.run_id, jobRequest.workspace_url, jobRequest.databricks_profile);
         message.success('Job submitted successfully!');
       } else {
         const error = await response.json();
@@ -287,10 +324,19 @@ const PgbenchDatabricks: React.FC = () => {
     message.info('Cleared uploaded queries');
   };
 
-  const pollJobStatus = async (runId: string) => {
+  const pollJobStatus = async (
+    runId: string,
+    workspaceUrl?: string,
+    databricksProfile?: string
+  ) => {
+    const params = new URLSearchParams();
+    if (workspaceUrl) params.set('workspace_url', workspaceUrl);
+    if (databricksProfile) params.set('databricks_profile', databricksProfile);
+    const query = params.toString();
+    const url = `/api/databricks/job-status/${runId}${query ? `?${query}` : ''}`;
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/databricks/job-status/${runId}`);
+        const response = await fetch(url);
         if (response.ok) {
           const status = await response.json();
 
@@ -609,7 +655,7 @@ const PgbenchDatabricks: React.FC = () => {
       <Paragraph>
         <ul>
           <li>Run pgbench performance tests against your Lakebase database using Databricks compute clusters.</li>
-          <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase instances using standard PostgreSQL authentication.</li>
+          <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase. Use <strong>username &amp; password</strong> or <strong>OAuth</strong> (Lakebase Connect token + endpoint host + Postgres user).</li>
           <li>This will create and submit a Databricks job that executes the pgbench test with your specified parameters.</li>
           <li>Choose this option to test higher concurrency by scaling up the number of driver CPU cores in your Databricks cluster.</li>
         </ul>
@@ -635,6 +681,7 @@ const PgbenchDatabricks: React.FC = () => {
         layout="vertical"
         onFinish={handleSubmitJob}
         initialValues={{
+          auth_method: 'password',
           pgport: 5432,
           pgdatabase: 'databricks_postgres',
           pgsslmode: 'require',
@@ -679,75 +726,139 @@ const PgbenchDatabricks: React.FC = () => {
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="pghost"
-                label="PostgreSQL Host (Endpoint)"
-                rules={[{ required: true, message: 'Please enter PostgreSQL host' }]}
-                tooltip="Lakebase endpoint hostname (e.g., ep-*.databricks.com for autoscaling or instance DNS for provisioned)"
-              >
-                <Input placeholder="ep-your-endpoint.databricks.com" />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                name="pgport"
-                label="PostgreSQL Port"
-              >
-                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                name="pgdatabase"
-                label="Database Name"
-                rules={[{ required: true, message: 'Please enter database name' }]}
-              >
-                <Input placeholder="databricks_postgres" />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item name="auth_method" label="Authentication">
+            <Radio.Group
+              optionType="button"
+              onChange={(e) => setAuthMethod(e.target.value)}
+              options={[
+                { label: 'Username & password', value: 'password' },
+                { label: 'OAuth (Databricks)', value: 'oauth' }
+              ]}
+            />
+          </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="pguser"
-                label="PostgreSQL User"
-                rules={[{ required: true, message: 'Please enter PostgreSQL user' }]}
-              >
-                <Input placeholder="analyst" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="pgpassword"
-                label="PostgreSQL Password"
-                rules={[{ required: true, message: 'Please enter PostgreSQL password' }]}
-              >
-                <Input.Password 
-                  placeholder="Enter password" 
-                  visibilityToggle
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="pgsslmode"
-                label="SSL Mode"
-              >
-                <Select>
-                  <Option value="require">Require</Option>
-                  <Option value="prefer">Prefer</Option>
-                  <Option value="allow">Allow</Option>
-                  <Option value="disable">Disable</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
+          {authMethod === 'oauth' ? (
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span>
+                        Postgres OAuth token
+                        <Tooltip title="From Lakebase: project → Connect → OAuth → Copy OAuth token. Use as password for the connection.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="access_token"
+                    rules={[{ required: true, message: 'Required' }]}
+                  >
+                    <Input.Password placeholder="Paste token from Lakebase Connect" visibilityToggle />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span>
+                        Endpoint host
+                        <Tooltip title="From the same Lakebase Connect dialog (e.g. ep-xxx.databricks.com).">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="endpoint_host"
+                    rules={[{ required: true, message: 'Required' }]}
+                  >
+                    <Input placeholder="ep-xxx.databricks.com" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item label="Database name" name="pgdatabase">
+                    <Input placeholder="databricks_postgres" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span>
+                        Postgres user (Databricks identity)
+                        <Tooltip title="Your Databricks email or username — the identity that has the Postgres role in the Lakebase project. Required for OAuth.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="postgres_user_name"
+                    rules={[{ required: true, message: 'Required for OAuth' }]}
+                  >
+                    <Input placeholder="e.g. your-email@company.com" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </>
+          ) : (
+            <>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="pghost"
+                    label="PostgreSQL Host (Endpoint)"
+                    rules={[{ required: true, message: 'Please enter PostgreSQL host' }]}
+                    tooltip="Lakebase endpoint hostname (e.g., ep-*.databricks.com for autoscaling or instance DNS for provisioned)"
+                  >
+                    <Input placeholder="ep-your-endpoint.databricks.com" />
+                  </Form.Item>
+                </Col>
+                <Col span={6}>
+                  <Form.Item name="pgport" label="PostgreSQL Port">
+                    <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+                <Col span={6}>
+                  <Form.Item
+                    name="pgdatabase"
+                    label="Database Name"
+                    rules={[{ required: true, message: 'Please enter database name' }]}
+                  >
+                    <Input placeholder="databricks_postgres" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="pguser"
+                    label="PostgreSQL User"
+                    rules={[{ required: true, message: 'Please enter PostgreSQL user' }]}
+                  >
+                    <Input placeholder="analyst" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="pgpassword"
+                    label="PostgreSQL Password"
+                    rules={[{ required: true, message: 'Please enter PostgreSQL password' }]}
+                  >
+                    <Input.Password placeholder="Enter password" visibilityToggle />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="pgsslmode" label="SSL Mode">
+                    <Select>
+                      <Option value="require">Require</Option>
+                      <Option value="prefer">Prefer</Option>
+                      <Option value="allow">Allow</Option>
+                      <Option value="disable">Disable</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+            </>
+          )}
 
           <Form.Item
             name="cluster_id"

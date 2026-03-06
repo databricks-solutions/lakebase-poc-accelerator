@@ -174,7 +174,7 @@ const PgbenchDatabricksAutoscaling: React.FC = () => {
           workspace_url: result.workspace_url
         });
 
-        pollJobStatus(result.run_id);
+        pollJobStatus(result.run_id, jobRequest.workspace_url, jobRequest.databricks_profile);
         message.success('Autoscaling pgbench job submitted successfully!');
       } else {
         const error = await response.json();
@@ -241,10 +241,19 @@ const PgbenchDatabricksAutoscaling: React.FC = () => {
     message.info('Cleared uploaded queries');
   };
 
-  const pollJobStatus = async (runId: string) => {
+  const pollJobStatus = async (
+    runId: string,
+    workspaceUrl?: string,
+    databricksProfile?: string
+  ) => {
+    const params = new URLSearchParams();
+    if (workspaceUrl) params.set('workspace_url', workspaceUrl);
+    if (databricksProfile) params.set('databricks_profile', databricksProfile);
+    const query = params.toString();
+    const url = `/api/databricks/job-status/${runId}${query ? `?${query}` : ''}`;
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/databricks/job-status/${runId}`);
+        const response = await fetch(url);
         if (response.ok) {
           const status = await response.json();
 

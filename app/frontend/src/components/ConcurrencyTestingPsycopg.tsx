@@ -231,7 +231,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
             access_token: (formValues.access_token || '').trim(),
             endpoint_host: (formValues.endpoint_host || '').trim(),
             database_name: formValues.pgdatabase || formValues.database_name || 'databricks_postgres',
-            ...(formValues.postgres_user_name?.trim() && { postgres_user_name: formValues.postgres_user_name.trim() }),
+            postgres_user_name: (formValues.postgres_user_name || '').trim(),
             ...baseConfig
           }
         : {
