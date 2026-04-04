@@ -43,6 +43,60 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+def _resolve_credentials_from_secrets(
+    secret_scope: str,
+    secret_key_user: str,
+    secret_key_password: str,
+    workspace_url: Optional[str] = None,
+) -> tuple:
+    """Resolve pguser and pgpassword from a Databricks Secret scope.
+
+    When workspace_url is provided the client connects to that specific workspace
+    (using the matching CLI profile or the app service principal on Databricks Apps).
+    Without it, the SDK default auth chain is used (app SP on Databricks Apps, or
+    the CLI DEFAULT profile locally — which may point to the wrong workspace).
+
+    IMPORTANT: the Databricks Secrets API returns values base64-encoded.
+    We decode them here before returning plain-text credentials.
+
+    Raises ValueError with a clear message if the scope or keys are missing.
+    """
+    import base64
+    from databricks.sdk import WorkspaceClient
+    host = (workspace_url or "").strip()
+    w = WorkspaceClient(host=host) if host else WorkspaceClient()
+
+    def _get_and_decode(key: str) -> str:
+        raw = w.secrets.get_secret(scope=secret_scope, key=key).value
+        if raw is None:
+            raise ValueError(f"Secret '{key}' in scope '{secret_scope}' is empty.")
+        try:
+            return base64.b64decode(raw).decode("utf-8")
+        except Exception:
+            # Already plain text (some SDK versions decode automatically)
+            return raw
+
+    try:
+        pguser = _get_and_decode(secret_key_user)
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(
+            f"Could not retrieve secret '{secret_key_user}' from scope '{secret_scope}': {e}. "
+            "Ensure the scope and key exist and the app / CLI profile has GET permission on the scope."
+        )
+    try:
+        pgpassword = _get_and_decode(secret_key_password)
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(
+            f"Could not retrieve secret '{secret_key_password}' from scope '{secret_scope}': {e}. "
+            "Ensure the scope and key exist and the app / CLI profile has GET permission on the scope."
+        )
+    return pguser, pgpassword
+
 # Global progress tracker for deployment status
 deployment_progress_tracker = {}
 
@@ -687,28 +741,29 @@ async def run_uploaded_tests(test_request: dict):
         
         # Detect authentication method
         pghost = test_request.get("pghost")
-        pguser = test_request.get("pguser")
-        pgpassword = test_request.get("pgpassword")
+        secret_scope = test_request.get("secret_scope")
+        secret_key_user = test_request.get("secret_key_user")
+        secret_key_password = test_request.get("secret_key_password")
         workspace_url = test_request.get("workspace_url") or ""
         instance_name = test_request.get("instance_name") or ""
         access_token = test_request.get("access_token") or test_request.get("databricks_access_token")
         endpoint_host = test_request.get("endpoint_host")
-        
-        use_postgres_auth = bool(pghost and pguser and pgpassword)
+
+        use_secrets_auth = bool(pghost and secret_scope and secret_key_user and secret_key_password)
         use_oauth_auth = bool(test_request.get("auth_method") == "oauth" and access_token and endpoint_host)
-        
+
         print(f"🔍 Authentication method detection:")
-        print(f"   PostgreSQL auth: {use_postgres_auth}")
+        print(f"   Secrets auth: {use_secrets_auth}")
         print(f"   OAuth (postgres token): {use_oauth_auth}")
-        
+
         # Extract common configuration
         database_name = test_request.get("database_name") or test_request.get("pgdatabase", "databricks_postgres")
         concurrency_level = test_request.get("concurrency_level", 10)
-        
-        if not use_postgres_auth and not use_oauth_auth:
+
+        if not use_secrets_auth and not use_oauth_auth:
             raise HTTPException(
                 status_code=400,
-                detail="Use PostgreSQL credentials (pghost, pguser, pgpassword) or OAuth: token + endpoint host from Lakebase Connect."
+                detail="Provide Databricks Secrets credentials (pghost, secret_scope, secret_key_user, secret_key_password) or OAuth: token + endpoint host from Lakebase Connect."
             )
         
         # Get all SQL files from temp directory (separate from pgbench)
@@ -791,33 +846,41 @@ async def run_uploaded_tests(test_request: dict):
             "command_timeout": 30
         }
         
-        if use_postgres_auth:
-            # Use direct PostgreSQL connection (psycopg2)
-            print("🔐 Initializing database connection (PostgreSQL auth)...")
+        if use_secrets_auth:
+            # Resolve credentials from Databricks Secrets, then connect with psycopg2
+            print("🔐 Initializing database connection (Databricks Secrets auth)...")
             from services.autoscaling_connection_service import AutoscalingConnectionService
-            
+
+            try:
+                resolved_user, resolved_password = _resolve_credentials_from_secrets(
+                    secret_scope, secret_key_user, secret_key_password,
+                    workspace_url=test_request.get("workspace_url"),
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
             connection_service = AutoscalingConnectionService()
-            
             pgport = test_request.get("pgport", 5432)
             pgsslmode = test_request.get("pgsslmode", "require")
-            
+
             try:
                 pool_initialized = await connection_service.initialize_connection_pool(
                     pghost=pghost,
                     pgport=pgport,
                     pgdatabase=database_name,
-                    pguser=pguser,
-                    pgpassword=pgpassword,
+                    pguser=resolved_user,
+                    pgpassword=resolved_password,
                     pgsslmode=pgsslmode,
                     pool_config=pool_config
                 )
-                
                 if not pool_initialized:
-                    raise HTTPException(status_code=500, detail="Failed to initialize PostgreSQL connection pool")
+                    raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"PostgreSQL connection initialization failed: {str(e)}"
+                    detail=f"Connection initialization failed: {str(e)}"
                 )
         else:
             # OAuth: use Postgres token + endpoint host (no API calls)
@@ -835,12 +898,12 @@ async def run_uploaded_tests(test_request: dict):
                 )
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"OAuth credential failed: {str(e)}")
-            
+
             from services.autoscaling_connection_service import AutoscalingConnectionService
             connection_service = AutoscalingConnectionService()
             pgport = int(creds.get("port", 5432))
             pgsslmode = creds.get("ssl_mode", "require")
-            
+
             try:
                 pool_initialized = await connection_service.initialize_connection_pool(
                     pghost=creds["host"],
@@ -853,23 +916,25 @@ async def run_uploaded_tests(test_request: dict):
                 )
                 if not pool_initialized:
                     raise HTTPException(status_code=500, detail="Failed to initialize OAuth connection pool (psycopg2)")
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(
                     status_code=500,
                     detail=f"OAuth connection initialization failed: {str(e)}"
                 )
-        
+
         # Execute concurrent queries (same psycopg2 path for both auth methods)
         report = await connection_service.execute_concurrent_queries(
             queries=execution_queries,
             concurrency_level=concurrency_level
         )
-        
+
         # Clean up connection pool
         connection_service.close_connection_pool()
-        
+
         return report
-        
+
     except Exception as e:
         if connection_service is not None:
             try:
@@ -899,29 +964,30 @@ async def run_predefined_tests(test_request: dict):
         
         # Detect authentication method
         pghost = test_request.get("pghost")
-        pguser = test_request.get("pguser")
-        pgpassword = test_request.get("pgpassword")
+        secret_scope = test_request.get("secret_scope")
+        secret_key_user = test_request.get("secret_key_user")
+        secret_key_password = test_request.get("secret_key_password")
         workspace_url = test_request.get("workspace_url") or ""
         instance_name = test_request.get("instance_name") or ""
         access_token = test_request.get("access_token") or test_request.get("databricks_access_token")
         endpoint_host = test_request.get("endpoint_host")
-        
-        use_postgres_auth = bool(pghost and pguser and pgpassword)
+
+        use_secrets_auth = bool(pghost and secret_scope and secret_key_user and secret_key_password)
         use_oauth_auth = bool(test_request.get("auth_method") == "oauth" and access_token and endpoint_host)
-        
+
         print(f"🔍 Authentication method detection:")
-        print(f"   PostgreSQL auth: {use_postgres_auth}")
+        print(f"   Secrets auth: {use_secrets_auth}")
         print(f"   OAuth (postgres token): {use_oauth_auth}")
-        
+
         # Extract common configuration
         database_name = test_request.get("database_name") or test_request.get("pgdatabase", "databricks_postgres")
         concurrency_level = test_request.get("concurrency_level", 10)
         query_configs = test_request.get("query_configs", [])
-        
-        if not use_postgres_auth and not use_oauth_auth:
+
+        if not use_secrets_auth and not use_oauth_auth:
             raise HTTPException(
                 status_code=400,
-                detail="Use PostgreSQL credentials (pghost, pguser, pgpassword) or OAuth: token + endpoint host from Lakebase Connect."
+                detail="Provide Databricks Secrets credentials (pghost, secret_scope, secret_key_user, secret_key_password) or OAuth: token + endpoint host from Lakebase Connect."
             )
 
         if not query_configs:
@@ -989,33 +1055,41 @@ async def run_predefined_tests(test_request: dict):
             "command_timeout": 30
         }
         
-        if use_postgres_auth:
-            # Use direct PostgreSQL connection (psycopg2)
-            print("🔐 Initializing database connection (PostgreSQL auth)...")
+        if use_secrets_auth:
+            # Resolve credentials from Databricks Secrets, then connect with psycopg2
+            print("🔐 Initializing database connection (Databricks Secrets auth)...")
             from services.autoscaling_connection_service import AutoscalingConnectionService
-            
+
+            try:
+                resolved_user, resolved_password = _resolve_credentials_from_secrets(
+                    secret_scope, secret_key_user, secret_key_password,
+                    workspace_url=test_request.get("workspace_url"),
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
             connection_service = AutoscalingConnectionService()
-            
             pgport = test_request.get("pgport", 5432)
             pgsslmode = test_request.get("pgsslmode", "require")
-            
+
             try:
                 pool_initialized = await connection_service.initialize_connection_pool(
                     pghost=pghost,
                     pgport=pgport,
                     pgdatabase=database_name,
-                    pguser=pguser,
-                    pgpassword=pgpassword,
+                    pguser=resolved_user,
+                    pgpassword=resolved_password,
                     pgsslmode=pgsslmode,
                     pool_config=pool_config
                 )
-                
                 if not pool_initialized:
-                    raise HTTPException(status_code=500, detail="Failed to initialize PostgreSQL connection pool")
+                    raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"PostgreSQL connection initialization failed: {str(e)}"
+                    detail=f"Connection initialization failed: {str(e)}"
                 )
         else:
             # OAuth: use Postgres token + endpoint host (no API calls)
@@ -1033,12 +1107,12 @@ async def run_predefined_tests(test_request: dict):
                 )
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"OAuth credential failed: {str(e)}")
-            
+
             from services.autoscaling_connection_service import AutoscalingConnectionService
             connection_service = AutoscalingConnectionService()
             pgport = int(creds.get("port", 5432))
             pgsslmode = creds.get("ssl_mode", "require")
-            
+
             try:
                 pool_initialized = await connection_service.initialize_connection_pool(
                     pghost=creds["host"],
@@ -1051,23 +1125,25 @@ async def run_predefined_tests(test_request: dict):
                 )
                 if not pool_initialized:
                     raise HTTPException(status_code=500, detail="Failed to initialize OAuth connection pool (psycopg2)")
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(
                     status_code=500,
                     detail=f"OAuth connection initialization failed: {str(e)}"
                 )
-        
+
         # Execute concurrent queries (same psycopg2 path for both auth methods)
         report = await connection_service.execute_concurrent_queries(
             queries=execution_queries,
             concurrency_level=concurrency_level
         )
-        
+
         # Clean up connection pool
         connection_service.close_connection_pool()
-        
+
         return report
-        
+
     except Exception as e:
         if connection_service is not None:
             try:
@@ -1202,17 +1278,29 @@ async def run_autoscaling_uploaded_tests(test_request: dict):
         ConcurrencyTestReport with test results
     """
     try:
-        # Extract PostgreSQL connection parameters
+        # Extract connection parameters
         pghost = test_request.get("pghost")
         pgdatabase = test_request.get("pgdatabase", "databricks_postgres")
-        pguser = test_request.get("pguser")
-        pgpassword = test_request.get("pgpassword")
+        secret_scope = test_request.get("secret_scope")
+        secret_key_user = test_request.get("secret_key_user")
+        secret_key_password = test_request.get("secret_key_password")
         pgport = test_request.get("pgport", 5432)
         pgsslmode = test_request.get("pgsslmode", "require")
         concurrency_level = test_request.get("concurrency_level", 10)
 
-        if not pghost or not pguser or not pgpassword:
-            raise HTTPException(status_code=400, detail="pghost, pguser, and pgpassword are required")
+        if not pghost or not secret_scope or not secret_key_user or not secret_key_password:
+            raise HTTPException(
+                status_code=400,
+                detail="pghost, secret_scope, secret_key_user, and secret_key_password are required"
+            )
+
+        try:
+            resolved_user, resolved_password = _resolve_credentials_from_secrets(
+                secret_scope, secret_key_user, secret_key_password,
+                workspace_url=test_request.get("workspace_url"),
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
         # Get uploaded SQL files
         import tempfile
@@ -1287,34 +1375,34 @@ async def run_autoscaling_uploaded_tests(test_request: dict):
             "command_timeout": 30
         }
         
-        # Initialize with direct PostgreSQL parameters
+        # Initialize with resolved credentials
         pool_initialized = await connection_service.initialize_connection_pool(
             pghost=pghost,
             pgport=pgport,
             pgdatabase=pgdatabase,
-            pguser=pguser,
-            pgpassword=pgpassword,
+            pguser=resolved_user,
+            pgpassword=resolved_password,
             pgsslmode=pgsslmode,
             pool_config=pool_config
         )
-        
+
         if not pool_initialized:
             raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
-        
+
         # Execute concurrent queries
         report = await connection_service.execute_concurrent_queries(
             queries=execution_queries,
             concurrency_level=concurrency_level
         )
-        
+
         connection_service.close_connection_pool()
-        
+
         return report
-        
+
     except Exception as e:
         try:
             connection_service.close_connection_pool()
-        except:
+        except Exception:
             pass
         raise HTTPException(status_code=500, detail=f"Autoscaling test failed: {str(e)}")
 
@@ -1330,18 +1418,30 @@ async def run_autoscaling_predefined_tests(test_request: dict):
         ConcurrencyTestReport with test results
     """
     try:
-        # Extract PostgreSQL connection parameters
+        # Extract connection parameters
         pghost = test_request.get("pghost")
         pgdatabase = test_request.get("pgdatabase", "databricks_postgres")
-        pguser = test_request.get("pguser")
-        pgpassword = test_request.get("pgpassword")
+        secret_scope = test_request.get("secret_scope")
+        secret_key_user = test_request.get("secret_key_user")
+        secret_key_password = test_request.get("secret_key_password")
         pgport = test_request.get("pgport", 5432)
         pgsslmode = test_request.get("pgsslmode", "require")
         concurrency_level = test_request.get("concurrency_level", 10)
         query_configs = test_request.get("query_configs", [])
 
-        if not pghost or not pguser or not pgpassword:
-            raise HTTPException(status_code=400, detail="pghost, pguser, and pgpassword are required")
+        if not pghost or not secret_scope or not secret_key_user or not secret_key_password:
+            raise HTTPException(
+                status_code=400,
+                detail="pghost, secret_scope, secret_key_user, and secret_key_password are required"
+            )
+
+        try:
+            resolved_user, resolved_password = _resolve_credentials_from_secrets(
+                secret_scope, secret_key_user, secret_key_password,
+                workspace_url=test_request.get("workspace_url"),
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
         if not query_configs:
             raise HTTPException(status_code=400, detail="No predefined queries provided")
@@ -1405,34 +1505,34 @@ async def run_autoscaling_predefined_tests(test_request: dict):
             "command_timeout": 30
         }
         
-        # Initialize with direct PostgreSQL parameters
+        # Initialize with resolved credentials
         pool_initialized = await connection_service.initialize_connection_pool(
             pghost=pghost,
             pgport=pgport,
             pgdatabase=pgdatabase,
-            pguser=pguser,
-            pgpassword=pgpassword,
+            pguser=resolved_user,
+            pgpassword=resolved_password,
             pgsslmode=pgsslmode,
             pool_config=pool_config
         )
-        
+
         if not pool_initialized:
             raise HTTPException(status_code=500, detail="Failed to initialize connection pool")
-        
+
         # Execute concurrent queries
         report = await connection_service.execute_concurrent_queries(
             queries=execution_queries,
             concurrency_level=concurrency_level
         )
-        
+
         connection_service.close_connection_pool()
-        
+
         return report
-        
+
     except Exception as e:
         try:
             connection_service.close_connection_pool()
-        except:
+        except Exception:
             pass
         raise HTTPException(status_code=500, detail=f"Autoscaling predefined test failed: {str(e)}")
 

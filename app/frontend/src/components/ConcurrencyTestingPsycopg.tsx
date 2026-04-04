@@ -38,11 +38,11 @@ interface QueryConfig {
   content: string;
 }
 
-type AuthMethod = 'password' | 'oauth';
+type AuthMethod = 'secrets' | 'oauth';
 
 const ConcurrencyTestingPsycopg: React.FC = () => {
   const [form] = Form.useForm();
-  const [authMethod, setAuthMethod] = useState<AuthMethod>('password');
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('secrets');
   const [querySource, setQuerySource] = useState<'predefined' | 'upload'>('predefined');
   const [uploadedFiles, setUploadedFiles] = useState<Array<{
     name: string;
@@ -195,8 +195,8 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
           return;
         }
       } else {
-        const requiredPg = ['pghost', 'pgdatabase', 'pguser', 'pgpassword', 'concurrency_level'];
-        const missing = requiredPg.filter(f => !formValues[f]);
+        const requiredSecrets = ['workspace_url', 'pghost', 'pgdatabase', 'secret_scope', 'secret_key_user', 'secret_key_password', 'concurrency_level'];
+        const missing = requiredSecrets.filter(f => !formValues[f]);
         if (missing.length > 0) {
           message.error(`Please fill in the following required fields: ${missing.join(', ')}`);
           return;
@@ -235,13 +235,14 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
             ...baseConfig
           }
         : {
+            workspace_url: (formValues.workspace_url || '').trim(),
             pghost: formValues.pghost,
             pgdatabase: formValues.pgdatabase || 'databricks_postgres',
-            pguser: formValues.pguser,
-            pgpassword: formValues.pgpassword,
+            secret_scope: (formValues.secret_scope || '').trim(),
+            secret_key_user: (formValues.secret_key_user || '').trim(),
+            secret_key_password: (formValues.secret_key_password || '').trim(),
             pgport: formValues.pgport || 5432,
             pgsslmode: formValues.pgsslmode || 'require',
-            pgchannelbinding: formValues.pgchannelbinding || 'require',
             ...baseConfig
           };
 
@@ -327,13 +328,13 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
         <ul>
           <li>Run concurrency tests against your Lakebase Postgres database using psycopg2 and SQLAlchemy.</li>
           <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase instances.</li>
-          <li>Authenticate with <strong>username &amp; password</strong> or <strong>OAuth</strong> (Databricks profile); both use the same psycopg2 driver.</li>
+          <li>Authenticate with <strong>Databricks Secrets</strong> (secret scope + keys) or <strong>OAuth</strong> (Lakebase Connect token); both use the same psycopg2 driver.</li>
           <li>Flexible, customizable concurrency testing with detailed performance metrics.</li>
         </ul>
       </Paragraph>
       <Alert
         message="Authentication"
-        description="Use username &amp; password for direct PostgreSQL credentials, or OAuth to use your Databricks CLI profile — the backend fetches a short-lived token and connects with psycopg2."
+        description="Use Databricks Secrets to reference credentials stored in your workspace secret scope — the backend resolves the values at runtime and never exposes them. Or use OAuth with a short-lived Lakebase Connect token."
         type="info"
         showIcon
         style={{ marginTop: 16 }}
@@ -345,7 +346,7 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
         layout="vertical"
         onFinish={handleRunTest}
         initialValues={{
-          auth_method: 'password',
+          auth_method: 'secrets',
           pgport: 5432,
           pgsslmode: "require",
           pgchannelbinding: "require",
@@ -376,8 +377,8 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
               optionType="button"
               onChange={(e) => setAuthMethod(e.target.value)}
               options={[
-                { label: 'Username & password', value: 'password' },
-                { label: 'OAuth (Databricks)', value: 'oauth' }
+                { label: 'Databricks Secrets', value: 'secrets' },
+                { label: 'OAuth (Lakebase Connect)', value: 'oauth' }
               ]}
             />
           </Form.Item>
@@ -447,7 +448,24 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
             </>
           ) : (
             <>
+              {/* Databricks Secrets auth */}
               <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label={
+                      <span>
+                        Databricks Workspace URL
+                        <Tooltip title="The workspace that holds your secret scope (e.g. https://adb-xxx.azuredatabricks.net). Required when running locally so the backend authenticates against the right workspace.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="workspace_url"
+                    rules={[{ required: true, message: 'Please enter the Databricks workspace URL' }]}
+                  >
+                    <Input placeholder="https://adb-xxxx.azuredatabricks.net" />
+                  </Form.Item>
+                </Col>
                 <Col span={12}>
                   <Form.Item
                     label={
@@ -464,6 +482,8 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
                     <Input placeholder="ep-your-autoscaling-endpoint.databricks.com" />
                   </Form.Item>
                 </Col>
+              </Row>
+              <Row gutter={16}>
                 <Col span={6}>
                   <Form.Item label="PostgreSQL Port" name="pgport">
                     <InputNumber min={1} max={65535} style={{ width: '100%' }} />
@@ -480,22 +500,52 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
                 </Col>
               </Row>
               <Row gutter={16}>
-                <Col span={12}>
+                <Col span={8}>
                   <Form.Item
-                    label="PostgreSQL User"
-                    name="pguser"
-                    rules={[{ required: true, message: 'Please enter PostgreSQL user' }]}
+                    label={
+                      <span>
+                        Secret Scope
+                        <Tooltip title="The Databricks secret scope that contains your Postgres credentials. The app resolves user and password at runtime — the scope name itself is not sensitive.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="secret_scope"
+                    rules={[{ required: true, message: 'Please enter the secret scope name' }]}
                   >
-                    <Input placeholder="analyst" />
+                    <Input placeholder="e.g. lakebase-secrets" />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col span={8}>
                   <Form.Item
-                    label="PostgreSQL Password"
-                    name="pgpassword"
-                    rules={[{ required: true, message: 'Please enter PostgreSQL password' }]}
+                    label={
+                      <span>
+                        Secret Key — User
+                        <Tooltip title="The key within the scope whose value is the Postgres username.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="secret_key_user"
+                    rules={[{ required: true, message: 'Please enter the secret key for the username' }]}
                   >
-                    <Input.Password placeholder="Enter password" visibilityToggle />
+                    <Input placeholder="e.g. pg_user" />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    label={
+                      <span>
+                        Secret Key — Password
+                        <Tooltip title="The key within the scope whose value is the Postgres password.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    name="secret_key_password"
+                    rules={[{ required: true, message: 'Please enter the secret key for the password' }]}
+                  >
+                    <Input placeholder="e.g. pg_password" />
                   </Form.Item>
                 </Col>
               </Row>
@@ -510,21 +560,12 @@ SELECT c_preferred_cust_flag, count(*) FROM customer group by c_preferred_cust_f
                     </Select>
                   </Form.Item>
                 </Col>
-                <Col span={8}>
-                  <Form.Item label="Channel Binding" name="pgchannelbinding">
-                    <Select>
-                      <Option value="require">Require</Option>
-                      <Option value="prefer">Prefer</Option>
-                      <Option value="disable">Disable</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
               </Row>
             </>
           )}
 
           <Row gutter={16}>
-            <Col span={authMethod === 'oauth' ? 12 : 8}>
+            <Col span={8}>
               <Form.Item
                 label="Concurrent Connections"
                 name="concurrency_level"
