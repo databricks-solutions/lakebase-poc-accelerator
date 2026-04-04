@@ -1992,11 +1992,12 @@ async def get_pgbench_test_status():
 # Databricks Jobs API Endpoints
 
 class JobSubmissionRequest(BaseModel):
-    # Auth: either PostgreSQL credentials or OAuth (same as Concurrency/psycopg)
-    auth_method: Optional[str] = Field(None, description="'password' or 'oauth'; default password if pghost/pguser/pgpassword provided")
-    pghost: Optional[str] = Field(None, description="PostgreSQL host endpoint (required for password auth)")
-    pguser: Optional[str] = Field(None, description="PostgreSQL username (required for password auth)")
-    pgpassword: Optional[str] = Field(None, description="PostgreSQL password (required for password auth)")
+    # Auth: Databricks Secrets or OAuth (Lakebase Connect token)
+    auth_method: Optional[str] = Field(None, description="'secrets' or 'oauth'")
+    pghost: Optional[str] = Field(None, description="PostgreSQL host endpoint (required for secrets auth)")
+    secret_scope: Optional[str] = Field(None, description="Databricks secret scope holding Postgres credentials")
+    secret_key_user: Optional[str] = Field(None, description="Secret key whose value is the Postgres username")
+    secret_key_password: Optional[str] = Field(None, description="Secret key whose value is the Postgres password")
     access_token: Optional[str] = Field(None, description="Lakebase OAuth token from Connect (required for OAuth)")
     endpoint_host: Optional[str] = Field(None, description="Endpoint host from Lakebase Connect (required for OAuth)")
     postgres_user_name: Optional[str] = Field(None, description="Databricks identity / Postgres user (required for OAuth)")
@@ -2005,17 +2006,18 @@ class JobSubmissionRequest(BaseModel):
     pgsslmode: Optional[str] = Field("require", description="SSL mode")
     # Common fields
     cluster_id: Optional[str] = Field(None, description="Databricks cluster ID (optional - will create job cluster if not provided)")
-    workspace_url: str = Field(..., description="Databricks workspace URL (required for submitting jobs)")
+    workspace_url: str = Field(..., description="Databricks workspace URL (required for submitting jobs and resolving secrets)")
     databricks_profile: Optional[str] = Field("DEFAULT", description="Databricks CLI profile name (optional - only needed when running locally)")
     pgbench_config: Dict[str, Any] = Field(..., description="pgbench configuration")
     query_configs: Optional[List[Dict[str, Any]]] = Field(None, description="Query configurations (for upload approach)")
     query_workspace_path: Optional[str] = Field(None, description="Workspace path to queries folder (for workspace approach)")
 
 class AutoscalingJobSubmissionRequest(BaseModel):
-    auth_method: Optional[str] = Field(None, description="'password' or 'oauth'")
-    pghost: Optional[str] = Field(None, description="PostgreSQL host endpoint (password auth)")
-    pguser: Optional[str] = Field(None, description="PostgreSQL username (password auth)")
-    pgpassword: Optional[str] = Field(None, description="PostgreSQL password (password auth)")
+    auth_method: Optional[str] = Field(None, description="'secrets' or 'oauth'")
+    pghost: Optional[str] = Field(None, description="PostgreSQL host endpoint (secrets auth)")
+    secret_scope: Optional[str] = Field(None, description="Databricks secret scope holding Postgres credentials")
+    secret_key_user: Optional[str] = Field(None, description="Secret key whose value is the Postgres username")
+    secret_key_password: Optional[str] = Field(None, description="Secret key whose value is the Postgres password")
     access_token: Optional[str] = Field(None, description="Lakebase OAuth token (OAuth)")
     endpoint_host: Optional[str] = Field(None, description="Endpoint host from Connect (OAuth)")
     postgres_user_name: Optional[str] = Field(None, description="Postgres user / Databricks identity (OAuth)")
@@ -2023,7 +2025,7 @@ class AutoscalingJobSubmissionRequest(BaseModel):
     pgdatabase: Optional[str] = Field("databricks_postgres", description="Database name")
     pgsslmode: Optional[str] = Field("require", description="SSL mode")
     cluster_id: Optional[str] = Field(None, description="Databricks cluster ID (optional)")
-    workspace_url: str = Field(..., description="Databricks workspace URL")
+    workspace_url: str = Field(..., description="Databricks workspace URL (required for submitting jobs and resolving secrets)")
     databricks_profile: Optional[str] = Field("DEFAULT", description="Databricks CLI profile name")
     pgbench_config: Dict[str, Any] = Field(..., description="pgbench configuration")
     query_configs: Optional[List[Dict[str, Any]]] = Field(None, description="Query configurations")
@@ -2097,28 +2099,32 @@ def _resolve_pgbench_credentials_from_request(request: JobSubmissionRequest):
     return _resolve_pgbench_credentials(
         auth_method=request.auth_method,
         pghost=request.pghost,
-        pguser=request.pguser,
-        pgpassword=request.pgpassword,
+        secret_scope=request.secret_scope,
+        secret_key_user=request.secret_key_user,
+        secret_key_password=request.secret_key_password,
         access_token=request.access_token,
         endpoint_host=request.endpoint_host,
         postgres_user_name=request.postgres_user_name,
         pgport=request.pgport,
         pgsslmode=request.pgsslmode,
+        workspace_url=request.workspace_url,
     )
 
 
 def _resolve_pgbench_credentials(
     auth_method: Optional[str] = None,
     pghost: Optional[str] = None,
-    pguser: Optional[str] = None,
-    pgpassword: Optional[str] = None,
+    secret_scope: Optional[str] = None,
+    secret_key_user: Optional[str] = None,
+    secret_key_password: Optional[str] = None,
     access_token: Optional[str] = None,
     endpoint_host: Optional[str] = None,
     postgres_user_name: Optional[str] = None,
     pgport: Optional[int] = 5432,
     pgsslmode: Optional[str] = "require",
+    workspace_url: Optional[str] = None,
 ):
-    """Resolve pghost, pguser, pgpassword for pgbench job. Supports password or OAuth."""
+    """Resolve pghost, pguser, pgpassword for pgbench job. Supports Databricks Secrets or OAuth."""
     use_oauth = (
         (auth_method or "").strip().lower() == "oauth"
         and (access_token or "").strip()
@@ -2133,11 +2139,24 @@ def _resolve_pgbench_credentials(
             "pgport": 5432,
             "pgsslmode": "require",
         }
-    if (pghost or "").strip() and (pguser or "").strip() and (pgpassword or "").strip():
+    use_secrets = (
+        (auth_method or "").strip().lower() == "secrets"
+        and (pghost or "").strip()
+        and (secret_scope or "").strip()
+        and (secret_key_user or "").strip()
+        and (secret_key_password or "").strip()
+    )
+    if use_secrets:
+        pguser, pgpassword = _resolve_credentials_from_secrets(
+            secret_scope=secret_scope,
+            secret_key_user=secret_key_user,
+            secret_key_password=secret_key_password,
+            workspace_url=workspace_url,
+        )
         return {
             "pghost": (pghost or "").strip(),
-            "pguser": (pguser or "").strip(),
-            "pgpassword": (pgpassword or "").strip(),
+            "pguser": pguser,
+            "pgpassword": pgpassword,
             "pgport": pgport or 5432,
             "pgsslmode": (pgsslmode or "require").strip(),
         }
@@ -2147,15 +2166,18 @@ def _resolve_pgbench_credentials(
 @app.post("/api/databricks/submit-pgbench-job")
 async def submit_pgbench_job(request: JobSubmissionRequest):
     """
-    Submit a pgbench job to Databricks. Supports PostgreSQL credentials or OAuth
+    Submit a pgbench job to Databricks. Supports Databricks Secrets or OAuth
     (Lakebase token + endpoint host + postgres user). Unified for provisioned and autoscaling.
     """
     try:
-        creds = _resolve_pgbench_credentials_from_request(request)
+        try:
+            creds = _resolve_pgbench_credentials_from_request(request)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
         if not creds:
             raise HTTPException(
                 status_code=400,
-                detail="Provide either PostgreSQL credentials (pghost, pguser, pgpassword) or OAuth (auth_method=oauth, access_token, endpoint_host, postgres_user_name)."
+                detail="Provide either Databricks Secrets (auth_method=secrets, pghost, secret_scope, secret_key_user, secret_key_password) or OAuth (auth_method=oauth, access_token, endpoint_host, postgres_user_name)."
             )
         jobs_service = DatabricksJobsService(
             profile=request.databricks_profile or "DEFAULT",
@@ -2182,24 +2204,29 @@ async def submit_pgbench_job(request: JobSubmissionRequest):
 @app.post("/api/pgbench-test/autoscaling/submit-job")
 async def submit_autoscaling_pgbench_job(request: AutoscalingJobSubmissionRequest):
     """
-    Submit a pgbench job (autoscaling endpoint). Supports password or OAuth like main submit-pgbench-job.
+    Submit a pgbench job (autoscaling endpoint). Supports Databricks Secrets or OAuth.
     """
     try:
-        creds = _resolve_pgbench_credentials(
-            auth_method=request.auth_method,
-            pghost=request.pghost,
-            pguser=request.pguser,
-            pgpassword=request.pgpassword,
-            access_token=request.access_token,
-            endpoint_host=request.endpoint_host,
-            postgres_user_name=request.postgres_user_name,
-            pgport=request.pgport,
-            pgsslmode=request.pgsslmode,
-        )
+        try:
+            creds = _resolve_pgbench_credentials(
+                auth_method=request.auth_method,
+                pghost=request.pghost,
+                secret_scope=request.secret_scope,
+                secret_key_user=request.secret_key_user,
+                secret_key_password=request.secret_key_password,
+                access_token=request.access_token,
+                endpoint_host=request.endpoint_host,
+                postgres_user_name=request.postgres_user_name,
+                pgport=request.pgport,
+                pgsslmode=request.pgsslmode,
+                workspace_url=request.workspace_url,
+            )
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
         if not creds:
             raise HTTPException(
                 status_code=400,
-                detail="Provide either PostgreSQL credentials (pghost, pguser, pgpassword) or OAuth (auth_method=oauth, access_token, endpoint_host, postgres_user_name)."
+                detail="Provide either Databricks Secrets (auth_method=secrets, pghost, secret_scope, secret_key_user, secret_key_password) or OAuth (auth_method=oauth, access_token, endpoint_host, postgres_user_name)."
             )
         jobs_service = DatabricksJobsService(
             profile=request.databricks_profile or "DEFAULT",

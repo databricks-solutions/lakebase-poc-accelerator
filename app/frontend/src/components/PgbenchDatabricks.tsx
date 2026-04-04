@@ -45,15 +45,16 @@ interface QueryConfig {
   weight: number;
 }
 
-type AuthMethod = 'password' | 'oauth';
+type AuthMethod = 'secrets' | 'oauth';
 
 interface JobSubmissionRequest {
   auth_method?: AuthMethod;
   pghost?: string;
   pgport?: number;
   pgdatabase?: string;
-  pguser?: string;
-  pgpassword?: string;
+  secret_scope?: string;
+  secret_key_user?: string;
+  secret_key_password?: string;
   pgsslmode?: string;
   access_token?: string;
   endpoint_host?: string;
@@ -83,7 +84,7 @@ const PgbenchDatabricks: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
-  const [authMethod, setAuthMethod] = useState<AuthMethod>('password');
+  const [authMethod, setAuthMethod] = useState<AuthMethod>('secrets');
   const [querySource, setQuerySource] = useState<'predefined' | 'upload' | 'workspace'>('predefined');
   const [uploadedQueries, setUploadedQueries] = useState<QueryConfig[]>([]);
   const [uploadSummary, setUploadSummary] = useState<string>('');
@@ -145,8 +146,12 @@ const PgbenchDatabricks: React.FC = () => {
         return;
       }
     } else {
-      if (!(values.pghost || '').trim() || !(values.pguser || '').trim() || !(values.pgpassword || '').trim()) {
-        message.error('Enter PostgreSQL host, user, and password.');
+      if (!(values.pghost || '').trim()) {
+        message.error('Enter the PostgreSQL host endpoint.');
+        return;
+      }
+      if (!(values.secret_scope || '').trim() || !(values.secret_key_user || '').trim() || !(values.secret_key_password || '').trim()) {
+        message.error('Enter the Databricks secret scope and both secret keys (user and password).');
         return;
       }
     }
@@ -178,11 +183,12 @@ const PgbenchDatabricks: React.FC = () => {
         jobRequest.endpoint_host = (values.endpoint_host || '').trim();
         jobRequest.postgres_user_name = (values.postgres_user_name || '').trim();
       } else {
-        jobRequest.auth_method = 'password';
+        jobRequest.auth_method = 'secrets';
         jobRequest.pghost = values.pghost?.trim();
         jobRequest.pgport = values.pgport || 5432;
-        jobRequest.pguser = values.pguser?.trim();
-        jobRequest.pgpassword = values.pgpassword;
+        jobRequest.secret_scope = values.secret_scope?.trim();
+        jobRequest.secret_key_user = values.secret_key_user?.trim();
+        jobRequest.secret_key_password = values.secret_key_password?.trim();
         jobRequest.pgsslmode = values.pgsslmode || 'require';
       }
 
@@ -655,7 +661,7 @@ const PgbenchDatabricks: React.FC = () => {
       <Paragraph>
         <ul>
           <li>Run pgbench performance tests against your Lakebase database using Databricks compute clusters.</li>
-          <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase. Use <strong>username &amp; password</strong> or <strong>OAuth</strong> (Lakebase Connect token + endpoint host + Postgres user).</li>
+          <li>Works with both <strong>Provisioned</strong> and <strong>Autoscaling</strong> Lakebase. Use <strong>Databricks Secrets</strong> (secret scope + keys for user/password) or <strong>OAuth</strong> (Lakebase Connect token + endpoint host + Postgres user).</li>
           <li>This will create and submit a Databricks job that executes the pgbench test with your specified parameters.</li>
           <li>Choose this option to test higher concurrency by scaling up the number of driver CPU cores in your Databricks cluster.</li>
         </ul>
@@ -681,7 +687,7 @@ const PgbenchDatabricks: React.FC = () => {
         layout="vertical"
         onFinish={handleSubmitJob}
         initialValues={{
-          auth_method: 'password',
+          auth_method: 'secrets',
           pgport: 5432,
           pgdatabase: 'databricks_postgres',
           pgsslmode: 'require',
@@ -731,7 +737,7 @@ const PgbenchDatabricks: React.FC = () => {
               optionType="button"
               onChange={(e) => setAuthMethod(e.target.value)}
               options={[
-                { label: 'Username & password', value: 'password' },
+                { label: 'Databricks Secrets', value: 'secrets' },
                 { label: 'OAuth (Databricks)', value: 'oauth' }
               ]}
             />
@@ -828,24 +834,20 @@ const PgbenchDatabricks: React.FC = () => {
               <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item
-                    name="pguser"
-                    label="PostgreSQL User"
-                    rules={[{ required: true, message: 'Please enter PostgreSQL user' }]}
+                    name="secret_scope"
+                    label={
+                      <span>
+                        Secret Scope
+                        <Tooltip title="The Databricks secret scope that contains the PostgreSQL credentials.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    rules={[{ required: true, message: 'Please enter the secret scope' }]}
                   >
-                    <Input placeholder="analyst" />
+                    <Input placeholder="my-lakebase-scope" />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
-                  <Form.Item
-                    name="pgpassword"
-                    label="PostgreSQL Password"
-                    rules={[{ required: true, message: 'Please enter PostgreSQL password' }]}
-                  >
-                    <Input.Password placeholder="Enter password" visibilityToggle />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item name="pgsslmode" label="SSL Mode">
                     <Select>
@@ -854,6 +856,40 @@ const PgbenchDatabricks: React.FC = () => {
                       <Option value="allow">Allow</Option>
                       <Option value="disable">Disable</Option>
                     </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="secret_key_user"
+                    label={
+                      <span>
+                        Secret Key — User
+                        <Tooltip title="Key inside the secret scope whose value is the PostgreSQL username.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    rules={[{ required: true, message: 'Please enter the secret key for the username' }]}
+                  >
+                    <Input placeholder="pg-username" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="secret_key_password"
+                    label={
+                      <span>
+                        Secret Key — Password
+                        <Tooltip title="Key inside the secret scope whose value is the PostgreSQL password.">
+                          <InfoCircleOutlined style={{ marginLeft: '4px', color: '#1890ff' }} />
+                        </Tooltip>
+                      </span>
+                    }
+                    rules={[{ required: true, message: 'Please enter the secret key for the password' }]}
+                  >
+                    <Input placeholder="pg-password" />
                   </Form.Item>
                 </Col>
               </Row>
