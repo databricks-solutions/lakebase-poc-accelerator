@@ -117,7 +117,7 @@ When running the app on Databricks, the service principal assigned to the app wi
 
 #### PostgreSQL credentials — Databricks Secrets (required for Concurrency & pgbench testing)
 
-The Concurrency Testing (psycopg) and pgbench pages no longer accept plain-text PostgreSQL passwords. Instead, credentials are read at runtime from a **Databricks Secret Scope**. You provide the scope name and two secret keys (one for the username, one for the password); the backend resolves and uses them without ever surfacing the values in the UI or logs.
+The Concurrency Testing (psycopg) and pgbench credentials are read at runtime from a **Databricks Secret Scope**. You provide the scope name and two secret keys (one for the username, one for the password); the backend resolves and uses them without ever surfacing the values in the UI or logs.
 
 **Step 1 — Store your credentials in a secret scope**
 

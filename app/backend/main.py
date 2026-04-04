@@ -729,16 +729,13 @@ async def run_uploaded_tests(test_request: dict):
     Args:
         test_request: Test configuration with either:
             - OAuth: auth_method, access_token, endpoint_host, database_name, concurrency_level
-            - PostgreSQL: pghost, pgdatabase, pguser, pgpassword, pgport, pgsslmode, concurrency_level
+            - Secrets: pghost, pgdatabase, secret_scope, secret_key_user, secret_key_password, pgport, pgsslmode, concurrency_level
         
     Returns:
         ConcurrencyTestReport with test results and metrics
     """
     connection_service = None
     try:
-        # Debug: Log the incoming request
-        print(f"🔍 Incoming test_request: {test_request}")
-        
         # Detect authentication method
         pghost = test_request.get("pghost")
         secret_scope = test_request.get("secret_scope")
@@ -752,9 +749,7 @@ async def run_uploaded_tests(test_request: dict):
         use_secrets_auth = bool(pghost and secret_scope and secret_key_user and secret_key_password)
         use_oauth_auth = bool(test_request.get("auth_method") == "oauth" and access_token and endpoint_host)
 
-        print(f"🔍 Authentication method detection:")
-        print(f"   Secrets auth: {use_secrets_auth}")
-        print(f"   OAuth (postgres token): {use_oauth_auth}")
+        print(f"🔐 Auth method — secrets: {use_secrets_auth}, oauth: {use_oauth_auth}")
 
         # Extract common configuration
         database_name = test_request.get("database_name") or test_request.get("pgdatabase", "databricks_postgres")
@@ -952,16 +947,13 @@ async def run_predefined_tests(test_request: dict):
     Args:
         test_request: Test configuration with either:
             - OAuth: auth_method, access_token, endpoint_host, database_name, concurrency_level, query_configs
-            - PostgreSQL: pghost, pgdatabase, pguser, pgpassword, pgport, pgsslmode, concurrency_level, query_configs
+            - Secrets: pghost, pgdatabase, secret_scope, secret_key_user, secret_key_password, pgport, pgsslmode, concurrency_level, query_configs
         
     Returns:
         ConcurrencyTestReport with test results and metrics
     """
     connection_service = None
     try:
-        # Debug: Log the incoming request
-        print(f"🔍 Incoming predefined test_request: {test_request}")
-        
         # Detect authentication method
         pghost = test_request.get("pghost")
         secret_scope = test_request.get("secret_scope")
@@ -975,9 +967,7 @@ async def run_predefined_tests(test_request: dict):
         use_secrets_auth = bool(pghost and secret_scope and secret_key_user and secret_key_password)
         use_oauth_auth = bool(test_request.get("auth_method") == "oauth" and access_token and endpoint_host)
 
-        print(f"🔍 Authentication method detection:")
-        print(f"   Secrets auth: {use_secrets_auth}")
-        print(f"   OAuth (postgres token): {use_oauth_auth}")
+        print(f"🔐 Auth method — secrets: {use_secrets_auth}, oauth: {use_oauth_auth}")
 
         # Extract common configuration
         database_name = test_request.get("database_name") or test_request.get("pgdatabase", "databricks_postgres")
@@ -1579,10 +1569,14 @@ async def delete_autoscaling_query_file(request: dict):
 
         import tempfile
         temp_dir = Path(tempfile.gettempdir()) / "lakebase_autoscaling_psycopg_queries"
-        file_to_delete = Path(file_path)
+        safe_base = temp_dir.resolve()
+        file_to_delete = Path(file_path).resolve()
 
-        # Security check
-        if not str(file_to_delete).startswith(str(temp_dir)):
+        # Canonicalise both paths before comparing so that ".." segments and
+        # symlinks are resolved at the same level as the eventual unlink() call.
+        # The trailing os.sep prevents a prefix-name collision
+        # (e.g. "lakebase_autoscaling_psycopg_queries_evil" passing the check).
+        if not str(file_to_delete).startswith(str(safe_base) + os.sep):
             raise HTTPException(status_code=400, detail="Invalid file path")
 
         if file_to_delete.exists():
@@ -1612,13 +1606,16 @@ async def delete_pgbench_query_file(request: dict):
         if not file_path:
             raise HTTPException(status_code=400, detail="file_path is required")
 
-        # Ensure the file is in the temp queries directory for security
         import tempfile
         temp_dir = Path(tempfile.gettempdir()) / "lakebase_queries"
-        file_to_delete = Path(file_path)
+        safe_base = temp_dir.resolve()
+        file_to_delete = Path(file_path).resolve()
 
-        # Security check: ensure the file is within the temp queries directory
-        if not str(file_to_delete).startswith(str(temp_dir)):
+        # Canonicalise both paths before comparing so that ".." segments and
+        # symlinks are resolved at the same level as the eventual unlink() call.
+        # The trailing os.sep prevents a prefix-name collision
+        # (e.g. "lakebase_queries_evil" passing the check).
+        if not str(file_to_delete).startswith(str(safe_base) + os.sep):
             raise HTTPException(status_code=400, detail="Invalid file path")
 
         if file_to_delete.exists():
