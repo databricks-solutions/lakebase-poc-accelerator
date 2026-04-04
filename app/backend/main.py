@@ -2094,106 +2094,55 @@ async def get_static_clusters():
         }
     ]
 
-def _resolve_pgbench_credentials_from_request(request: JobSubmissionRequest):
-    """Resolve pghost, pguser, pgpassword for pgbench job from JobSubmissionRequest."""
-    return _resolve_pgbench_credentials(
-        auth_method=request.auth_method,
-        pghost=request.pghost,
-        secret_scope=request.secret_scope,
-        secret_key_user=request.secret_key_user,
-        secret_key_password=request.secret_key_password,
-        access_token=request.access_token,
-        endpoint_host=request.endpoint_host,
-        postgres_user_name=request.postgres_user_name,
-        pgport=request.pgport,
-        pgsslmode=request.pgsslmode,
-        workspace_url=request.workspace_url,
-    )
-
-
-def _resolve_pgbench_credentials(
-    auth_method: Optional[str] = None,
-    pghost: Optional[str] = None,
-    secret_scope: Optional[str] = None,
-    secret_key_user: Optional[str] = None,
-    secret_key_password: Optional[str] = None,
-    access_token: Optional[str] = None,
-    endpoint_host: Optional[str] = None,
-    postgres_user_name: Optional[str] = None,
-    pgport: Optional[int] = 5432,
-    pgsslmode: Optional[str] = "require",
-    workspace_url: Optional[str] = None,
-):
-    """Resolve pghost, pguser, pgpassword for pgbench job. Supports Databricks Secrets or OAuth."""
-    use_oauth = (
-        (auth_method or "").strip().lower() == "oauth"
-        and (access_token or "").strip()
-        and (endpoint_host or "").strip()
-        and (postgres_user_name or "").strip()
-    )
-    if use_oauth:
-        return {
-            "pghost": (endpoint_host or "").strip(),
-            "pguser": (postgres_user_name or "").strip(),
-            "pgpassword": (access_token or "").strip(),
-            "pgport": 5432,
-            "pgsslmode": "require",
-        }
-    use_secrets = (
-        (auth_method or "").strip().lower() == "secrets"
-        and (pghost or "").strip()
-        and (secret_scope or "").strip()
-        and (secret_key_user or "").strip()
-        and (secret_key_password or "").strip()
-    )
-    if use_secrets:
-        pguser, pgpassword = _resolve_credentials_from_secrets(
-            secret_scope=secret_scope,
-            secret_key_user=secret_key_user,
-            secret_key_password=secret_key_password,
-            workspace_url=workspace_url,
-        )
-        return {
-            "pghost": (pghost or "").strip(),
-            "pguser": pguser,
-            "pgpassword": pgpassword,
-            "pgport": pgport or 5432,
-            "pgsslmode": (pgsslmode or "require").strip(),
-        }
-    return None
 
 
 @app.post("/api/databricks/submit-pgbench-job")
 async def submit_pgbench_job(request: JobSubmissionRequest):
     """
-    Submit a pgbench job to Databricks. Supports Databricks Secrets or OAuth
-    (Lakebase token + endpoint host + postgres user). Unified for provisioned and autoscaling.
+    Submit a pgbench job to Databricks.
+
+    Credentials are NOT resolved in the API layer.  For secrets-based auth the
+    scope/key names are forwarded so the notebook reads them with
+    dbutils.secrets.get().  For OAuth the short-lived token is forwarded as-is.
     """
+    use_oauth = (
+        (request.auth_method or "").strip().lower() == "oauth"
+        and (request.access_token or "").strip()
+        and (request.endpoint_host or "").strip()
+        and (request.postgres_user_name or "").strip()
+    )
+    use_secrets = (
+        (request.auth_method or "").strip().lower() == "secrets"
+        and (request.pghost or "").strip()
+        and (request.secret_scope or "").strip()
+        and (request.secret_key_user or "").strip()
+        and (request.secret_key_password or "").strip()
+    )
+    if not use_oauth and not use_secrets:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either Databricks Secrets (auth_method=secrets, pghost, secret_scope, secret_key_user, secret_key_password) or OAuth (auth_method=oauth, access_token, endpoint_host, postgres_user_name)."
+        )
     try:
-        try:
-            creds = _resolve_pgbench_credentials_from_request(request)
-        except ValueError as ve:
-            raise HTTPException(status_code=400, detail=str(ve))
-        if not creds:
-            raise HTTPException(
-                status_code=400,
-                detail="Provide either Databricks Secrets (auth_method=secrets, pghost, secret_scope, secret_key_user, secret_key_password) or OAuth (auth_method=oauth, access_token, endpoint_host, postgres_user_name)."
-            )
         jobs_service = DatabricksJobsService(
             profile=request.databricks_profile or "DEFAULT",
             workspace_url=request.workspace_url
         )
         result = jobs_service.submit_pgbench_job(
-            pghost=creds["pghost"],
-            pgport=creds["pgport"],
+            pghost=(request.pghost or "").strip(),
+            pgport=request.pgport or 5432,
             pgdatabase=request.pgdatabase or "databricks_postgres",
-            pguser=creds["pguser"],
-            pgpassword=creds["pgpassword"],
-            pgsslmode=creds["pgsslmode"],
+            secret_scope=(request.secret_scope or "").strip(),
+            secret_key_user=(request.secret_key_user or "").strip(),
+            secret_key_password=(request.secret_key_password or "").strip(),
+            pgsslmode=(request.pgsslmode or "require").strip(),
             cluster_id=request.cluster_id,
             pgbench_config=request.pgbench_config,
             query_configs=request.query_configs,
-            query_workspace_path=request.query_workspace_path
+            query_workspace_path=request.query_workspace_path,
+            access_token=(request.access_token or "").strip() if use_oauth else None,
+            endpoint_host=(request.endpoint_host or "").strip() if use_oauth else None,
+            postgres_user_name=(request.postgres_user_name or "").strip() if use_oauth else None,
         )
         return result
     except HTTPException:
@@ -2204,45 +2153,49 @@ async def submit_pgbench_job(request: JobSubmissionRequest):
 @app.post("/api/pgbench-test/autoscaling/submit-job")
 async def submit_autoscaling_pgbench_job(request: AutoscalingJobSubmissionRequest):
     """
-    Submit a pgbench job (autoscaling endpoint). Supports Databricks Secrets or OAuth.
+    Submit a pgbench job (autoscaling endpoint).
+
+    Credentials are NOT resolved in the API layer — same pattern as the
+    provisioned endpoint above.
     """
+    use_oauth = (
+        (request.auth_method or "").strip().lower() == "oauth"
+        and (request.access_token or "").strip()
+        and (request.endpoint_host or "").strip()
+        and (request.postgres_user_name or "").strip()
+    )
+    use_secrets = (
+        (request.auth_method or "").strip().lower() == "secrets"
+        and (request.pghost or "").strip()
+        and (request.secret_scope or "").strip()
+        and (request.secret_key_user or "").strip()
+        and (request.secret_key_password or "").strip()
+    )
+    if not use_oauth and not use_secrets:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either Databricks Secrets (auth_method=secrets, pghost, secret_scope, secret_key_user, secret_key_password) or OAuth (auth_method=oauth, access_token, endpoint_host, postgres_user_name)."
+        )
     try:
-        try:
-            creds = _resolve_pgbench_credentials(
-                auth_method=request.auth_method,
-                pghost=request.pghost,
-                secret_scope=request.secret_scope,
-                secret_key_user=request.secret_key_user,
-                secret_key_password=request.secret_key_password,
-                access_token=request.access_token,
-                endpoint_host=request.endpoint_host,
-                postgres_user_name=request.postgres_user_name,
-                pgport=request.pgport,
-                pgsslmode=request.pgsslmode,
-                workspace_url=request.workspace_url,
-            )
-        except ValueError as ve:
-            raise HTTPException(status_code=400, detail=str(ve))
-        if not creds:
-            raise HTTPException(
-                status_code=400,
-                detail="Provide either Databricks Secrets (auth_method=secrets, pghost, secret_scope, secret_key_user, secret_key_password) or OAuth (auth_method=oauth, access_token, endpoint_host, postgres_user_name)."
-            )
         jobs_service = DatabricksJobsService(
             profile=request.databricks_profile or "DEFAULT",
             workspace_url=request.workspace_url
         )
         result = jobs_service.submit_pgbench_job(
-            pghost=creds["pghost"],
-            pgport=creds["pgport"],
+            pghost=(request.pghost or "").strip(),
+            pgport=request.pgport or 5432,
             pgdatabase=request.pgdatabase or "databricks_postgres",
-            pguser=creds["pguser"],
-            pgpassword=creds["pgpassword"],
-            pgsslmode=creds["pgsslmode"],
+            secret_scope=(request.secret_scope or "").strip(),
+            secret_key_user=(request.secret_key_user or "").strip(),
+            secret_key_password=(request.secret_key_password or "").strip(),
+            pgsslmode=(request.pgsslmode or "require").strip(),
             cluster_id=request.cluster_id,
             pgbench_config=request.pgbench_config,
             query_configs=request.query_configs,
-            query_workspace_path=request.query_workspace_path
+            query_workspace_path=request.query_workspace_path,
+            access_token=(request.access_token or "").strip() if use_oauth else None,
+            endpoint_host=(request.endpoint_host or "").strip() if use_oauth else None,
+            postgres_user_name=(request.postgres_user_name or "").strip() if use_oauth else None,
         )
         return result
     except HTTPException:

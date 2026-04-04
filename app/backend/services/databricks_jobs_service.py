@@ -1363,40 +1363,52 @@ class DatabricksJobsService:
             raise
     
     
-    def submit_pgbench_job(self, 
+    def submit_pgbench_job(self,
                                       pghost: str,
                                       pgport: int,
                                       pgdatabase: str,
-                                      pguser: str,
-                                      pgpassword: str,
+                                      secret_scope: str,
+                                      secret_key_user: str,
+                                      secret_key_password: str,
                                       pgsslmode: str,
                                       cluster_id: Optional[str],
                                       pgbench_config: Dict[str, Any],
                                       query_configs: Optional[List[Dict[str, Any]]] = None,
-                                      query_workspace_path: Optional[str] = None) -> Dict[str, Any]:
-        """Submit a pgbench job using PostgreSQL credentials.
-        
-        Unified entry point for both provisioned and autoscaling Lakebase:
-        connect with pghost, pguser, pgpassword. Same customer table schema and
-        queries are used for both instance types.
-        
+                                      query_workspace_path: Optional[str] = None,
+                                      # OAuth fields (Lakebase Connect token)
+                                      access_token: Optional[str] = None,
+                                      endpoint_host: Optional[str] = None,
+                                      postgres_user_name: Optional[str] = None) -> Dict[str, Any]:
+        """Submit a pgbench job.
+
+        Credentials are NEVER resolved in Python.  For secrets-based auth the
+        secret scope and key names are forwarded as job parameters so that the
+        notebook reads them with ``dbutils.secrets.get()``.  For OAuth the
+        short-lived token is passed directly (it expires quickly, has no
+        persistent value, and is not a reusable secret).
+
         Args:
             pghost: PostgreSQL host endpoint
             pgport: PostgreSQL port
             pgdatabase: Database name
-            pguser: PostgreSQL username
-            pgpassword: PostgreSQL password
+            secret_scope: Databricks secret scope name (secrets auth)
+            secret_key_user: Secret key whose value is the Postgres username (secrets auth)
+            secret_key_password: Secret key whose value is the Postgres password (secrets auth)
             pgsslmode: SSL mode
             cluster_id: Cluster ID to run on (None for auto job cluster)
             pgbench_config: pgbench configuration parameters
             query_configs: List of query configurations (for upload approach)
             query_workspace_path: Workspace path to queries folder (for workspace approach)
-            
+            access_token: Short-lived Lakebase OAuth token (OAuth auth only)
+            endpoint_host: Endpoint host from Lakebase Connect (OAuth auth only)
+            postgres_user_name: Postgres user identity (OAuth auth only)
+
         Returns:
             Dictionary with job_id, run_id, job_name, and workspace URLs
         """
+        use_oauth = bool(access_token and endpoint_host and postgres_user_name)
         try:
-            print(f"PGBENCH_JOB: Submitting job with pghost={pghost}, pguser={pguser}")
+            print(f"PGBENCH_JOB: Submitting job with pghost={pghost}, auth={'oauth' if use_oauth else 'secrets'}")
             
             # Use fixed notebook path
             notebook_path = "/Shared/pgbench_resources/pgbench_parameterized"
@@ -1430,20 +1442,21 @@ class DatabricksJobsService:
             else:
                 print(f"PGBENCH_JOB: WARNING - Could not find notebook file, using existing version")
             
-            # Build parameters with PostgreSQL credentials
+            # Build job parameters.
+            # Credentials are NOT resolved here — the notebook reads them
+            # directly from Databricks Secrets via dbutils.secrets.get().
+            # For OAuth the short-lived token is forwarded as-is.
             parameters = {
                 # Database info
-                "lakebase_instance_name": pghost,  # Use pghost as identifier
+                "lakebase_instance_name": pghost,
                 "database_name": pgdatabase,
-                
-                # PostgreSQL connection parameters
+
+                # PostgreSQL connection (host / port / db / ssl — never the password)
                 "pghost": pghost,
                 "pgport": str(pgport),
                 "pgdatabase": pgdatabase,
-                "pguser": pguser,
-                "pgpassword": pgpassword,
                 "pgsslmode": pgsslmode,
-                
+
                 # pgbench configuration
                 "pgbench_clients": str(pgbench_config.get("pgbench_clients", 8)),
                 "pgbench_jobs": str(pgbench_config.get("pgbench_jobs", 8)),
@@ -1454,6 +1467,21 @@ class DatabricksJobsService:
                 "pgbench_detailed_logging": str(pgbench_config.get("pgbench_detailed_logging", True)),
                 "pgbench_connect_per_transaction": str(pgbench_config.get("pgbench_connect_per_transaction", False)),
             }
+
+            if use_oauth:
+                # Short-lived token — passes directly; expires in minutes
+                parameters["auth_method"] = "oauth"
+                parameters["pguser"] = postgres_user_name
+                parameters["pgpassword"] = access_token
+                effective_host = endpoint_host or pghost
+                parameters["pghost"] = effective_host
+                parameters["lakebase_instance_name"] = effective_host
+            else:
+                # Secrets-based auth — notebook resolves credentials itself
+                parameters["auth_method"] = "secrets"
+                parameters["secret_scope"] = secret_scope
+                parameters["secret_key_user"] = secret_key_user
+                parameters["secret_key_password"] = secret_key_password
             
             # Handle query source
             if query_workspace_path:
