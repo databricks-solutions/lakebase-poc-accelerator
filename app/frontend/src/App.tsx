@@ -5,9 +5,6 @@ import './App.css';
 
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { createStyledComponents } from './styles/theme';
-import LakebaseOverview from './components/LakebaseOverview';
-import LakebaseCalculator from './components/LakebaseCalculator';
-import LakebaseDeployment from './components/LakebaseDeployment';
 import ConcurrencyTestingPsycopg from './components/ConcurrencyTestingPsycopg';
 import PgbenchDatabricks from './components/PgbenchDatabricks';
 import DatabricksLogo from './components/DatabricksLogo';
@@ -19,49 +16,12 @@ const { Title } = Typography;
 const AppContent: React.FC = () => {
   const { theme, isDark } = useTheme();
   const styled = createStyledComponents(theme);
-  const [generatedConfigs, setGeneratedConfigs] = useState<any>({});
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('pgbench-databricks');
 
   // Apply theme to document
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
-
-  // Load saved configs from localStorage on component mount
-  React.useEffect(() => {
-    const savedConfigs = localStorage.getItem('generatedConfigs');
-    if (savedConfigs) {
-      try {
-        const configs = JSON.parse(savedConfigs);
-        setGeneratedConfigs(configs);
-      } catch (error) {
-        console.error('Error loading saved configs:', error);
-      }
-    }
-  }, []);
-
-  // Save configs to localStorage whenever they change
-  React.useEffect(() => {
-    if (Object.keys(generatedConfigs).length > 0) {
-      localStorage.setItem('generatedConfigs', JSON.stringify(generatedConfigs));
-    }
-  }, [generatedConfigs]);
-
-  const handleConfigGenerated = (configs: any) => {
-    setGeneratedConfigs(configs);
-    // Stay on calculator tab and scroll to results
-    setActiveTab('calculator');
-    // Scroll to results section after a brief delay to allow rendering
-    setTimeout(() => {
-      const resultsElement = document.getElementById('cost-results-section');
-      if (resultsElement) {
-        resultsElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        });
-      }
-    }, 100);
-  };
 
   return (
     <Layout style={{
@@ -107,21 +67,6 @@ const AppContent: React.FC = () => {
           activeKey={activeTab}
           onChange={setActiveTab}
           items={[
-            {
-              key: 'overview',
-              label: 'Lakebase Overview',
-              children: <LakebaseOverview />
-            },
-            {
-              key: 'calculator',
-              label: 'Lakebase Calculator',
-              children: <LakebaseCalculator onConfigGenerated={handleConfigGenerated} />
-            },
-            {
-              key: 'deployment',
-              label: 'Lakebase Deployment',
-              children: <LakebaseDeployment generatedConfigs={generatedConfigs} />
-            },
             {
               key: 'pgbench-databricks',
               label: 'Concurrency Testing (pgbench)',
