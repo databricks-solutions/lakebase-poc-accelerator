@@ -1,0 +1,33 @@
+bundle:
+  name: "lakebase-accelerator"
+
+sync:
+  include:
+    - .build
+
+artifacts:
+  default:
+    build: apx build
+
+resources:
+  apps:
+    lakebase-accelerator-app:
+      name: "lakebase-accelerator"
+      description: "lakebase-accelerator created with apx"
+      source_code_path: ./.build
+      # No Lakebase database resource bound: the app reaches Lakebase via the
+      # logged-in user's identity (OBO). No new billable instance is created.
+      # Request the Lakebase `postgres` OAuth scope so the forwarded user token
+      # (X-Forwarded-Access-Token) can call w.postgres.* and generate database
+      # credentials on the user's behalf.
+      user_api_scopes:
+        - postgres        # Lakebase (w.postgres.*) + credential generation
+        - sql             # SQL warehouse access (if used)
+      # Note: this workspace's Apps API rejects the `unity-catalog` scope (its
+      # allowlist is narrower than the OAuth server's), so the CDF/sync-requirement
+      # check degrades gracefully when UC metadata can't be read on the user's behalf.
+
+targets:
+  dev:
+    mode: development
+    default: true

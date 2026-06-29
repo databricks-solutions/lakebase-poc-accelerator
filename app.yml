@@ -1,0 +1,1 @@
+command: ["uvicorn", "lakebase_accelerator.backend.app:app", "--workers", "2"]
