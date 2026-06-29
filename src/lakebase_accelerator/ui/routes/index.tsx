@@ -68,14 +68,21 @@ function Quickstart() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>
-              Source tables: <code>samples.tpcds_sf1.*</code> (or the unified
-              <code> serverless_stable_dvmvgw_catalog.genie.tpcds_all_sales</code> view, ~4.9M rows).
+              Source table: <code>samples.tpcds_sf1.store_sales</code> (~2.9M rows) — available in
+              every Databricks workspace. Sync it into Lakebase as <code>store_sales</code> on the
+              Deployment page, then run the testing flow against it.
             </p>
             <p>
-              Sample queries: point lookup by <code>order_number</code>, customer history by
-              <code> customer_sk</code>, monthly revenue by year, top brands by category. Optimize
-              derives indexes on <code>order_number</code>, <code>customer_sk</code>,
-              <code> category</code>, and <code>sold_date</code>.
+              The Testing page ships 5 ready-to-run OLTP sample queries (simple → complex): order
+              lookup by <code>ss_ticket_number</code>, customer history by <code>ss_customer_sk</code>,
+              per-item sales aggregate, store daily revenue over a date range, and top items per
+              store. Optimize derives indexes on <code>ss_ticket_number</code>,
+              <code> ss_customer_sk</code>, <code>ss_item_sk</code>, and <code>ss_store_sk</code>.
+            </p>
+            <p>
+              The same query format drives both psycopg and pgbench — <code>:name</code> placeholders
+              with <code>-- PARAM name = random(min, max)</code> generators — so a query you write
+              once runs on either engine.
             </p>
           </CardContent>
         </Card>

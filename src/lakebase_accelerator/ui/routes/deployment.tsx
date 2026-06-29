@@ -97,6 +97,17 @@ const emptyRow: SyncRow = {
   storage_schema: "",
 };
 
+// Quickstart default: sync the workspace-portable TPC-DS sample so users can get
+// going without hunting for a source table. Only the target UC name needs the
+// user's own Lakebase database catalog filled in.
+const sampleRow: SyncRow = {
+  ...emptyRow,
+  source_table_full_name: "samples.tpcds_sf1.store_sales",
+  target_uc_name: "",
+  primary_key_columns: "ss_item_sk,ss_ticket_number",
+  scheduling_policy: "SNAPSHOT",
+};
+
 function InfoTip({ text }: { text: string }) {
   return (
     <Tooltip>
@@ -414,7 +425,7 @@ function exploreUrl(host: string | null | undefined, fullName: string): string |
 }
 
 function SyncSection({ projectLabel }: { projectLabel: string }) {
-  const [rows, setRows] = useState<SyncRow[]>([{ ...emptyRow }]);
+  const [rows, setRows] = useState<SyncRow[]>([{ ...sampleRow }]);
   const [warehouseId, setWarehouseId] = useState("");
   const createSync = useCreateSyncedTable();
   const checkReq = useCheckSyncRequirements();
@@ -474,7 +485,11 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-          Use this to set up <span className="font-medium text-foreground">many tables at once</span> for a
+          The first row is pre-filled with the quickstart sample{" "}
+          <code>samples.tpcds_sf1.store_sales</code> (snapshot, PK{" "}
+          <code>ss_item_sk, ss_ticket_number</code>) — just set the target to your Lakebase database
+          catalog (e.g. <code>lakebase_catalog.public.store_sales</code>) and click Create synced table.
+          {" "}Use this to set up <span className="font-medium text-foreground">many tables at once</span> for a
           repeatable POC. For a single table, the native Databricks dialog is richer (primary-key picker,
           live Change-Data-Feed detection, compute provisioning) — open it from the source table's page in
           Catalog Explorer.
@@ -553,7 +568,7 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                     tip="Three-part name <catalog>.<schema>.<table>. Use the UC catalog registered to your Lakebase Postgres database (the 'database catalog') — then leave Database blank and it's inferred."
                   />
                   <Input
-                    placeholder="lakebase_catalog.public.table"
+                    placeholder="lakebase_catalog.public.store_sales"
                     value={row.target_uc_name}
                     onChange={(e) => update(i, { target_uc_name: e.target.value })}
                   />

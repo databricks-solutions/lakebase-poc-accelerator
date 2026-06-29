@@ -126,11 +126,6 @@ export interface PgbenchConfigIn {
     progress_interval?: number;
     protocol?: string;
 }
-export interface PgbenchQueryIn {
-    content: string;
-    name: string;
-    weight?: number;
-}
 export interface PgbenchStatusOut {
     error?: string | null;
     message: string;
@@ -148,7 +143,7 @@ export interface PgbenchSubmitIn {
     endpoint_host?: string | null;
     postgres_user_name?: string | null;
     project?: string | null;
-    queries?: PgbenchQueryIn[];
+    queries?: QueryIn[];
 }
 export interface PgbenchSubmitOut {
     error?: string | null;

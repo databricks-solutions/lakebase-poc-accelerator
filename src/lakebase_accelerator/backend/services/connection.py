@@ -20,6 +20,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import QueuePool
 
+from . import query_format
+
 
 class ConnectionPool:
     """A SQLAlchemy engine (psycopg3) with a sized pool and a concurrent runner."""
@@ -80,14 +82,14 @@ class ConnectionPool:
         finally:
             conn.close()
 
-    def _execute_sync(self, query: str, parameters: Optional[list[Any]]) -> dict[str, Any]:
+    def _execute_sync(self, query: str, parameters: Optional[Any]) -> dict[str, Any]:
         start = time.time()
         try:
             with self._connection() as conn:
                 raw = conn.connection  # psycopg3 DBAPI connection
                 cur = raw.cursor()
                 try:
-                    cur.execute(query, tuple(parameters) if parameters else None)
+                    cur.execute(query, parameters or None)
                     try:
                         rows = cur.fetchall()
                     except psycopg.ProgrammingError:
@@ -110,15 +112,16 @@ class ConnectionPool:
                 "error_type": type(e).__name__,
             }
 
-    async def _execute(self, query: str, parameters: Optional[list[Any]]) -> dict[str, Any]:
+    async def _execute(self, query: str, parameters: Optional[Any]) -> dict[str, Any]:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._execute_sync, query, parameters)
 
     async def run_concurrent(
         self, queries: list[dict[str, Any]], concurrency_level: int
     ) -> dict[str, Any]:
-        """Expand each query's scenarios into individual executions, run them with a
-        concurrency cap, and aggregate latency/throughput metrics."""
+        """Expand each query into ``execution_count`` individual executions (drawing a
+        fresh random parameter dict per execution), run them with a concurrency cap,
+        and aggregate latency/throughput metrics."""
         tasks: list[dict[str, Any]] = []
         for qc in queries:
             sql_lines = [
@@ -126,16 +129,15 @@ class ConnectionPool:
                 if not ln.strip().startswith("--")
             ]
             clean_sql = "\n".join(sql_lines).strip()
-            for scenario in qc.get("test_scenarios", []):
-                params = scenario.get("parameters") or None
-                for _ in range(scenario.get("execution_count", 1)):
-                    tasks.append(
-                        {
-                            "query_identifier": qc["query_identifier"],
-                            "query": clean_sql,
-                            "parameters": params,
-                        }
-                    )
+            param_specs = qc.get("param_specs") or []
+            for _ in range(qc.get("execution_count", 1)):
+                tasks.append(
+                    {
+                        "query_identifier": qc["query_identifier"],
+                        "query": clean_sql,
+                        "parameters": query_format.draw_from_specs(param_specs) or None,
+                    }
+                )
 
         semaphore = asyncio.Semaphore(max(1, concurrency_level))
 

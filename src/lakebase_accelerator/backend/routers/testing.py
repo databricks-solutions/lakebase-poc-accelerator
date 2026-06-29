@@ -125,12 +125,6 @@ def _empty_report(concurrency: int, error: str) -> TestReportOut:
 # --------------------------------------------------------------------------- #
 # pgbench (Databricks Job)
 # --------------------------------------------------------------------------- #
-class PgbenchQueryIn(BaseModel):
-    name: str
-    content: str
-    weight: int = Field(default=1, ge=1)
-
-
 class PgbenchConfigIn(BaseModel):
     clients: int = Field(default=8, ge=1, le=1000)
     jobs: int = Field(default=8, ge=1, le=100)
@@ -150,9 +144,9 @@ class PgbenchSubmitIn(BaseModel):
     endpoint_host: str | None = None
     access_token: str | None = None
     postgres_user_name: str | None = None
-    # workload
+    # workload — same unified query format as psycopg (QueryIn)
     config: PgbenchConfigIn = Field(default_factory=PgbenchConfigIn)
-    queries: list[PgbenchQueryIn] = Field(default_factory=list)
+    queries: list[QueryIn] = Field(default_factory=list)
     cluster_id: str | None = None
 
 
@@ -211,12 +205,17 @@ def submit_pgbench_job(req: PgbenchSubmitIn, ws: EffectiveClient) -> PgbenchSubm
         logger.info(f"pgbench auth resolution failed: {e}")
         return PgbenchSubmitOut(status="error", error=f"Authentication failed: {e}")
 
+    # Translate the unified query format into native pgbench scripts (\set + :name)
+    # so the same query body the user wrote for psycopg drives pgbench unchanged.
+    parsed = [query_format.parse_query(q.identifier, q.content) for q in req.queries]
+    pgbench_queries = query_format.to_pgbench_queries(parsed)
+
     try:
         result = pgbench_job.submit(
             ws,
             creds=creds,
             config=req.config.model_dump(),
-            queries=[q.model_dump() for q in req.queries],
+            queries=pgbench_queries,
             cluster_id=req.cluster_id,
         )
         return PgbenchSubmitOut(**result)

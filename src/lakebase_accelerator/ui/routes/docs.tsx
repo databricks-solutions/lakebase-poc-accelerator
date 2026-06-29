@@ -87,18 +87,39 @@ function DocsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Query file format</CardTitle>
+            <CardTitle>Unified query format (psycopg &amp; pgbench)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>Each query uses <code>%s</code> placeholders and two optional directives:</p>
-            <pre className="overflow-x-auto rounded-md border bg-muted/30 p-3 text-xs">
-{`-- PARAMETERS: [[1], [437], ["Electronics"]]
--- EXEC_COUNT: 20
-SELECT channel, net_paid FROM tpcds_all_sales WHERE order_number = %s;`}
-            </pre>
             <p>
-              <code>-- PARAMETERS:</code> is a JSON list of value-sets (one scenario each);
-              <code> -- EXEC_COUNT:</code> is how many times to run each scenario (default 5).
+              Both testing engines share <strong className="text-foreground">one query format</strong>,
+              so a query you author once runs on either. A query is SQL with pgbench-style
+              <code> :name</code> placeholders plus optional comment directives:
+            </p>
+            <pre className="overflow-x-auto rounded-md border bg-muted/30 p-3 text-xs">
+{`-- WEIGHT: 40
+-- EXEC_COUNT: 20
+-- PARAM ticket = random(1, 240000)
+SELECT ss_item_sk, ss_net_paid
+FROM store_sales
+WHERE ss_ticket_number = :ticket;`}
+            </pre>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                <code>-- PARAM name = random(min, max)</code> — a named integer generator. The app
+                draws a fresh value per execution (psycopg) or emits <code>\set name random(min, max)</code> (pgbench).
+              </li>
+              <li>
+                <code>-- WEIGHT:</code> — pgbench's relative transaction weight for this query
+                (default 1). Ignored by psycopg.
+              </li>
+              <li>
+                <code>-- EXEC_COUNT:</code> — how many times psycopg runs this query (default 5).
+                Ignored by pgbench, which runs for the configured duration.
+              </li>
+            </ul>
+            <p>
+              Use a synced <code>store_sales</code> table (from <code>samples.tpcds_sf1.store_sales</code>)
+              and the 5 bundled sample queries to get started.
             </p>
           </CardContent>
         </Card>

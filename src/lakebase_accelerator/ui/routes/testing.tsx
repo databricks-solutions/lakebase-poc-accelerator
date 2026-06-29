@@ -55,11 +55,43 @@ interface QueryRow {
   content: string;
 }
 
-const SAMPLE: QueryRow = {
-  identifier: "order_lookup",
-  content:
-    "-- PARAMETERS: [[1], [437], [12000]]\n-- EXEC_COUNT: 10\nSELECT channel, net_paid FROM tpcds_all_sales WHERE order_number = %s;",
-};
+// One unified, tool-agnostic query format drives BOTH psycopg and pgbench. A query is
+// SQL with pgbench-style `:name` placeholders plus optional directives:
+//   -- WEIGHT: N      (pgbench relative transaction weight; default 1)
+//   -- EXEC_COUNT: N  (psycopg executions of this query; default 5)
+//   -- PARAM x = random(min, max)  (named integer generator)
+// These 5 OLTP samples run against a synced samples.tpcds_sf1.store_sales table
+// (sync it as `store_sales` on the Deployment page), ordered simple → complex.
+const SAMPLE_QUERIES: QueryRow[] = [
+  {
+    identifier: "order_lookup",
+    content:
+      "-- WEIGHT: 40\n-- EXEC_COUNT: 20\n-- PARAM ticket = random(1, 240000)\nSELECT ss_item_sk, ss_net_paid, ss_quantity\nFROM store_sales\nWHERE ss_ticket_number = :ticket;",
+  },
+  {
+    identifier: "customer_history",
+    content:
+      "-- WEIGHT: 25\n-- EXEC_COUNT: 15\n-- PARAM cust = random(1, 100000)\nSELECT ss_ticket_number, ss_sold_date_sk, ss_net_paid\nFROM store_sales\nWHERE ss_customer_sk = :cust\nORDER BY ss_sold_date_sk DESC\nLIMIT 50;",
+  },
+  {
+    identifier: "item_sales_agg",
+    content:
+      "-- WEIGHT: 15\n-- EXEC_COUNT: 10\n-- PARAM item = random(1, 18000)\nSELECT count(*) AS lines, sum(ss_quantity) AS units, avg(ss_sales_price) AS avg_price\nFROM store_sales\nWHERE ss_item_sk = :item;",
+  },
+  {
+    identifier: "store_daily_revenue",
+    content:
+      "-- WEIGHT: 12\n-- EXEC_COUNT: 8\n-- PARAM store = random(1, 10)\n-- PARAM start = random(2450816, 2452442)\nSELECT ss_sold_date_sk, count(*) AS tickets, sum(ss_net_paid) AS revenue\nFROM store_sales\nWHERE ss_store_sk = :store AND ss_sold_date_sk BETWEEN :start AND :start + 200\nGROUP BY ss_sold_date_sk\nORDER BY ss_sold_date_sk;",
+  },
+  {
+    identifier: "top_items_by_store",
+    content:
+      "-- WEIGHT: 8\n-- EXEC_COUNT: 5\n-- PARAM store = random(1, 10)\nSELECT ss_item_sk, sum(ss_net_paid) AS revenue, sum(ss_quantity) AS units\nFROM store_sales\nWHERE ss_store_sk = :store\nGROUP BY ss_item_sk\nORDER BY revenue DESC\nLIMIT 20;",
+  },
+];
+
+const QUERY_FORMAT_HINT =
+  "SELECT … WHERE col = :name;  directives: -- WEIGHT:, -- EXEC_COUNT:, -- PARAM name = random(min, max)";
 
 function metric(label: string, value: string, tone?: "good" | "warn" | "bad") {
   const color =
@@ -129,7 +161,7 @@ function TestingPage() {
 function PsycopgTab() {
   const [conn, setConn] = useState<ConnectionConfig>(emptyConnection);
   const [concurrency, setConcurrency] = useState(10);
-  const [queries, setQueries] = useState<QueryRow[]>([SAMPLE]);
+  const [queries, setQueries] = useState<QueryRow[]>(SAMPLE_QUERIES);
   const [report, setReport] = useState<TestReportOut | null>(null);
   const [baseline, setBaseline] = useState<TestReportOut | null>(null);
   const [optimize, setOptimize] = useState<OptimizeOut | null>(null);
@@ -268,7 +300,7 @@ function PsycopgTab() {
                 rows={5}
                 value={q.content}
                 onChange={(e) => updateQuery(i, { content: e.target.value })}
-                placeholder="SELECT ... WHERE col = %s;  (use -- PARAMETERS: and -- EXEC_COUNT:)"
+                placeholder={QUERY_FORMAT_HINT}
               />
             </div>
           ))}
@@ -432,33 +464,6 @@ function PsycopgTab() {
 // --------------------------------------------------------------------------- //
 // pgbench (Databricks job) tab
 // --------------------------------------------------------------------------- //
-interface PgbenchQueryRow {
-  name: string;
-  content: string;
-  weight: number;
-}
-
-const PGBENCH_SAMPLE: PgbenchQueryRow[] = [
-  {
-    name: "point",
-    content:
-      "\\set c_customer_sk random(0, 999)\nSELECT *\nFROM public.customer\nWHERE c_customer_sk = :c_customer_sk;",
-    weight: 60,
-  },
-  {
-    name: "range",
-    content:
-      "\\set c_start random(1, 11)\n\\set c_end :c_start + 10\nSELECT count(*)\nFROM public.customer\nWHERE c_current_hdemo_sk BETWEEN :c_start AND :c_end;",
-    weight: 30,
-  },
-  {
-    name: "agg",
-    content:
-      "SELECT c_preferred_cust_flag, count(*)\nFROM public.customer\nGROUP BY c_preferred_cust_flag;",
-    weight: 10,
-  },
-];
-
 interface PgbenchConfigState {
   clients: number;
   jobs: number;
@@ -484,7 +489,7 @@ const PGBENCH_DEFAULT_CONFIG: PgbenchConfigState = {
 function PgbenchTab() {
   const [conn, setConn] = useState<ConnectionConfig>(emptyConnection);
   const [config, setConfig] = useState<PgbenchConfigState>(PGBENCH_DEFAULT_CONFIG);
-  const [queries, setQueries] = useState<PgbenchQueryRow[]>(PGBENCH_SAMPLE);
+  const [queries, setQueries] = useState<QueryRow[]>(SAMPLE_QUERIES);
   const [clusterId, setClusterId] = useState<string>("auto");
   const [submitted, setSubmitted] = useState<PgbenchSubmitOut | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
@@ -506,7 +511,7 @@ function PgbenchTab() {
   const status = statusQuery.data?.data;
 
   const setCfg = (patch: Partial<PgbenchConfigState>) => setConfig((c) => ({ ...c, ...patch }));
-  const updateQuery = (i: number, patch: Partial<PgbenchQueryRow>) =>
+  const updateQuery = (i: number, patch: Partial<QueryRow>) =>
     setQueries((qs) => qs.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
 
   const onSubmit = async () => {
@@ -662,32 +667,27 @@ function PgbenchTab() {
             variant="outline"
             size="sm"
             onClick={() =>
-              setQueries((qs) => [...qs, { name: `query_${qs.length + 1}`, content: "", weight: 1 }])
+              setQueries((qs) => [...qs, { identifier: `query_${qs.length + 1}`, content: "" }])
             }
           >
             <Plus className="mr-1 h-4 w-4" /> Add query
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Same unified query format as the psycopg tab. <code>-- WEIGHT:</code> sets each
+            query's relative pgbench transaction weight; <code>-- EXEC_COUNT:</code> is ignored
+            here (pgbench runs for the configured duration).
+          </p>
           {queries.map((q, i) => (
             <div key={i} className="space-y-2 rounded-lg border p-3">
               <div className="flex items-center gap-2">
                 <Input
                   className="max-w-xs"
-                  value={q.name}
-                  onChange={(e) => updateQuery(i, { name: e.target.value })}
-                  placeholder="query name"
+                  value={q.identifier}
+                  onChange={(e) => updateQuery(i, { identifier: e.target.value })}
+                  placeholder="query identifier"
                 />
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs text-muted-foreground">weight</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    className="w-20"
-                    value={q.weight}
-                    onChange={(e) => updateQuery(i, { weight: Number(e.target.value) })}
-                  />
-                </div>
                 {queries.length > 1 && (
                   <Button
                     variant="ghost"
@@ -700,10 +700,10 @@ function PgbenchTab() {
               </div>
               <Textarea
                 className="font-mono text-xs"
-                rows={5}
+                rows={6}
                 value={q.content}
                 onChange={(e) => updateQuery(i, { content: e.target.value })}
-                placeholder="pgbench script — use \set vars and :params, e.g. SELECT * FROM t WHERE id = :id;"
+                placeholder={QUERY_FORMAT_HINT}
               />
             </div>
           ))}
