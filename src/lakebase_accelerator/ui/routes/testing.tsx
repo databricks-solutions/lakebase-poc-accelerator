@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -11,6 +11,11 @@ import {
   ArrowUp,
   ExternalLink,
   Loader2,
+  Save,
+  History,
+  FolderOpen,
+  RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
@@ -41,10 +46,23 @@ import {
   useSubmitPgbenchJob,
   useGetPgbenchRunStatus,
   useListClusters,
+  useEnableLakebaseHistory,
+  useSaveLakebaseHistory,
+  useListLakebaseHistory,
   type TestReportOut,
   type OptimizeOut,
   type PgbenchSubmitOut,
 } from "@/lib/api";
+import {
+  type Destination,
+  type HistoryPref,
+  type SavedRun,
+  loadPref,
+  savePref,
+  loadBrowserRuns,
+  saveBrowserRun,
+  newRunId,
+} from "@/lib/history";
 
 export const Route = createFileRoute("/testing")({
   component: TestingPage,
@@ -457,7 +475,331 @@ function PsycopgTab() {
           </CardContent>
         </Card>
       )}
+
+      <HistorySection
+        conn={conn}
+        queries={queries}
+        concurrency={concurrency}
+        report={report}
+        baseline={baseline}
+        optimize={optimize}
+        onOpenRun={(run) => {
+          setQueries(
+            run.queries.length
+              ? run.queries.map((q) => ({ identifier: q.identifier, content: q.content }))
+              : queries,
+          );
+          if (run.concurrency_level) setConcurrency(run.concurrency_level);
+          setBaseline(run.baseline_report);
+          setReport(run.optimized_report ?? run.baseline_report);
+          setOptimize(null);
+          toast.success(`Loaded run${run.label ? ` "${run.label}"` : ""}`);
+        }}
+      />
     </div>
+  );
+}
+
+// --------------------------------------------------------------------------- //
+// Run history (browser localStorage or shared Lakebase table)
+// --------------------------------------------------------------------------- //
+interface HistorySectionProps {
+  conn: ConnectionConfig;
+  queries: QueryRow[];
+  concurrency: number;
+  report: TestReportOut | null;
+  baseline: TestReportOut | null;
+  optimize: OptimizeOut | null;
+  onOpenRun: (run: SavedRun) => void;
+}
+
+function HistorySection({
+  conn,
+  queries,
+  concurrency,
+  report,
+  baseline,
+  optimize,
+  onOpenRun,
+}: HistorySectionProps) {
+  const [pref, setPref] = useState<HistoryPref>(loadPref);
+  const [label, setLabel] = useState("");
+  const [runs, setRuns] = useState<SavedRun[]>([]);
+
+  const enableHistory = useEnableLakebaseHistory();
+  const saveHistory = useSaveLakebaseHistory();
+  const listHistory = useListLakebaseHistory();
+
+  const updatePref = (patch: Partial<HistoryPref>) => {
+    const next = { ...pref, ...patch };
+    setPref(next);
+    savePref(next);
+  };
+
+  const connBody = () => ({
+    auth_method: conn.auth_method,
+    project: conn.project || null,
+    database: conn.database || null,
+    endpoint_host: conn.endpoint_host || null,
+    access_token: conn.access_token || null,
+    postgres_user_name: conn.postgres_user_name || null,
+    schema_name: pref.schema || "public",
+  });
+
+  // Load the list for whichever destination is active.
+  const refresh = async () => {
+    if (pref.destination === "browser") {
+      setRuns(loadBrowserRuns());
+    } else if (pref.destination === "lakebase" && pref.lakebaseConsented) {
+      try {
+        const res = await listHistory.mutateAsync(connBody());
+        if (res.data.error) toast.error(res.data.error);
+        else setRuns((res.data.runs ?? []) as SavedRun[]);
+      } catch (e) {
+        toast.error(String(e));
+      }
+    } else {
+      setRuns([]);
+    }
+  };
+
+  useEffect(() => {
+    if (pref.destination === "browser") setRuns(loadBrowserRuns());
+    else setRuns([]);
+    // Only auto-load the cheap (local) source; Lakebase is loaded on demand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pref.destination]);
+
+  const onChangeDestination = (d: Destination) => {
+    // Switching to Lakebase keeps any prior consent; the consent panel shows when not yet consented.
+    updatePref({ destination: d });
+  };
+
+  const onEnableLakebase = async () => {
+    try {
+      const res = await enableHistory.mutateAsync(connBody());
+      if (res.data.ok) {
+        updatePref({ lakebaseConsented: true });
+        toast.success(res.data.message);
+        refresh();
+      } else {
+        toast.error(res.data.error || res.data.message);
+      }
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const buildRun = (): SavedRun => {
+    // If there's a baseline, the current report is the "after"; otherwise it's the baseline.
+    const hasBaseline = !!baseline && baseline !== report;
+    return {
+      id: newRunId(),
+      created_at: new Date().toISOString(),
+      label: label.trim() || null,
+      project: conn.project || null,
+      concurrency_level: concurrency,
+      queries: queries.map((q) => ({ identifier: q.identifier, content: q.content })),
+      baseline_report: hasBaseline ? baseline : report,
+      optimized_report: hasBaseline ? report : null,
+      index_ddls: optimize?.index_suggestions.map((s) => s.ddl) ?? [],
+    };
+  };
+
+  const onSave = async () => {
+    if (!report) {
+      toast.error("Run a test first — there's nothing to save yet.");
+      return;
+    }
+    const run = buildRun();
+    if (pref.destination === "browser") {
+      saveBrowserRun(run);
+      setRuns(loadBrowserRuns());
+      setLabel("");
+      toast.success("Saved to this browser");
+      return;
+    }
+    if (pref.destination === "lakebase") {
+      try {
+        const res = await saveHistory.mutateAsync({
+          ...connBody(),
+          label: run.label,
+          concurrency_level: run.concurrency_level,
+          queries: run.queries,
+          baseline_report: run.baseline_report as unknown as Record<string, unknown> | null,
+          optimized_report: run.optimized_report as unknown as Record<string, unknown> | null,
+          index_ddls: run.index_ddls,
+        });
+        if (res.data.ok) {
+          setLabel("");
+          toast.success("Saved to Lakebase");
+          refresh();
+        } else {
+          toast.error(res.data.error || "Save failed");
+        }
+      } catch (e) {
+        toast.error(String(e));
+      }
+    }
+  };
+
+  const needsConsent = pref.destination === "lakebase" && !pref.lakebaseConsented;
+  const canSave = pref.destination !== "off" && !needsConsent;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-4 w-4" /> Run history
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="grid gap-2">
+            <Label>Save runs to</Label>
+            <Select value={pref.destination} onValueChange={(v) => onChangeDestination(v as Destination)}>
+              <SelectTrigger className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Off — don't save</SelectItem>
+                <SelectItem value="browser">This browser (localStorage)</SelectItem>
+                <SelectItem value="lakebase">Lakebase table (shared)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {pref.destination !== "off" && (
+            <>
+              <div className="grid gap-2">
+                <Label>Label (optional)</Label>
+                <Input
+                  className="w-56"
+                  placeholder="e.g. before/after indexes"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                />
+              </div>
+              <Button onClick={onSave} disabled={!canSave || saveHistory.isPending}>
+                <Save className="mr-1 h-4 w-4" />
+                {saveHistory.isPending ? "Saving…" : "Save current run"}
+              </Button>
+              <Button variant="outline" onClick={refresh} disabled={listHistory.isPending}>
+                <RefreshCw className="mr-1 h-4 w-4" /> Refresh
+              </Button>
+            </>
+          )}
+        </div>
+
+        {pref.destination === "browser" && (
+          <p className="text-xs text-muted-foreground">
+            Stored in this browser only — private to you, survives refreshes and app redeploys, but
+            not shared across machines or users. Clearing browser data removes it.
+          </p>
+        )}
+
+        {/* Lakebase consent + least-privilege permission gate */}
+        {pref.destination === "lakebase" && (
+          <div className="rounded-md border bg-muted/30 p-3 text-xs">
+            <div className="flex items-center gap-2 font-medium text-foreground">
+              <ShieldCheck className="h-4 w-4" />
+              {pref.lakebaseConsented ? "Lakebase history enabled" : "Enable shared Lakebase history"}
+            </div>
+            <p className="mt-2 text-muted-foreground">
+              The app connects to the project you're testing as its{" "}
+              <span className="font-medium text-foreground">service principal</span> and writes one
+              row per saved run. The table is shared across all app users; each run is attributed to
+              you via <code>created_by</code>. Set the connection above before enabling.
+            </p>
+            <div className="mt-2 rounded border border-amber-500/30 bg-amber-500/5 p-2 text-muted-foreground">
+              <span className="font-medium text-foreground">Least-privilege by design.</span> This app
+              is standalone — it is <span className="font-medium text-foreground">not</span> attached
+              to any Lakebase project. The service principal is confined to a single dedicated schema
+              it <span className="font-medium text-foreground">owns</span> (
+              <code>{pref.schema || "accelerator_history"}</code>) and has{" "}
+              <span className="font-medium text-foreground">no access to your other tables</span> —
+              Postgres denies everything not explicitly granted. A project owner runs the one-time
+              setup below; nothing is granted on your application data.
+            </div>
+            <div className="mt-3 grid max-w-xs gap-2">
+              <Label>Dedicated schema (SP-owned)</Label>
+              <Input
+                value={pref.schema}
+                onChange={(e) => updatePref({ schema: e.target.value, lakebaseConsented: false })}
+                placeholder="accelerator_history"
+              />
+            </div>
+            <div className="mt-3">
+              <div className="mb-1 text-muted-foreground">
+                One-time setup — a project owner runs this once per project (the exact SP role name is
+                filled in after you click Enable):
+              </div>
+              <pre className="overflow-x-auto rounded bg-background p-2 text-foreground">
+{`-- Least-privilege role for the app service principal:
+CREATE ROLE "<app-service-principal>" WITH LOGIN
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+GRANT CONNECT ON DATABASE databricks_postgres TO "<app-service-principal>";
+-- A dedicated schema it OWNS — its entire sandbox:
+CREATE SCHEMA IF NOT EXISTS ${pref.schema || "accelerator_history"}
+  AUTHORIZATION "<app-service-principal>";`}
+              </pre>
+            </div>
+            {!pref.lakebaseConsented && (
+              <Button className="mt-3" size="sm" onClick={onEnableLakebase} disabled={enableHistory.isPending}>
+                {enableHistory.isPending ? "Checking permissions…" : "Enable & create table"}
+              </Button>
+            )}
+            {enableHistory.data?.data && !enableHistory.data.data.ok && (
+              <div className="mt-3 text-amber-600 dark:text-amber-400">
+                <p>{enableHistory.data.data.message}</p>
+                {enableHistory.data.data.grant_sql && (
+                  <pre className="mt-2 overflow-x-auto rounded bg-background p-2 text-foreground">
+                    {enableHistory.data.data.grant_sql}
+                  </pre>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Saved runs list */}
+        {runs.length > 0 && (
+          <div className="space-y-2">
+            {runs.map((run) => {
+              const after = run.optimized_report;
+              const before = run.baseline_report;
+              return (
+                <div
+                  key={run.id}
+                  className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{run.label || "(unlabeled run)"}</span>
+                      {after && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          before/after
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {run.created_at ? new Date(run.created_at).toLocaleString() : ""}
+                      {run.project ? ` · ${run.project}` : ""}
+                      {run.created_by ? ` · ${run.created_by}` : ""}
+                      {before
+                        ? ` · ${(after ?? before).throughput_queries_per_second.toFixed(0)} qps, p95 ${(after ?? before).p95_execution_time_ms.toFixed(0)} ms`
+                        : ""}
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => onOpenRun(run)}>
+                    <FolderOpen className="mr-1 h-4 w-4" /> Open
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

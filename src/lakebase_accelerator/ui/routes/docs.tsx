@@ -123,6 +123,55 @@ WHERE ss_ticket_number = :ticket;`}
             </p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Run history &amp; permissions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              The psycopg tab can save each test run — including the{" "}
+              <strong className="text-foreground">before/after (baseline → optimized)</strong> pair —
+              to one of two destinations, chosen at runtime:
+            </p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                <strong className="text-foreground">This browser</strong> (default) — stored in
+                <code> localStorage</code>. No setup, no database writes; private to your browser,
+                survives refreshes and app redeploys, but not shared across machines or users.
+              </li>
+              <li>
+                <strong className="text-foreground">Lakebase table</strong> — shared, durable history
+                written into the connected project. Opt-in and consent-gated.
+              </li>
+            </ul>
+            <p>
+              <strong className="text-foreground">This app is standalone</strong> — it is not attached
+              to any Lakebase project, so it can test many projects. For the Lakebase destination it
+              connects as its <strong className="text-foreground">service principal</strong> and is
+              held to <strong className="text-foreground">least privilege</strong>: the SP is confined
+              to a single dedicated schema it <em>owns</em> (<code>accelerator_history</code>) and has
+              no access to your other tables — Postgres denies anything not explicitly granted, and the
+              app only ever touches <code>‹schema›._accelerator_run_history</code>.
+            </p>
+            <p>There are two permission layers a project owner provisions once, per project:</p>
+            <pre className="overflow-x-auto rounded-md border bg-muted/30 p-3 text-xs">
+{`-- Layer 1 — let the SP connect (it has no role in a project it didn't create):
+CREATE ROLE "<app-service-principal>" WITH LOGIN
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+GRANT CONNECT ON DATABASE databricks_postgres TO "<app-service-principal>";
+
+-- Layer 2 — a dedicated schema it OWNS (its entire sandbox):
+CREATE SCHEMA IF NOT EXISTS accelerator_history
+  AUTHORIZATION "<app-service-principal>";`}
+            </pre>
+            <p>
+              The Enable step previews the exact statements with the real SP role name filled in. Runs
+              are attributed to the actual user via <code>created_by</code>. No setup is needed for the
+              browser destination.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

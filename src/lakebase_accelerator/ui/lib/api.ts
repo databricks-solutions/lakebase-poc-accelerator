@@ -81,6 +81,59 @@ export interface FindingOut {
 export interface HTTPValidationError {
     detail?: ValidationError[];
 }
+export interface HistoryConnIn {
+    access_token?: string | null;
+    auth_method?: "identity" | "app_resource" | "oauth";
+    database?: string | null;
+    endpoint_host?: string | null;
+    postgres_user_name?: string | null;
+    project?: string | null;
+    schema_name?: string;
+}
+export interface HistoryEnableOut {
+    ddl?: string | null;
+    error?: string | null;
+    grant_sql?: string | null;
+    message: string;
+    ok: boolean;
+    table?: string | null;
+}
+export interface HistoryListOut {
+    error?: string | null;
+    runs?: HistoryRunOut[];
+}
+export interface HistoryRunOut {
+    baseline_report?: Record<string, unknown> | null;
+    concurrency_level?: number | null;
+    created_at?: string | null;
+    created_by?: string | null;
+    id: string;
+    index_ddls?: string[];
+    label?: string | null;
+    optimized_report?: Record<string, unknown> | null;
+    project?: string | null;
+    queries?: Record<string, unknown>[];
+}
+export interface HistorySaveIn {
+    access_token?: string | null;
+    auth_method?: "identity" | "app_resource" | "oauth";
+    baseline_report?: Record<string, unknown> | null;
+    concurrency_level?: number | null;
+    database?: string | null;
+    endpoint_host?: string | null;
+    index_ddls?: string[];
+    label?: string | null;
+    optimized_report?: Record<string, unknown> | null;
+    postgres_user_name?: string | null;
+    project?: string | null;
+    queries?: QueryIn[];
+    schema_name?: string;
+}
+export interface HistorySaveOut {
+    error?: string | null;
+    id?: string | null;
+    ok: boolean;
+}
 export interface IndexSuggestionOut {
     columns: string[];
     ddl: string;
@@ -663,6 +716,114 @@ export function useListWarehousesSuspense<TData = {
         queryKey: listWarehousesKey(),
         queryFn: ()=>listWarehouses(),
         ...options?.query
+    });
+}
+export const enableLakebaseHistory = async (data: HistoryConnIn, options?: RequestInit): Promise<{
+    data: HistoryEnableOut;
+}> =>{
+    const res = await fetch("/api/history/lakebase/enable", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useEnableLakebaseHistory(options?: {
+    mutation?: UseMutationOptions<{
+        data: HistoryEnableOut;
+    }, ApiError, HistoryConnIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>enableLakebaseHistory(data),
+        ...options?.mutation
+    });
+}
+export const listLakebaseHistory = async (data: HistoryConnIn, options?: RequestInit): Promise<{
+    data: HistoryListOut;
+}> =>{
+    const res = await fetch("/api/history/lakebase/list", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useListLakebaseHistory(options?: {
+    mutation?: UseMutationOptions<{
+        data: HistoryListOut;
+    }, ApiError, HistoryConnIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>listLakebaseHistory(data),
+        ...options?.mutation
+    });
+}
+export const saveLakebaseHistory = async (data: HistorySaveIn, options?: RequestInit): Promise<{
+    data: HistorySaveOut;
+}> =>{
+    const res = await fetch("/api/history/lakebase/save", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useSaveLakebaseHistory(options?: {
+    mutation?: UseMutationOptions<{
+        data: HistorySaveOut;
+    }, ApiError, HistorySaveIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>saveLakebaseHistory(data),
+        ...options?.mutation
     });
 }
 export interface ListLakebaseDatabasesParams {
