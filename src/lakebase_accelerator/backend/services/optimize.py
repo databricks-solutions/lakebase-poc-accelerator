@@ -128,6 +128,41 @@ _SQL_NOISE = {
 }
 
 
+def filter_existing_indexes(
+    suggestions: list[IndexSuggestion], existing: Optional[list[dict[str, Any]]]
+) -> tuple[list[IndexSuggestion], list[IndexSuggestion]]:
+    """Split suggestions into (still-needed, already-covered) using live index metadata.
+
+    ``existing`` is a list of ``{"table", "columns"}`` (ordered columns) from
+    :func:`live_introspection`. A suggestion is considered already covered when an
+    existing index on the same table has the suggestion's columns as a leading prefix
+    (order-sensitive) or as the same column set (for composite equality indexes).
+    """
+    if not existing:
+        return suggestions, []
+
+    by_table: dict[str, list[list[str]]] = {}
+    for e in existing:
+        by_table.setdefault(_bare(e["table"]).lower(), []).append(
+            [str(c).lower() for c in e.get("columns", [])]
+        )
+
+    kept: list[IndexSuggestion] = []
+    dropped: list[IndexSuggestion] = []
+    for s in suggestions:
+        cols = [c.lower() for c in s.columns]
+        covered = False
+        for idx_cols in by_table.get(_bare(s.table).lower(), []):
+            if idx_cols[: len(cols)] == cols:  # prefix match (covers range / ORDER BY too)
+                covered = True
+                break
+            if len(idx_cols) == len(cols) and set(idx_cols) == set(cols):  # composite, any order
+                covered = True
+                break
+        (dropped if covered else kept).append(s)
+    return kept, dropped
+
+
 # --- Live introspection ------------------------------------------------------
 
 # Detection queries from the Lakebase OLTP Technical Guide.
@@ -146,6 +181,19 @@ _UNUSED_IDX_SQL = (
 _PG_STAT_STATEMENTS_SQL = (
     "SELECT query, calls, total_exec_time/nullif(calls,0) AS avg_ms "
     "FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10;"
+)
+# Existing indexes with their ordered column lists (user schemas only), so we can
+# avoid re-suggesting indexes that are already present.
+_EXISTING_INDEXES_SQL = (
+    "SELECT t.relname AS table_name, array_agg(a.attname ORDER BY x.ord) AS columns "
+    "FROM pg_index ix "
+    "JOIN pg_class t ON t.oid = ix.indrelid "
+    "JOIN pg_class i ON i.oid = ix.indexrelid "
+    "JOIN pg_namespace n ON n.oid = t.relnamespace "
+    "JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS x(attnum, ord) ON true "
+    "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = x.attnum "
+    "WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND x.attnum > 0 "
+    "GROUP BY t.relname, i.relname;"
 )
 
 
@@ -222,6 +270,15 @@ def live_introspection(creds: PgCredentials) -> tuple[list[Finding], dict[str, A
                         detail=f"{len(unused)} index(es) have never been scanned; they slow writes.",
                         actions=["Drop indexes confirmed unused after a representative workload."],
                     ))
+            except Exception:  # noqa: BLE001
+                conn.rollback()
+
+            # Existing indexes — used to drop already-satisfied suggestions
+            try:
+                cur.execute(_EXISTING_INDEXES_SQL)
+                stats["existing_indexes"] = [
+                    {"table": r[0], "columns": list(r[1] or [])} for r in cur.fetchall()
+                ]
             except Exception:  # noqa: BLE001
                 conn.rollback()
 

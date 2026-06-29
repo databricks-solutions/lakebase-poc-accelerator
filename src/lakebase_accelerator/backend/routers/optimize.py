@@ -103,12 +103,9 @@ def apply_indexes(req: ApplyIndexIn, ws: EffectiveClient) -> ApplyIndexesOut:
 def optimize_analyze(req: OptimizeIn, ws: EffectiveClient) -> OptimizeOut:
     """Parse the tested queries for candidate indexes and (optionally) run live
     introspection against Lakebase for data-driven tuning findings."""
-    suggestions = [
-        IndexSuggestionOut(table=s.table, columns=s.columns, rationale=s.rationale, ddl=s.ddl)
-        for s in optimize.parse_candidate_indexes(
-            [(q.identifier, q.content) for q in req.queries]
-        )
-    ]
+    candidates = optimize.parse_candidate_indexes(
+        [(q.identifier, q.content) for q in req.queries]
+    )
 
     findings: list[FindingOut] = []
     stats: dict = {}
@@ -134,10 +131,29 @@ def optimize_analyze(req: OptimizeIn, ws: EffectiveClient) -> OptimizeOut:
                 )
                 for f in raw_findings
             ]
+            # Drop suggestions that an existing index already covers (so re-running
+            # after applying indexes stops re-suggesting the same ones).
+            kept, dropped = optimize.filter_existing_indexes(
+                candidates, stats.get("existing_indexes")
+            )
+            candidates = kept
+            if dropped:
+                names = ", ".join(f"{s.table}({', '.join(s.columns)})" for s in dropped)
+                findings.insert(0, FindingOut(
+                    severity="low", category="index",
+                    title=f"{len(dropped)} candidate index(es) already exist",
+                    detail=f"Skipped because a matching index is already present: {names}.",
+                    actions=["No action needed — these predicates are already indexed."],
+                ))
             live_ran = True
         except Exception as e:  # noqa: BLE001
             logger.info(f"optimize live introspection failed: {e}")
             error = f"Live introspection skipped: {e}"
+
+    suggestions = [
+        IndexSuggestionOut(table=s.table, columns=s.columns, rationale=s.rationale, ddl=s.ddl)
+        for s in candidates
+    ]
 
     return OptimizeOut(
         index_suggestions=suggestions,
