@@ -16,6 +16,15 @@ dev = [
     "ty>=0.0.12",
 ]
 
+[tool.ty.src]
+# Exclude non-source trees from type checking: the recovered legacy app under
+# .worktrees and bundled job payloads (Databricks notebooks reference runtime-only
+# globals like dbutils) shipped as package data.
+exclude = [
+    ".worktrees",
+    "src/lakebase_accelerator/backend/resources",
+]
+
 [tool.apx.metadata]
 app-name = "lakebase-accelerator"
 app-slug = "lakebase_accelerator"

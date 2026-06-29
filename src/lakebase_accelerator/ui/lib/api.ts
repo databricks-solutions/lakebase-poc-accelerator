@@ -30,6 +30,16 @@ export interface ApplyResultOut {
     detail: string;
     ok: boolean;
 }
+export interface ClusterListOut {
+    clusters?: ClusterOut[];
+    error?: string | null;
+}
+export interface ClusterOut {
+    cluster_id: string;
+    cluster_name: string;
+    node_type_id?: string | null;
+    state: string;
+}
 export interface ComplexValue {
     display?: string | null;
     primary?: boolean | null;
@@ -105,6 +115,49 @@ export interface OptimizeOut {
 export interface OptimizeQueryIn {
     content: string;
     identifier: string;
+}
+export interface PgbenchConfigIn {
+    clients?: number;
+    connect_per_transaction?: boolean;
+    detailed_logging?: boolean;
+    duration_seconds?: number;
+    jobs?: number;
+    per_statement_latency?: boolean;
+    progress_interval?: number;
+    protocol?: string;
+}
+export interface PgbenchQueryIn {
+    content: string;
+    name: string;
+    weight?: number;
+}
+export interface PgbenchStatusOut {
+    error?: string | null;
+    message: string;
+    pgbench_results?: Record<string, unknown> | null;
+    progress: number;
+    run_id: string;
+    status: string;
+}
+export interface PgbenchSubmitIn {
+    access_token?: string | null;
+    auth_method?: "identity" | "app_resource" | "oauth";
+    cluster_id?: string | null;
+    config?: PgbenchConfigIn;
+    database?: string | null;
+    endpoint_host?: string | null;
+    postgres_user_name?: string | null;
+    project?: string | null;
+    queries?: PgbenchQueryIn[];
+}
+export interface PgbenchSubmitOut {
+    error?: string | null;
+    job_id?: string | null;
+    job_name?: string | null;
+    job_run_url?: string | null;
+    job_url?: string | null;
+    run_id?: string | null;
+    status: string;
 }
 export interface ProjectInfoOut {
     branch?: string | null;
@@ -852,6 +905,152 @@ export function useApplyIndexes(options?: {
 }) {
     return useMutation({
         mutationFn: (data)=>applyIndexes(data),
+        ...options?.mutation
+    });
+}
+export const listClusters = async (options?: RequestInit): Promise<{
+    data: ClusterListOut;
+}> =>{
+    const res = await fetch("/api/testing/clusters", {
+        ...options,
+        method: "GET"
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export const listClustersKey = ()=>{
+    return [
+        "/api/testing/clusters"
+    ] as const;
+};
+export function useListClusters<TData = {
+    data: ClusterListOut;
+}>(options?: {
+    query?: Omit<UseQueryOptions<{
+        data: ClusterListOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useQuery({
+        queryKey: listClustersKey(),
+        queryFn: ()=>listClusters(),
+        ...options?.query
+    });
+}
+export function useListClustersSuspense<TData = {
+    data: ClusterListOut;
+}>(options?: {
+    query?: Omit<UseSuspenseQueryOptions<{
+        data: ClusterListOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useSuspenseQuery({
+        queryKey: listClustersKey(),
+        queryFn: ()=>listClusters(),
+        ...options?.query
+    });
+}
+export interface GetPgbenchRunStatusParams {
+    run_id: string;
+}
+export const getPgbenchRunStatus = async (params: GetPgbenchRunStatusParams, options?: RequestInit): Promise<{
+    data: PgbenchStatusOut;
+}> =>{
+    const res = await fetch(`/api/testing/pgbench/status/${params.run_id}`, {
+        ...options,
+        method: "GET"
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export const getPgbenchRunStatusKey = (params?: GetPgbenchRunStatusParams)=>{
+    return [
+        "/api/testing/pgbench/status/{run_id}",
+        params
+    ] as const;
+};
+export function useGetPgbenchRunStatus<TData = {
+    data: PgbenchStatusOut;
+}>(options: {
+    params: GetPgbenchRunStatusParams;
+    query?: Omit<UseQueryOptions<{
+        data: PgbenchStatusOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useQuery({
+        queryKey: getPgbenchRunStatusKey(options.params),
+        queryFn: ()=>getPgbenchRunStatus(options.params),
+        ...options?.query
+    });
+}
+export function useGetPgbenchRunStatusSuspense<TData = {
+    data: PgbenchStatusOut;
+}>(options: {
+    params: GetPgbenchRunStatusParams;
+    query?: Omit<UseSuspenseQueryOptions<{
+        data: PgbenchStatusOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useSuspenseQuery({
+        queryKey: getPgbenchRunStatusKey(options.params),
+        queryFn: ()=>getPgbenchRunStatus(options.params),
+        ...options?.query
+    });
+}
+export const submitPgbenchJob = async (data: PgbenchSubmitIn, options?: RequestInit): Promise<{
+    data: PgbenchSubmitOut;
+}> =>{
+    const res = await fetch("/api/testing/pgbench/submit", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useSubmitPgbenchJob(options?: {
+    mutation?: UseMutationOptions<{
+        data: PgbenchSubmitOut;
+    }, ApiError, PgbenchSubmitIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>submitPgbenchJob(data),
         ...options?.mutation
     });
 }
