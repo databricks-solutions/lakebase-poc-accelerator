@@ -92,6 +92,11 @@ def parse_candidate_indexes(queries: list[tuple[str, str]]) -> list[IndexSuggest
         if not table:
             continue
 
+        # SELECT-list aliases (e.g. "sum(ss_net_paid) AS revenue") are not real
+        # columns — indexing them fails ("column does not exist"), so exclude them
+        # from ORDER BY candidates.
+        select_aliases = {a.lower() for a in re.findall(rf'\bas\s+({_IDENT})', sql, re.IGNORECASE)}
+
         # Equality / IN predicates → composite candidate
         eq_cols = [
             _bare(c)
@@ -109,13 +114,22 @@ def parse_candidate_indexes(queries: list[tuple[str, str]]) -> list[IndexSuggest
             if cb.lower() not in _SQL_NOISE and not re.fullmatch(r'\d+', cb):
                 add(table, [cb], "Range predicate — supports range scans.")
 
-        # ORDER BY → single-column (leading) each
+        # ORDER BY → single-column (leading) each, but only for real base columns:
+        # skip SELECT aliases and expressions/aggregates (e.g. "sum(x)"), which can't
+        # be indexed as a plain column.
         ob = re.search(r'\border\s+by\s+(.+?)(?:\blimit\b|;|$)', sql, re.IGNORECASE | re.DOTALL)
         if ob:
             for part in ob.group(1).split(","):
-                col = part.strip().split()[0] if part.strip() else ""
-                cb = _bare(col)
-                if cb and cb.lower() not in _SQL_NOISE and not re.fullmatch(r'\d+', cb):
+                term = part.strip()
+                if not term or "(" in term:  # expression / aggregate — not a plain column
+                    continue
+                cb = _bare(term.split()[0])
+                if (
+                    cb
+                    and cb.lower() not in _SQL_NOISE
+                    and cb.lower() not in select_aliases
+                    and not re.fullmatch(r'\d+', cb)
+                ):
                     add(table, [cb], "ORDER BY column — avoids a sort.")
 
     return suggestions
@@ -126,6 +140,29 @@ _SQL_NOISE = {
     "case", "when", "then", "else", "end", "as", "on", "join", "left", "right",
     "inner", "outer", "group", "order", "by", "limit", "offset", "having",
 }
+
+# The app's own bookkeeping table — never a benchmark target, so always excluded
+# from live findings.
+_HISTORY_TABLE = "_accelerator_run_history"
+
+
+def tables_in_queries(queries: list[tuple[str, str]]) -> set[str]:
+    """Bare, lowercased table names referenced by the benchmark queries (FROM/JOIN/UPDATE/INTO)."""
+    tables: set[str] = set()
+    for _ident, raw in queries:
+        sql = _strip_comments(raw)
+        for m in re.finditer(rf'\b(?:from|join|update|into)\s+({_QUALIFIED})', sql, re.IGNORECASE):
+            tables.add(_bare(m.group(1)).lower())
+    return tables
+
+
+def _keep_table(name: str, focus: Optional[set[str]]) -> bool:
+    """Keep a table in live findings only if it's a benchmark target (and never the
+    app's own history table). With no focus set (no queries), keep all but history."""
+    n = (name or "").lower()
+    if n == _HISTORY_TABLE:
+        return False
+    return n in focus if focus else True
 
 
 def filter_existing_indexes(
@@ -168,7 +205,7 @@ def filter_existing_indexes(
 # Detection queries from the Lakebase OLTP Technical Guide.
 _CACHE_HIT_SQL = (
     "SELECT round(sum(blks_hit)*100.0/nullif(sum(blks_hit+blks_read),0), 2) AS cache_hit_pct "
-    "FROM pg_stat_database;"
+    "FROM pg_stat_database WHERE datname = current_database();"
 )
 _SEQ_SCAN_SQL = (
     "SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables "
@@ -206,9 +243,16 @@ class Finding:
     actions: list[str] = field(default_factory=list)
 
 
-def live_introspection(creds: PgCredentials) -> tuple[list[Finding], dict[str, Any]]:
+def live_introspection(
+    creds: PgCredentials, focus_tables: Optional[set[str]] = None
+) -> tuple[list[Finding], dict[str, Any]]:
     """Connect and run detection SQL. Returns (findings, raw_stats). Best-effort:
-    individual probes that fail (e.g. missing pg_stat_statements) are skipped."""
+    individual probes that fail (e.g. missing pg_stat_statements) are skipped.
+
+    Table-scoped findings (sequential scans, unused indexes) are restricted to
+    ``focus_tables`` — the tables the benchmark queries actually touch — and never
+    include the app's own history table.
+    """
     findings: list[Finding] = []
     stats: dict[str, Any] = {}
 
@@ -239,10 +283,14 @@ def live_introspection(creds: PgCredentials) -> tuple[list[Finding], dict[str, A
             except Exception:  # noqa: BLE001
                 conn.rollback()
 
-            # Sequential scans
+            # Sequential scans (scoped to benchmark tables; never the history table)
             try:
                 cur.execute(_SEQ_SCAN_SQL)
-                seq = [{"table": r[0], "seq_scan": r[1], "idx_scan": r[2]} for r in cur.fetchall()]
+                seq = [
+                    {"table": r[0], "seq_scan": r[1], "idx_scan": r[2]}
+                    for r in cur.fetchall()
+                    if _keep_table(r[0], focus_tables)
+                ]
                 stats["seq_scan_tables"] = seq
                 if seq:
                     names = ", ".join(s["table"] for s in seq[:5])
@@ -258,10 +306,14 @@ def live_introspection(creds: PgCredentials) -> tuple[list[Finding], dict[str, A
             except Exception:  # noqa: BLE001
                 conn.rollback()
 
-            # Unused indexes
+            # Unused indexes (scoped to benchmark tables; never the history table)
             try:
                 cur.execute(_UNUSED_IDX_SQL)
-                unused = [{"table": r[0], "index": r[1]} for r in cur.fetchall()]
+                unused = [
+                    {"table": r[0], "index": r[1]}
+                    for r in cur.fetchall()
+                    if _keep_table(r[0], focus_tables)
+                ]
                 stats["unused_indexes"] = unused
                 if unused:
                     findings.append(Finding(

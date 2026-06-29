@@ -103,9 +103,9 @@ def apply_indexes(req: ApplyIndexIn, ws: EffectiveClient) -> ApplyIndexesOut:
 def optimize_analyze(req: OptimizeIn, ws: EffectiveClient) -> OptimizeOut:
     """Parse the tested queries for candidate indexes and (optionally) run live
     introspection against Lakebase for data-driven tuning findings."""
-    candidates = optimize.parse_candidate_indexes(
-        [(q.identifier, q.content) for q in req.queries]
-    )
+    query_pairs = [(q.identifier, q.content) for q in req.queries]
+    candidates = optimize.parse_candidate_indexes(query_pairs)
+    focus_tables = optimize.tables_in_queries(query_pairs)
 
     findings: list[FindingOut] = []
     stats: dict = {}
@@ -123,7 +123,7 @@ def optimize_analyze(req: OptimizeIn, ws: EffectiveClient) -> OptimizeOut:
                 access_token=req.access_token,
                 postgres_user_name=req.postgres_user_name,
             )
-            raw_findings, stats = optimize.live_introspection(creds)
+            raw_findings, stats = optimize.live_introspection(creds, focus_tables)
             findings = [
                 FindingOut(
                     severity=f.severity, category=f.category, title=f.title,
