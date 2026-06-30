@@ -30,6 +30,9 @@ export interface ApplyResultOut {
     detail: string;
     ok: boolean;
 }
+export interface CapabilitiesOut {
+    pgbench_local_available?: boolean;
+}
 export interface ClusterListOut {
     clusters?: ClusterOut[];
     error?: string | null;
@@ -81,6 +84,22 @@ export interface FindingOut {
 export interface HTTPValidationError {
     detail?: ValidationError[];
 }
+export interface HistoryArchiveIn {
+    access_token?: string | null;
+    auth_method?: "identity" | "app_resource" | "oauth";
+    database?: string | null;
+    endpoint_host?: string | null;
+    postgres_user_name?: string | null;
+    project?: string | null;
+    runs?: HistoryRunIn[];
+    schema_name?: string;
+    table_name?: string;
+}
+export interface HistoryArchiveOut {
+    error?: string | null;
+    inserted?: number;
+    ok: boolean;
+}
 export interface HistoryConnIn {
     access_token?: string | null;
     auth_method?: "identity" | "app_resource" | "oauth";
@@ -89,6 +108,7 @@ export interface HistoryConnIn {
     postgres_user_name?: string | null;
     project?: string | null;
     schema_name?: string;
+    table_name?: string;
 }
 export interface HistoryEnableOut {
     ddl?: string | null;
@@ -102,11 +122,24 @@ export interface HistoryListOut {
     error?: string | null;
     runs?: HistoryRunOut[];
 }
+export interface HistoryRunIn {
+    baseline_report?: Record<string, unknown> | null;
+    config?: Record<string, unknown>;
+    created_at?: string | null;
+    engine?: string;
+    id?: string | null;
+    index_ddls?: string[];
+    label?: string | null;
+    optimized_report?: Record<string, unknown> | null;
+    project?: string | null;
+    queries?: QueryIn[];
+}
 export interface HistoryRunOut {
     baseline_report?: Record<string, unknown> | null;
-    concurrency_level?: number | null;
+    config?: Record<string, unknown>;
     created_at?: string | null;
     created_by?: string | null;
+    engine?: string;
     id: string;
     index_ddls?: string[];
     label?: string | null;
@@ -114,25 +147,9 @@ export interface HistoryRunOut {
     project?: string | null;
     queries?: Record<string, unknown>[];
 }
-export interface HistorySaveIn {
-    access_token?: string | null;
-    auth_method?: "identity" | "app_resource" | "oauth";
-    baseline_report?: Record<string, unknown> | null;
-    concurrency_level?: number | null;
-    database?: string | null;
-    endpoint_host?: string | null;
-    index_ddls?: string[];
-    label?: string | null;
-    optimized_report?: Record<string, unknown> | null;
-    postgres_user_name?: string | null;
-    project?: string | null;
-    queries?: QueryIn[];
-    schema_name?: string;
-}
-export interface HistorySaveOut {
+export interface HistoryTablesOut {
     error?: string | null;
-    id?: string | null;
-    ok: boolean;
+    tables?: string[];
 }
 export interface IndexSuggestionOut {
     columns: string[];
@@ -179,6 +196,12 @@ export interface PgbenchConfigIn {
     progress_interval?: number;
     protocol?: string;
 }
+export interface PgbenchLocalSubmitOut {
+    error?: string | null;
+    monitoring_url?: string | null;
+    run_id?: string | null;
+    status: string;
+}
 export interface PgbenchStatusOut {
     error?: string | null;
     message: string;
@@ -204,6 +227,7 @@ export interface PgbenchSubmitOut {
     job_name?: string | null;
     job_run_url?: string | null;
     job_url?: string | null;
+    monitoring_url?: string | null;
     run_id?: string | null;
     status: string;
 }
@@ -232,10 +256,19 @@ export interface PsycopgTestIn {
     postgres_user_name?: string | null;
     project?: string | null;
     queries: QueryIn[];
+    total_executions?: number;
 }
 export interface QueryIn {
     content: string;
     identifier: string;
+}
+export interface QueryStat {
+    avg_time_ms: number;
+    calls: number;
+    p95_time_ms?: number | null;
+    p99_time_ms?: number | null;
+    query_identifier: string;
+    total_time_ms: number;
 }
 export interface SetCuIn {
     endpoint_name: string;
@@ -281,13 +314,16 @@ export interface SyncTableIn {
 }
 export interface TestReportOut {
     average_execution_time_ms: number;
+    cache_hit_pct?: number | null;
     concurrency_level: number;
     connection_pool_metrics: Record<string, unknown>;
     error?: string | null;
     failed_queries: number;
+    monitoring_url?: string | null;
     p50_execution_time_ms: number;
     p95_execution_time_ms: number;
     p99_execution_time_ms: number;
+    per_query?: QueryStat[];
     success_rate: number;
     successful_queries: number;
     throughput_queries_per_second: number;
@@ -718,6 +754,42 @@ export function useListWarehousesSuspense<TData = {
         ...options?.query
     });
 }
+export const archiveLakebaseHistory = async (data: HistoryArchiveIn, options?: RequestInit): Promise<{
+    data: HistoryArchiveOut;
+}> =>{
+    const res = await fetch("/api/history/lakebase/archive", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useArchiveLakebaseHistory(options?: {
+    mutation?: UseMutationOptions<{
+        data: HistoryArchiveOut;
+    }, ApiError, HistoryArchiveIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>archiveLakebaseHistory(data),
+        ...options?.mutation
+    });
+}
 export const enableLakebaseHistory = async (data: HistoryConnIn, options?: RequestInit): Promise<{
     data: HistoryEnableOut;
 }> =>{
@@ -790,10 +862,10 @@ export function useListLakebaseHistory(options?: {
         ...options?.mutation
     });
 }
-export const saveLakebaseHistory = async (data: HistorySaveIn, options?: RequestInit): Promise<{
-    data: HistorySaveOut;
+export const listLakebaseHistoryTables = async (data: HistoryConnIn, options?: RequestInit): Promise<{
+    data: HistoryTablesOut;
 }> =>{
-    const res = await fetch("/api/history/lakebase/save", {
+    const res = await fetch("/api/history/lakebase/tables", {
         ...options,
         method: "POST",
         headers: {
@@ -816,13 +888,13 @@ export const saveLakebaseHistory = async (data: HistorySaveIn, options?: Request
         data: await res.json()
     };
 };
-export function useSaveLakebaseHistory(options?: {
+export function useListLakebaseHistoryTables(options?: {
     mutation?: UseMutationOptions<{
-        data: HistorySaveOut;
-    }, ApiError, HistorySaveIn>;
+        data: HistoryTablesOut;
+    }, ApiError, HistoryConnIn>;
 }) {
     return useMutation({
-        mutationFn: (data)=>saveLakebaseHistory(data),
+        mutationFn: (data)=>listLakebaseHistoryTables(data),
         ...options?.mutation
     });
 }
@@ -1064,6 +1136,58 @@ export function useApplyIndexes(options?: {
         ...options?.mutation
     });
 }
+export const getTestingCapabilities = async (options?: RequestInit): Promise<{
+    data: CapabilitiesOut;
+}> =>{
+    const res = await fetch("/api/testing/capabilities", {
+        ...options,
+        method: "GET"
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export const getTestingCapabilitiesKey = ()=>{
+    return [
+        "/api/testing/capabilities"
+    ] as const;
+};
+export function useGetTestingCapabilities<TData = {
+    data: CapabilitiesOut;
+}>(options?: {
+    query?: Omit<UseQueryOptions<{
+        data: CapabilitiesOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useQuery({
+        queryKey: getTestingCapabilitiesKey(),
+        queryFn: ()=>getTestingCapabilities(),
+        ...options?.query
+    });
+}
+export function useGetTestingCapabilitiesSuspense<TData = {
+    data: CapabilitiesOut;
+}>(options?: {
+    query?: Omit<UseSuspenseQueryOptions<{
+        data: CapabilitiesOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useSuspenseQuery({
+        queryKey: getTestingCapabilitiesKey(),
+        queryFn: ()=>getTestingCapabilities(),
+        ...options?.query
+    });
+}
 export const listClusters = async (options?: RequestInit): Promise<{
     data: ClusterListOut;
 }> =>{
@@ -1114,6 +1238,100 @@ export function useListClustersSuspense<TData = {
         queryKey: listClustersKey(),
         queryFn: ()=>listClusters(),
         ...options?.query
+    });
+}
+export interface GetLocalPgbenchStatusParams {
+    run_id: string;
+}
+export const getLocalPgbenchStatus = async (params: GetLocalPgbenchStatusParams, options?: RequestInit): Promise<{
+    data: PgbenchStatusOut;
+}> =>{
+    const res = await fetch(`/api/testing/pgbench/local/status/${params.run_id}`, {
+        ...options,
+        method: "GET"
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export const getLocalPgbenchStatusKey = (params?: GetLocalPgbenchStatusParams)=>{
+    return [
+        "/api/testing/pgbench/local/status/{run_id}",
+        params
+    ] as const;
+};
+export function useGetLocalPgbenchStatus<TData = {
+    data: PgbenchStatusOut;
+}>(options: {
+    params: GetLocalPgbenchStatusParams;
+    query?: Omit<UseQueryOptions<{
+        data: PgbenchStatusOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useQuery({
+        queryKey: getLocalPgbenchStatusKey(options.params),
+        queryFn: ()=>getLocalPgbenchStatus(options.params),
+        ...options?.query
+    });
+}
+export function useGetLocalPgbenchStatusSuspense<TData = {
+    data: PgbenchStatusOut;
+}>(options: {
+    params: GetLocalPgbenchStatusParams;
+    query?: Omit<UseSuspenseQueryOptions<{
+        data: PgbenchStatusOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useSuspenseQuery({
+        queryKey: getLocalPgbenchStatusKey(options.params),
+        queryFn: ()=>getLocalPgbenchStatus(options.params),
+        ...options?.query
+    });
+}
+export const submitLocalPgbench = async (data: PgbenchSubmitIn, options?: RequestInit): Promise<{
+    data: PgbenchLocalSubmitOut;
+}> =>{
+    const res = await fetch("/api/testing/pgbench/local/submit", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useSubmitLocalPgbench(options?: {
+    mutation?: UseMutationOptions<{
+        data: PgbenchLocalSubmitOut;
+    }, ApiError, PgbenchSubmitIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>submitLocalPgbench(data),
+        ...options?.mutation
     });
 }
 export interface GetPgbenchRunStatusParams {

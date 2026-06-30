@@ -275,10 +275,18 @@ def live_introspection(
                     stats["cache_hit_pct"] = pct
                     if pct < 99:
                         findings.append(Finding(
-                            severity="medium", category="cache",
-                            title="Cache hit ratio below 99%",
-                            detail=f"Cache hit ratio is {pct:.2f}% (OLTP target > 99%).",
-                            actions=["Add indexes on frequently queried columns to reduce disk reads."],
+                            severity="low", category="cache",
+                            title="Lifetime cache hit ratio below 99%",
+                            detail=(
+                                f"Cache hit ratio is {pct:.2f}% — but this is the LIFETIME average "
+                                f"since stats were last reset, so a one-time bulk load/sync keeps it "
+                                f"low permanently. Use the per-run cache hit % in the test report to "
+                                f"judge steady-state performance."
+                            ),
+                            actions=[
+                                "Run the workload a few times to warm the cache, then read the per-run cache hit % in the test report.",
+                                "If steady-state stays low, raise the endpoint's min CU so the working set fits in RAM (~2 GB/CU).",
+                            ],
                         ))
             except Exception:  # noqa: BLE001
                 conn.rollback()

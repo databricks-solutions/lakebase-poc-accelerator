@@ -332,10 +332,11 @@ def _fetch_pgbench_results(ws: WorkspaceClient, run: Any) -> Optional[dict[str, 
     parsed = _parse_notebook_result(output.notebook_output.result)
     if not parsed:
         return None
-    summary = _parse_pgbench_stdout(parsed.get("raw_output", "")) or {}
+    summary = parse_pgbench_stdout(parsed.get("raw_output", "")) or {}
     # Prefer the notebook's own computed metrics where present.
     metrics = parsed.get("performance_metrics") or {}
-    for key in ("tps", "latency_p50_ms", "latency_p95_ms", "latency_p99_ms", "total_transactions"):
+    for key in ("tps", "latency_p50_ms", "latency_p95_ms", "latency_p99_ms",
+                "total_transactions", "per_query", "cache_hit_pct"):
         if metrics.get(key) is not None:
             summary[key] = metrics[key]
     return summary or None
@@ -348,8 +349,12 @@ def _parse_notebook_result(raw: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def _parse_pgbench_stdout(raw_output: str) -> Optional[dict[str, Any]]:
-    """Parse pgbench summary statistics from its stdout."""
+def parse_pgbench_stdout(raw_output: str) -> Optional[dict[str, Any]]:
+    """Parse pgbench summary statistics from its stdout.
+
+    Shared by the Databricks-job runner and the local (dev) runner so both surface
+    identical metrics.
+    """
     if not raw_output:
         return None
     patterns = {

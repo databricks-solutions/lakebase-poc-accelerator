@@ -13,6 +13,7 @@ break a test run.
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Any, Optional
 
 import psycopg
@@ -20,12 +21,12 @@ from psycopg.types.json import Json
 
 from .lakebase_service import PgCredentials
 
-TABLE = "_accelerator_run_history"
+DEFAULT_TABLE = "_accelerator_run_history"
 # Least-privilege default: a dedicated schema the app service principal OWNS, so it
 # can manage its history table but has no access to the project's other data.
 DEFAULT_SCHEMA = "accelerator_history"
 
-# Schema names are interpolated into DDL/queries, so they must be plain identifiers.
+# Schema/table names are interpolated into DDL/queries, so they must be plain identifiers.
 _IDENT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
@@ -34,6 +35,29 @@ def _validate_schema(schema: str) -> str:
     if not _IDENT_RE.match(schema):
         raise ValueError(f"Invalid schema name: {schema!r}")
     return schema
+
+
+def _validate_table(table: str) -> str:
+    table = (table or DEFAULT_TABLE).strip()
+    if not _IDENT_RE.match(table):
+        raise ValueError(f"Invalid table name: {table!r}")
+    return table
+
+
+def _qualified(schema: str, table: str) -> str:
+    return f"{_validate_schema(schema)}.{_validate_table(table)}"
+
+
+def _uuid_or_none(value: Any) -> Optional[str]:
+    """Return a canonical UUID string if ``value`` is a valid UUID, else None.
+
+    The client supplies a stable ``id`` per run (used to make archiving idempotent),
+    but older/fallback ids may not be valid UUIDs — those get a server-generated id.
+    """
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 def provisioning_sql(sp_role: str, schema: str, database: str, *, include_role: bool) -> str:
@@ -58,16 +82,21 @@ def provisioning_sql(sp_role: str, schema: str, database: str, *, include_role: 
     return "\n".join(lines)
 
 
-def ddl(schema: str) -> str:
-    """The CREATE TABLE statement for the history table (shown to the user as consent)."""
-    schema = _validate_schema(schema)
+def ddl(schema: str, table: str = DEFAULT_TABLE) -> str:
+    """The CREATE TABLE statement for a history table (shown to the user as consent).
+
+    Engine-agnostic: ``engine`` discriminates psycopg vs pgbench and ``config`` holds
+    the engine-specific run parameters (psycopg concurrency, pgbench clients/jobs/…).
+    """
+    qualified = _qualified(schema, table)
     return (
-        f"CREATE TABLE IF NOT EXISTS {schema}.{TABLE} (\n"
+        f"CREATE TABLE IF NOT EXISTS {qualified} (\n"
         "  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n"
         "  created_at        timestamptz NOT NULL DEFAULT now(),\n"
+        "  engine            text,\n"
         "  label             text,\n"
         "  project           text,\n"
-        "  concurrency_level int,\n"
+        "  config            jsonb,\n"
         "  queries           jsonb,\n"
         "  baseline_report   jsonb,\n"
         "  optimized_report  jsonb,\n"
@@ -90,7 +119,13 @@ def _connect(creds: PgCredentials, *, autocommit: bool = False):
     )
 
 
-def ensure_table(creds: PgCredentials, schema: str) -> dict[str, Any]:
+def _migrate(cur, qualified: str) -> None:
+    """Bring an older history table up to the engine-aware shape (idempotent)."""
+    cur.execute(f"ALTER TABLE {qualified} ADD COLUMN IF NOT EXISTS engine text")  # noqa: S608
+    cur.execute(f"ALTER TABLE {qualified} ADD COLUMN IF NOT EXISTS config jsonb")  # noqa: S608
+
+
+def ensure_table(creds: PgCredentials, schema: str, table: str = DEFAULT_TABLE) -> dict[str, Any]:
     """Preflight the service-principal's privileges and create the table if absent.
 
     Returns ``{ok, table, message, grant_sql}``. ``ok`` is False (with ``grant_sql``)
@@ -103,7 +138,8 @@ def ensure_table(creds: PgCredentials, schema: str) -> dict[str, Any]:
     role-creation SQL from the SP identity.
     """
     schema = _validate_schema(schema)
-    qualified = f"{schema}.{TABLE}"
+    table = _validate_table(table)
+    qualified = f"{schema}.{table}"
 
     with _connect(creds, autocommit=True) as conn, conn.cursor() as cur:
         cur.execute("SELECT current_user")
@@ -130,14 +166,15 @@ def ensure_table(creds: PgCredentials, schema: str) -> dict[str, Any]:
         if table_exists:
             cur.execute("SELECT has_table_privilege(current_user, %s, 'INSERT')", (qualified,))
             can_insert = bool(cur.fetchone()[0])
-            if can_insert:
-                return {"ok": True, "table": qualified, "message": f"Using existing {qualified}.", "grant_sql": None}
-            return {
-                "ok": False,
-                "table": qualified,
-                "message": f"{qualified} exists but {sp_role} lacks INSERT. Ask a project owner to run the grant below.",
-                "grant_sql": f'GRANT INSERT, SELECT ON {qualified} TO "{sp_role}";',
-            }
+            if not can_insert:
+                return {
+                    "ok": False,
+                    "table": qualified,
+                    "message": f"{qualified} exists but {sp_role} lacks INSERT. Ask a project owner to run the grant below.",
+                    "grant_sql": f'GRANT INSERT, SELECT ON {qualified} TO "{sp_role}";',
+                }
+            _migrate(cur, qualified)
+            return {"ok": True, "table": qualified, "message": f"Using existing {qualified}.", "grant_sql": None}
 
         cur.execute("SELECT has_schema_privilege(current_user, %s, 'CREATE')", (schema,))
         can_create = bool(cur.fetchone()[0])
@@ -152,69 +189,120 @@ def ensure_table(creds: PgCredentials, schema: str) -> dict[str, Any]:
                 "grant_sql": f'ALTER SCHEMA {schema} OWNER TO "{sp_role}";',
             }
 
-        cur.execute(ddl(schema))  # ty: ignore[no-matching-overload]
+        cur.execute(ddl(schema, table))
         return {"ok": True, "table": qualified, "message": f"Created {qualified} (owned by {sp_role}).", "grant_sql": None}
 
 
-def save_run(
+def list_tables(creds: PgCredentials, schema: str) -> list[str]:
+    """List existing tables in the SP-owned schema, so the user can archive to an
+    existing one. Best-effort: returns [] if the schema is missing/unreadable."""
+    schema = _validate_schema(schema)
+    try:
+        with _connect(creds) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname = %s ORDER BY tablename",
+                (schema,),
+            )
+            return [r[0] for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001 - best-effort picker
+        return []
+
+
+def save_runs(
     creds: PgCredentials,
     schema: str,
+    table: str,
     *,
     created_by: Optional[str],
-    label: Optional[str],
-    project: Optional[str],
-    concurrency_level: Optional[int],
-    queries: list[dict[str, Any]],
-    baseline_report: Optional[dict[str, Any]],
-    optimized_report: Optional[dict[str, Any]],
-    index_ddls: list[str],
-) -> str:
-    """Insert one run row and return its id. Assumes the table already exists."""
-    schema = _validate_schema(schema)
-    qualified = f"{schema}.{TABLE}"
+    runs: list[dict[str, Any]],
+) -> int:
+    """Idempotently upsert session runs into the table; return the number written.
+
+    Each run dict carries a stable client-generated ``id`` plus ``engine``/``label``/
+    ``project``/``config``/``queries``/``baseline_report``/``optimized_report``/
+    ``index_ddls`` and optionally a client ``created_at`` (preserved so archived rows
+    keep their original run time).
+
+    Keying on the run's ``id`` makes re-archiving the same session idempotent: hitting
+    "Archive" twice (or archiving after a new run) updates the existing rows in place
+    rather than inserting duplicates. Runs without a valid UUID ``id`` fall back to a
+    server-generated id (plain insert, no dedup).
+    """
+    qualified = _qualified(schema, table)
+    written = 0
     with _connect(creds, autocommit=True) as conn, conn.cursor() as cur:
-        cur.execute(
-            f"INSERT INTO {qualified} "  # ty: ignore[no-matching-overload]
-            "(label, project, concurrency_level, queries, baseline_report, optimized_report, index_ddls, created_by) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (
-                label,
-                project,
-                concurrency_level,
-                Json(queries),
-                Json(baseline_report) if baseline_report is not None else None,
-                Json(optimized_report) if optimized_report is not None else None,
-                Json(index_ddls),
-                created_by,
-            ),
-        )
-        return str(cur.fetchone()[0])
+        for run in runs:
+            cur.execute(
+                f"INSERT INTO {qualified} "  # noqa: S608
+                "(id, created_at, engine, label, project, config, queries, "
+                "baseline_report, optimized_report, index_ddls, created_by) "
+                "VALUES (COALESCE(%s::uuid, gen_random_uuid()), COALESCE(%s, now()), "
+                "%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (id) DO UPDATE SET "
+                "created_at = EXCLUDED.created_at, engine = EXCLUDED.engine, "
+                "label = EXCLUDED.label, project = EXCLUDED.project, "
+                "config = EXCLUDED.config, queries = EXCLUDED.queries, "
+                "baseline_report = EXCLUDED.baseline_report, "
+                "optimized_report = EXCLUDED.optimized_report, "
+                "index_ddls = EXCLUDED.index_ddls, created_by = EXCLUDED.created_by",
+                (
+                    _uuid_or_none(run.get("id")),
+                    run.get("created_at"),
+                    run.get("engine"),
+                    run.get("label"),
+                    run.get("project"),
+                    Json(run.get("config") or {}),
+                    Json(run.get("queries") or []),
+                    Json(run["baseline_report"]) if run.get("baseline_report") is not None else None,
+                    Json(run["optimized_report"]) if run.get("optimized_report") is not None else None,
+                    Json(run.get("index_ddls") or []),
+                    created_by,
+                ),
+            )
+            written += 1
+    return written
 
 
-def list_runs(creds: PgCredentials, schema: str, limit: int = 50) -> list[dict[str, Any]]:
-    """Return the most recent runs (newest first)."""
-    schema = _validate_schema(schema)
-    qualified = f"{schema}.{TABLE}"
+def list_runs(creds: PgCredentials, schema: str, table: str = DEFAULT_TABLE, limit: int = 200) -> list[dict[str, Any]]:
+    """Return the most recent runs (newest first). Tolerates older rows that predate
+    the engine/config columns by defaulting engine to 'psycopg' and folding any
+    legacy ``concurrency_level`` into ``config``."""
+    qualified = _qualified(schema, table)
     limit = max(1, min(limit, 500))
     with _connect(creds) as conn, conn.cursor() as cur:
+        # Detect legacy concurrency_level column for back-compat.
         cur.execute(
-            f"SELECT id, created_at, label, project, concurrency_level, queries, "  # ty: ignore[no-matching-overload]
-            f"baseline_report, optimized_report, index_ddls, created_by "
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = %s AND table_name = %s AND column_name = 'concurrency_level'",
+            (_validate_schema(schema), _validate_table(table)),
+        )
+        has_legacy = cur.fetchone() is not None
+        legacy_col = ", concurrency_level" if has_legacy else ""
+        cur.execute(
+            f"SELECT id, created_at, engine, label, project, config, queries, "  # noqa: S608
+            f"baseline_report, optimized_report, index_ddls, created_by{legacy_col} "
             f"FROM {qualified} ORDER BY created_at DESC LIMIT {limit}"
         )
         rows = cur.fetchall()
-    return [
-        {
-            "id": str(r[0]),
-            "created_at": r[1].isoformat() if r[1] else None,
-            "label": r[2],
-            "project": r[3],
-            "concurrency_level": r[4],
-            "queries": r[5] or [],
-            "baseline_report": r[6],
-            "optimized_report": r[7],
-            "index_ddls": r[8] or [],
-            "created_by": r[9],
-        }
-        for r in rows
-    ]
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        config = r[5] or {}
+        if not config and has_legacy and r[11] is not None:
+            config = {"concurrency_level": r[11]}
+        out.append(
+            {
+                "id": str(r[0]),
+                "created_at": r[1].isoformat() if r[1] else None,
+                "engine": r[2] or "psycopg",
+                "label": r[3],
+                "project": r[4],
+                "config": config,
+                "queries": r[6] or [],
+                "baseline_report": r[7],
+                "optimized_report": r[8],
+                "index_ddls": r[9] or [],
+                "created_by": r[10],
+            }
+        )
+    return out

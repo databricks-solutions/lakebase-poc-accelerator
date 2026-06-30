@@ -10,11 +10,12 @@ password.
 
 from __future__ import annotations
 
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from ..core import create_router, logger
 from ..deps import EffectiveClient
-from ..services import auth, pgbench_job, query_format
+from ..services import auth, lakebase_service, pgbench_job, pgbench_local, query_format
 from ..services.connection import ConnectionPool
 
 router = create_router()
@@ -35,7 +36,17 @@ class PsycopgTestIn(BaseModel):
     postgres_user_name: str | None = None
     # workload
     concurrency_level: int = Field(default=10, ge=1, le=1000)
+    total_executions: int = Field(default=100, ge=1, le=100000)
     queries: list[QueryIn]
+
+
+class QueryStat(BaseModel):
+    query_identifier: str
+    calls: int
+    avg_time_ms: float
+    total_time_ms: float
+    p95_time_ms: float | None = None
+    p99_time_ms: float | None = None
 
 
 class TestReportOut(BaseModel):
@@ -50,7 +61,10 @@ class TestReportOut(BaseModel):
     p99_execution_time_ms: float
     throughput_queries_per_second: float
     total_duration_seconds: float
+    cache_hit_pct: float | None = None
     connection_pool_metrics: dict
+    per_query: list[QueryStat] = Field(default_factory=list)
+    monitoring_url: str | None = None
     error: str | None = None
 
 
@@ -78,8 +92,11 @@ async def run_psycopg_test(req: PsycopgTestIn, ws: EffectiveClient) -> TestRepor
         logger.info(f"psycopg auth resolution failed: {e}")
         return _empty_report(req.concurrency_level, f"Authentication failed: {e}")
 
-    parsed = [query_format.parse_query(q.identifier, q.content) for q in req.queries]
-    execution_queries = query_format.to_execution_queries(parsed)
+    try:
+        parsed = [query_format.parse_query(q.identifier, q.content) for q in req.queries]
+        execution_queries = query_format.to_execution_queries(parsed)
+    except ValueError as e:
+        return _empty_report(req.concurrency_level, str(e))
 
     pool = ConnectionPool()
     try:
@@ -90,16 +107,23 @@ async def run_psycopg_test(req: PsycopgTestIn, ws: EffectiveClient) -> TestRepor
             user=creds.user,
             password=creds.password,
             ssl_mode=creds.ssl_mode,
-            base_pool_size=max(1, req.concurrency_level // 4),
-            max_overflow=req.concurrency_level,
+            # Persistent pool sized to the concurrency level so each worker reuses a
+            # warm connection instead of paying a TCP+TLS+auth handshake per query
+            # (QueuePool closes *overflow* connections on return). A small overflow
+            # absorbs the cache-counter probes that run alongside the workload.
+            base_pool_size=req.concurrency_level,
+            max_overflow=max(2, req.concurrency_level // 4),
         )
     except Exception as e:  # noqa: BLE001
         logger.info(f"psycopg pool init failed: {e}")
         return _empty_report(req.concurrency_level, f"Connection failed: {e}")
 
     try:
-        report = await pool.run_concurrent(execution_queries, req.concurrency_level)
-        return TestReportOut(**report)
+        report = await pool.run_concurrent(
+            execution_queries, req.concurrency_level, req.total_executions
+        )
+        monitoring_url = lakebase_service.build_monitoring_url(ws, creds)
+        return TestReportOut(**report, monitoring_url=monitoring_url)
     finally:
         pool.close()
 
@@ -157,6 +181,7 @@ class PgbenchSubmitOut(BaseModel):
     status: str
     job_run_url: str | None = None
     job_url: str | None = None
+    monitoring_url: str | None = None
     error: str | None = None
 
 
@@ -207,8 +232,11 @@ def submit_pgbench_job(req: PgbenchSubmitIn, ws: EffectiveClient) -> PgbenchSubm
 
     # Translate the unified query format into native pgbench scripts (\set + :name)
     # so the same query body the user wrote for psycopg drives pgbench unchanged.
-    parsed = [query_format.parse_query(q.identifier, q.content) for q in req.queries]
-    pgbench_queries = query_format.to_pgbench_queries(parsed)
+    try:
+        parsed = [query_format.parse_query(q.identifier, q.content) for q in req.queries]
+        pgbench_queries = query_format.to_pgbench_queries(parsed)
+    except ValueError as e:
+        return PgbenchSubmitOut(status="error", error=str(e))
 
     try:
         result = pgbench_job.submit(
@@ -218,7 +246,8 @@ def submit_pgbench_job(req: PgbenchSubmitIn, ws: EffectiveClient) -> PgbenchSubm
             queries=pgbench_queries,
             cluster_id=req.cluster_id,
         )
-        return PgbenchSubmitOut(**result)
+        monitoring_url = lakebase_service.build_monitoring_url(ws, creds)
+        return PgbenchSubmitOut(**result, monitoring_url=monitoring_url)
     except Exception as e:  # noqa: BLE001
         logger.info(f"pgbench job submission failed: {e}")
         return PgbenchSubmitOut(status="error", error=str(e))
@@ -252,3 +281,88 @@ def list_clusters(ws: EffectiveClient) -> ClusterListOut:
     except Exception as e:  # noqa: BLE001
         logger.info(f"cluster listing failed: {e}")
         return ClusterListOut(error=str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Capabilities + local pgbench (dev-only fallback)
+# --------------------------------------------------------------------------- #
+class CapabilitiesOut(BaseModel):
+    # True only when running locally (not a deployed Databricks App) and the pgbench
+    # binary is present. The frontend uses this to show the "Local (dev)" run mode,
+    # which is meant for serverless-only workspaces where the job cluster can't run.
+    pgbench_local_available: bool = False
+
+
+class PgbenchLocalSubmitOut(BaseModel):
+    run_id: str | None = None
+    status: str
+    monitoring_url: str | None = None
+    error: str | None = None
+
+
+@router.get(
+    "/testing/capabilities",
+    response_model=CapabilitiesOut,
+    operation_id="getTestingCapabilities",
+)
+def get_testing_capabilities() -> CapabilitiesOut:
+    """Report optional, environment-gated testing capabilities."""
+    return CapabilitiesOut(pgbench_local_available=pgbench_local.local_available())
+
+
+@router.post(
+    "/testing/pgbench/local/submit",
+    response_model=PgbenchLocalSubmitOut,
+    operation_id="submitLocalPgbench",
+)
+def submit_local_pgbench(req: PgbenchSubmitIn, ws: EffectiveClient) -> PgbenchLocalSubmitOut:
+    """Run pgbench locally (dev-only) against Lakebase, returning a pollable run id."""
+    if not pgbench_local.local_available():
+        # Defense in depth: refuse even if the UI somehow surfaces this in production.
+        raise HTTPException(status_code=403, detail="Local pgbench is not available in this environment.")
+    if not req.queries:
+        return PgbenchLocalSubmitOut(status="error", error="No queries provided.")
+
+    try:
+        creds = auth.resolve(
+            ws,
+            auth_method=req.auth_method,
+            project=req.project,
+            database=req.database,
+            endpoint_host=req.endpoint_host,
+            access_token=req.access_token,
+            postgres_user_name=req.postgres_user_name,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"local pgbench auth resolution failed: {e}")
+        return PgbenchLocalSubmitOut(status="error", error=f"Authentication failed: {e}")
+
+    try:
+        parsed = [query_format.parse_query(q.identifier, q.content) for q in req.queries]
+        pgbench_queries = query_format.to_pgbench_queries(parsed)
+    except ValueError as e:
+        return PgbenchLocalSubmitOut(status="error", error=str(e))
+
+    try:
+        result = pgbench_local.submit(
+            creds=creds,
+            config=req.config.model_dump(),
+            queries=pgbench_queries,
+        )
+        monitoring_url = lakebase_service.build_monitoring_url(ws, creds)
+        return PgbenchLocalSubmitOut(**result, monitoring_url=monitoring_url)
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"local pgbench submission failed: {e}")
+        return PgbenchLocalSubmitOut(status="error", error=str(e))
+
+
+@router.get(
+    "/testing/pgbench/local/status/{run_id}",
+    response_model=PgbenchStatusOut,
+    operation_id="getLocalPgbenchStatus",
+)
+def get_local_pgbench_status(run_id: str) -> PgbenchStatusOut:
+    """Poll a local pgbench run for its status and parsed metrics."""
+    if not pgbench_local.local_available():
+        raise HTTPException(status_code=403, detail="Local pgbench is not available in this environment.")
+    return PgbenchStatusOut(**pgbench_local.run_status(run_id))

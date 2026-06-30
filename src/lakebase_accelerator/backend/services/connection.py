@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any, Optional
 from urllib.parse import quote_plus
@@ -21,6 +22,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.pool import QueuePool
 
 from . import query_format
+from .lakebase_service import PgCredentials
+from .stats import percentile
 
 
 class ConnectionPool:
@@ -60,7 +63,10 @@ class ConnectionPool:
             max_overflow=max_overflow,
             pool_timeout=pool_timeout,
             pool_recycle=3600,
-            pool_pre_ping=True,
+            # pre_ping adds a "SELECT 1" round-trip on every checkout, which both
+            # halves throughput and inflates measured query latency under load.
+            # Off for the benchmark; pool_recycle still guards stale connections.
+            pool_pre_ping=False,
             echo=False,
             connect_args={
                 # Fail fast on an unreachable host / DNS hang instead of blocking forever.
@@ -112,25 +118,24 @@ class ConnectionPool:
                 "error_type": type(e).__name__,
             }
 
-    async def _execute(self, query: str, parameters: Optional[Any]) -> dict[str, Any]:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._execute_sync, query, parameters)
-
     async def run_concurrent(
-        self, queries: list[dict[str, Any]], concurrency_level: int
+        self, queries: list[dict[str, Any]], concurrency_level: int, total_executions: int
     ) -> dict[str, Any]:
-        """Expand each query into ``execution_count`` individual executions (drawing a
-        fresh random parameter dict per execution), run them with a concurrency cap,
-        and aggregate latency/throughput metrics."""
+        """Distribute ``total_executions`` across the queries by weight, expand each
+        into that many executions (drawing a fresh random parameter dict per
+        execution), run them with a concurrency cap, and aggregate metrics."""
+        counts = query_format.distribute_executions(
+            [int(qc.get("weight", 1)) for qc in queries], total_executions
+        )
         tasks: list[dict[str, Any]] = []
-        for qc in queries:
+        for qc, count in zip(queries, counts):
             sql_lines = [
                 ln for ln in qc["query_content"].split("\n")
                 if not ln.strip().startswith("--")
             ]
             clean_sql = "\n".join(sql_lines).strip()
             param_specs = qc.get("param_specs") or []
-            for _ in range(qc.get("execution_count", 1)):
+            for _ in range(count):
                 tasks.append(
                     {
                         "query_identifier": qc["query_identifier"],
@@ -139,19 +144,37 @@ class ConnectionPool:
                     }
                 )
 
-        semaphore = asyncio.Semaphore(max(1, concurrency_level))
+        # A dedicated executor sized to the concurrency level — asyncio's default
+        # executor caps at min(32, cpus+4) threads, which would silently throttle the
+        # run far below the requested concurrency (e.g. only ~8 in flight on a 4-core
+        # box). The semaphore then just bounds how many tasks are queued at once.
+        concurrency = max(1, concurrency_level)
+        loop = asyncio.get_event_loop()
+        executor = ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="lakebench")
+        semaphore = asyncio.Semaphore(concurrency)
 
         async def run_one(task: dict[str, Any]) -> dict[str, Any]:
             async with semaphore:
-                res = await self._execute(task["query"], task["parameters"])
+                res = await loop.run_in_executor(
+                    executor, self._execute_sync, task["query"], task["parameters"]
+                )
                 res["query_identifier"] = task["query_identifier"]
                 return res
 
+        # Snapshot DB cache counters around the run so we can report cache hit % for
+        # THIS run (a delta), instead of the misleading lifetime ratio that never
+        # recovers from the initial bulk load.
+        cache_before = self._cache_counters()
         start = time.time()
-        results = await asyncio.gather(
-            *[run_one(t) for t in tasks], return_exceptions=True
-        )
+        try:
+            results = await asyncio.gather(
+                *[run_one(t) for t in tasks], return_exceptions=True
+            )
+        finally:
+            executor.shutdown(wait=False)
         total_duration = time.time() - start
+        cache_after = self._cache_counters()
+        cache_hit_pct = self._cache_hit_delta(cache_before, cache_after)
 
         successful = 0
         failed = 0
@@ -171,11 +194,8 @@ class ConnectionPool:
         throughput = n / total_duration if total_duration > 0 else 0.0
         latencies.sort()
 
-        def pct(p: float) -> float:
-            if not latencies:
-                return 0.0
-            idx = min(int(len(latencies) * p), len(latencies) - 1)
-            return latencies[idx]
+        def pct(p: float, vals: list[float]) -> float:
+            return percentile(vals, p) if vals else 0.0
 
         return {
             "concurrency_level": concurrency_level,
@@ -184,13 +204,68 @@ class ConnectionPool:
             "failed_queries": failed,
             "success_rate": success_rate,
             "average_execution_time_ms": avg,
-            "p50_execution_time_ms": pct(0.50),
-            "p95_execution_time_ms": pct(0.95),
-            "p99_execution_time_ms": pct(0.99),
+            "p50_execution_time_ms": pct(50, latencies),
+            "p95_execution_time_ms": pct(95, latencies),
+            "p99_execution_time_ms": pct(99, latencies),
             "throughput_queries_per_second": throughput,
             "total_duration_seconds": total_duration,
+            "cache_hit_pct": cache_hit_pct,
             "connection_pool_metrics": self.pool_status(),
+            "per_query": self._per_query_breakdown(results, pct),
         }
+
+    @staticmethod
+    def _per_query_breakdown(results: list[Any], pct: Any) -> list[dict[str, Any]]:
+        """Per-query (by identifier) calls/avg/total/p95/p99, like Lakebase's query
+        performance view. Sorted by total time descending."""
+        from collections import defaultdict
+
+        groups: dict[str, dict[str, Any]] = defaultdict(lambda: {"calls": 0, "lat": []})
+        for r in results:
+            if isinstance(r, BaseException):
+                continue
+            g = groups[r.get("query_identifier", "?")]
+            g["calls"] += 1
+            if r.get("success"):
+                g["lat"].append(r["duration_ms"])
+
+        out: list[dict[str, Any]] = []
+        for q, g in groups.items():
+            lat = sorted(g["lat"])
+            out.append(
+                {
+                    "query_identifier": q,
+                    "calls": g["calls"],
+                    "avg_time_ms": sum(lat) / len(lat) if lat else 0.0,
+                    "total_time_ms": sum(lat),
+                    "p95_time_ms": pct(95, lat),
+                    "p99_time_ms": pct(99, lat),
+                }
+            )
+        out.sort(key=lambda d: d["total_time_ms"], reverse=True)
+        return out
+
+    def _cache_counters(self) -> Optional[tuple[int, int]]:
+        """(blks_hit, blks_read) for the current database, or None if unavailable."""
+        try:
+            with self._connection() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT blks_hit, blks_read FROM pg_stat_database "
+                        "WHERE datname = current_database()"
+                    )
+                ).fetchone()
+                if row is not None:
+                    return int(row[0] or 0), int(row[1] or 0)
+        except Exception:  # noqa: BLE001 - best-effort metric, never fail the test
+            return None
+        return None
+
+    @staticmethod
+    def _cache_hit_delta(
+        before: Optional[tuple[int, int]], after: Optional[tuple[int, int]]
+    ) -> Optional[float]:
+        return cache_hit_delta(before, after)
 
     def pool_status(self) -> dict[str, Any]:
         if not self._engine:
@@ -213,3 +288,46 @@ class ConnectionPool:
         if self._engine:
             self._engine.dispose()
             self._engine = None
+
+
+# --------------------------------------------------------------------------- #
+# Shared cache-hit helpers (psycopg pool uses the methods above; pgbench, which
+# doesn't use the pool, uses these standalone functions).
+# --------------------------------------------------------------------------- #
+def read_cache_counters(creds: PgCredentials) -> Optional[tuple[int, int]]:
+    """(blks_hit, blks_read) for the run's database via a fresh psycopg connection.
+    Best-effort — returns None on any failure so it never breaks a run."""
+    try:
+        with psycopg.connect(
+            host=creds.host,
+            port=creds.port,
+            dbname=creds.database,
+            user=creds.user,
+            password=creds.password,
+            sslmode=creds.ssl_mode,
+            connect_timeout=10,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT blks_hit, blks_read FROM pg_stat_database "
+                "WHERE datname = current_database()"
+            )
+            row = cur.fetchone()
+            if row is not None:
+                return int(row[0] or 0), int(row[1] or 0)
+    except Exception:  # noqa: BLE001 - best-effort metric
+        return None
+    return None
+
+
+def cache_hit_delta(
+    before: Optional[tuple[int, int]], after: Optional[tuple[int, int]]
+) -> Optional[float]:
+    """Cache hit % attributable to a run: delta(hit) / delta(hit + read)."""
+    if not before or not after:
+        return None
+    d_hit = max(0, after[0] - before[0])
+    d_read = max(0, after[1] - before[1])
+    total = d_hit + d_read
+    if total <= 0:
+        return None
+    return round(d_hit * 100.0 / total, 2)

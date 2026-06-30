@@ -28,6 +28,37 @@ class PgCredentials:
     user: str
     password: str
     ssl_mode: str = "require"
+    # Physical uids of the project/branch/endpoint, used to build the Lakebase
+    # Monitoring deep link (identity auth only; None for the oauth/app_resource
+    # paths, which never resolve them).
+    project_id: Optional[str] = None
+    branch_id: Optional[str] = None
+    endpoint_id: Optional[str] = None
+
+
+def build_monitoring_url(ws: WorkspaceClient, creds: PgCredentials) -> Optional[str]:
+    """Construct the Lakebase project's query-history Monitoring URL, or None when
+    the project/branch/endpoint uids were not resolved (non-identity auth).
+
+    The console keys the deep link by physical uids (see :class:`PgCredentials`) and
+    the ``o=<workspace_id>`` org param, mirroring the URL the Databricks UI produces.
+    """
+    host = getattr(ws.config, "host", None)
+    if not (host and creds.project_id and creds.branch_id and creds.endpoint_id):
+        return None
+    base = host.rstrip("/")
+    url = (
+        f"{base}/lakebase/projects/{creds.project_id}"
+        f"/branches/{creds.branch_id}/monitoring/query-history"
+        f"?database={creds.database}&endpointId={creds.endpoint_id}"
+    )
+    try:
+        workspace_id = ws.get_workspace_id()
+    except Exception:  # noqa: BLE001 - org param is best-effort
+        workspace_id = None
+    if workspace_id:
+        url += f"&o={workspace_id}"
+    return url
 
 
 @dataclass
@@ -92,11 +123,17 @@ def resolve_credentials(
     OAuth token via ``generate_database_credential``."""
     pg = ws.postgres
     project_name = _resolve_project_name(ws, project)
+    # The Monitoring deep link is keyed by the objects' physical ``uid``s, not the
+    # logical resource-name segments (e.g. project uid "4cc8…" not "my-app").
+    project_uid = getattr(pg.get_project(name=project_name), "uid", None)
 
     branches = list(pg.list_branches(parent=project_name))
-    if not branches or not branches[0].name:
+    if not branches:
         raise ValueError(f"No branches found in project {project_name}")
-    branch_name: str = branches[0].name
+    branch = branches[0]
+    if not branch.name:
+        raise ValueError(f"No branches found in project {project_name}")
+    branch_name: str = branch.name
 
     endpoints = list(pg.list_endpoints(parent=branch_name))
     if not endpoints:
@@ -134,6 +171,7 @@ def resolve_credentials(
     user_name = ws.current_user.me().user_name
     if not user_name:
         raise ValueError("Could not resolve the current user's Postgres role name.")
+
     return PgCredentials(
         host=host,
         port=5432,
@@ -141,6 +179,9 @@ def resolve_credentials(
         user=user_name,
         password=token,
         ssl_mode="require",
+        project_id=project_uid,
+        branch_id=getattr(branch, "uid", None),
+        endpoint_id=getattr(endpoint, "uid", None),
     )
 
 
