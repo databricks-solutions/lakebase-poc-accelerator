@@ -2,7 +2,7 @@
 
 Combines static query-parse (candidate indexes from the tested SQL) with optional
 live introspection (detection SQL from the OLTP Technical Guide). Auth uses the same
-identity / app-resource / dev-OAuth model as testing.
+identity / dev-OAuth model as testing.
 """
 
 from __future__ import annotations

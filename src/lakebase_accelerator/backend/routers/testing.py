@@ -4,8 +4,7 @@ psycopg: connects on-demand from the backend and runs the uploaded query mix at 
 target concurrency level, returning latency/throughput metrics. pgbench: submits a
 Databricks Job that runs ``pgbench`` on a single-node cluster (the cluster installs
 ``postgresql-client`` via an init script) and polls the run for results. Auth is
-identity / app-resource (primary) or pasted OAuth (dev) — never static username &
-password.
+identity (primary) or pasted OAuth (dev) — never static username & password.
 """
 
 from __future__ import annotations

@@ -14,7 +14,7 @@ export class ApiError extends Error {
 }
 export interface ApplyIndexIn {
     access_token?: string | null;
-    auth_method?: "identity" | "app_resource" | "oauth";
+    auth_method?: "identity" | "oauth";
     database?: string | null;
     ddls?: string[];
     endpoint_host?: string | null;
@@ -86,7 +86,7 @@ export interface HTTPValidationError {
 }
 export interface HistoryArchiveIn {
     access_token?: string | null;
-    auth_method?: "identity" | "app_resource" | "oauth";
+    auth_method?: "identity" | "oauth";
     database?: string | null;
     endpoint_host?: string | null;
     postgres_user_name?: string | null;
@@ -102,7 +102,7 @@ export interface HistoryArchiveOut {
 }
 export interface HistoryConnIn {
     access_token?: string | null;
-    auth_method?: "identity" | "app_resource" | "oauth";
+    auth_method?: "identity" | "oauth";
     database?: string | null;
     endpoint_host?: string | null;
     postgres_user_name?: string | null;
@@ -167,7 +167,7 @@ export interface OpResultOut {
 }
 export interface OptimizeIn {
     access_token?: string | null;
-    auth_method?: "identity" | "app_resource" | "oauth";
+    auth_method?: "identity" | "oauth";
     database?: string | null;
     endpoint_host?: string | null;
     postgres_user_name?: string | null;
@@ -212,7 +212,7 @@ export interface PgbenchStatusOut {
 }
 export interface PgbenchSubmitIn {
     access_token?: string | null;
-    auth_method?: "identity" | "app_resource" | "oauth";
+    auth_method?: "identity" | "oauth";
     cluster_id?: string | null;
     config?: PgbenchConfigIn;
     database?: string | null;
@@ -249,7 +249,7 @@ export interface ProjectOut {
 }
 export interface PsycopgTestIn {
     access_token?: string | null;
-    auth_method?: "identity" | "app_resource" | "oauth";
+    auth_method?: "identity" | "oauth";
     concurrency_level?: number;
     database?: string | null;
     endpoint_host?: string | null;

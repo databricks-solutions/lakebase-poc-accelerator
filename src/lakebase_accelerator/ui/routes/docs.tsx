@@ -69,11 +69,6 @@ function DocsPage() {
               This is the recommended path.
             </p>
             <p>
-              <strong className="text-foreground">Attached app resource</strong> — uses the
-              Lakebase database resource bound to the app's service principal. Zero config, no
-              token to paste.
-            </p>
-            <p>
               <strong className="text-foreground">OAuth token (dev)</strong> — paste an endpoint
               host, your Postgres user, and a token from Lakebase Connect. Intended for local
               development only; tokens expire after ~1 hour.

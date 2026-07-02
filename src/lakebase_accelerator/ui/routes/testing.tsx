@@ -398,7 +398,7 @@ function monitoringHint(host: string | null | undefined) {
 
 // Content of the "Monitoring" tab: a deep link straight to the Lakebase project's
 // query-history monitoring page for the endpoint this run used, with the generic
-// hint as a fallback when the URL couldn't be resolved (oauth / app-resource auth).
+// hint as a fallback when the URL couldn't be resolved (oauth auth).
 function MonitoringPanel({
   url,
   host,

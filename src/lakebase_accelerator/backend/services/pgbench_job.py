@@ -4,8 +4,8 @@ Submits ``pgbench`` as a Databricks Job that runs on a single-node cluster, lets
 job's init script install ``postgresql-client`` (so we never need the pgbench binary
 inside the App container), and polls the run for parsed throughput/latency results.
 
-Connection credentials come from :mod:`..services.auth` (identity / app_resource /
-oauth) — never static username & password. The job is reused across runs (one job per
+Connection credentials come from :mod:`..services.auth` (identity / oauth) — never
+static username & password. The job is reused across runs (one job per
 app, looked up by name) and only re-created when the chosen cluster configuration
 changes. All Databricks calls use the injected (OBO / SP) ``WorkspaceClient`` so the
 job runs under the caller's identity.

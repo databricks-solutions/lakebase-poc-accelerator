@@ -29,8 +29,8 @@ class PgCredentials:
     password: str
     ssl_mode: str = "require"
     # Physical uids of the project/branch/endpoint, used to build the Lakebase
-    # Monitoring deep link (identity auth only; None for the oauth/app_resource
-    # paths, which never resolve them).
+    # Monitoring deep link (identity auth only; None for the oauth path, which
+    # never resolves them).
     project_id: Optional[str] = None
     branch_id: Optional[str] = None
     endpoint_id: Optional[str] = None

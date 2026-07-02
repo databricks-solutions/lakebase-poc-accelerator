@@ -97,8 +97,8 @@ class HistoryListOut(BaseModel):
 def _sp_creds(req: HistoryConnIn, request: Request):
     """Resolve Lakebase credentials under the app service principal (not the OBO user).
 
-    For ``identity`` the SP WorkspaceClient mints the token; for ``app_resource`` the
-    injected PG* env vars are already the SP's; ``oauth`` (dev) uses the pasted token.
+    For ``identity`` the SP WorkspaceClient mints the token; ``oauth`` (dev) uses the
+    pasted token.
     """
     sp_ws = request.app.state.workspace_client
     return auth.resolve(

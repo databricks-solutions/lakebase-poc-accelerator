@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/select";
 import { useListLakebaseProjects } from "@/lib/api";
 
-export type AuthMethod = "identity" | "app_resource" | "oauth";
+export type AuthMethod = "identity" | "oauth";
 
 export interface ConnectionConfig {
   auth_method: AuthMethod;
@@ -35,9 +35,8 @@ interface Props {
 }
 
 /**
- * Shared Lakebase connection fields: auth method + project picker (identity /
- * app-resource) or pasted OAuth token (dev fallback). Used by Testing, Optimize,
- * and Deployment flows.
+ * Shared Lakebase connection fields: auth method + project picker (identity) or
+ * pasted OAuth token (dev fallback). Used by Testing, Optimize, and Deployment flows.
  */
 export function LakebaseConnection({ value, onChange }: Props) {
   const { data, isLoading } = useListLakebaseProjects();
@@ -57,7 +56,6 @@ export function LakebaseConnection({ value, onChange }: Props) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="identity">My Databricks identity</SelectItem>
-            <SelectItem value="app_resource">Attached app resource</SelectItem>
             <SelectItem value="oauth">OAuth token (dev)</SelectItem>
           </SelectContent>
         </Select>
@@ -130,12 +128,6 @@ export function LakebaseConnection({ value, onChange }: Props) {
         </div>
       )}
 
-      {value.auth_method === "app_resource" && (
-        <p className="text-sm text-muted-foreground">
-          Uses the Lakebase database resource attached to this app — no project or token needed.
-          Available only when deployed with an attached resource.
-        </p>
-      )}
     </div>
   );
 }
