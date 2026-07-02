@@ -1208,6 +1208,9 @@ function HistoryTab({ active }: { active: boolean }) {
               , attributed to you via <code>created_by</code>. The SP is confined to its own schema and has
               no access to your other tables.
             </p>
+            {enableInfo && !enableInfo.ok && enableInfo.message && (
+              <p className="mt-2 text-muted-foreground">{enableInfo.message}</p>
+            )}
             {enableInfo && !enableInfo.ok && enableInfo.grant_sql && (
               <pre className="mt-2 overflow-x-auto rounded bg-background p-2 text-[11px]">{enableInfo.grant_sql}</pre>
             )}

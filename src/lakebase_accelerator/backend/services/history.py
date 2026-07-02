@@ -145,7 +145,9 @@ def ensure_table(creds: PgCredentials, schema: str, table: str = DEFAULT_TABLE) 
 
     This assumes the SP can already CONNECT (it has a role). The no-role / can't-connect
     case (Layer 1) surfaces as a connection error to the caller, which builds the
-    role-creation SQL from the SP identity.
+    role-creation SQL from the SP identity. The caller is responsible for only invoking
+    this when running as the service principal (deployed); in local dev the app connects
+    as the developer's identity, so the enable flow is short-circuited upstream.
     """
     schema = _validate_schema(schema)
     table = _validate_table(table)

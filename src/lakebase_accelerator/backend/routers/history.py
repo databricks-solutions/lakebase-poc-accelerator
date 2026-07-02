@@ -134,6 +134,23 @@ def _sp_identity(request: Request) -> str:
 @router.post("/history/lakebase/enable", response_model=HistoryEnableOut, operation_id="enableLakebaseHistory")
 def enable_lakebase_history(req: HistoryConnIn, request: Request) -> HistoryEnableOut:
     """Preflight the SP's privileges and create the named history table (consent step)."""
+    # Only available when deployed (behind the Databricks Apps proxy, which forwards the
+    # user token): there the app-level client is the service principal, so the history
+    # objects end up SP-owned. In local dev the app-level client is the *developer's*
+    # identity, so we short-circuit — otherwise provisioning would create/guide objects
+    # owned by the wrong Postgres role (e.g. CREATE SCHEMA ... AUTHORIZATION "you@…").
+    if "X-Forwarded-Access-Token" not in request.headers:
+        return HistoryEnableOut(
+            ok=False,
+            message=(
+                "Shared Lakebase history is provisioned only in the deployed app, where it runs as the "
+                "app's service principal (so the table is SP-owned). In local dev the app uses your own "
+                "identity, so enabling is disabled here to avoid creating mis-owned objects. Deploy the app "
+                "to enable it — history is still kept in this browser locally."
+            ),
+            ddl=_safe_ddl(req.schema_name, req.table_name),
+        )
+
     try:
         creds = _sp_creds(req, request)
     except Exception as e:  # noqa: BLE001
