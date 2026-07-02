@@ -1,0 +1,60 @@
+name: CI
+
+# Clean-room gate that prevents dependency drift (the class of bug where an
+# uncommitted or incompatible package pin — e.g. vite vs @vitejs/plugin-react —
+# reaches production). Every push/PR is validated against the committed lockfiles
+# on a fresh checkout, then run through the same `apx` build the Databricks bundle
+# uses for deployment.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Pin the apx toolchain version. apx edits package.json/lockfiles at dev time, so
+# it is itself a dependency — upgrade it deliberately, not implicitly. Keep this in
+# sync with the version developers run locally (`apx --version`).
+env:
+  APX_VERSION: v0.3.8
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
+      # --- Dependency-drift gates (fail if the manifest and lockfile disagree) ---
+
+      - name: Python deps — frozen install
+        run: uv sync --frozen
+
+      - name: JS deps — frozen install
+        # Fails the build if package.json and bun.lock have drifted apart, which is
+        # exactly how the incompatible vite/plugin-react pair slipped in before.
+        run: bun install --frozen-lockfile
+
+      # --- Toolchain + build/typecheck gates ---
+
+      - name: Install apx (pinned)
+        run: |
+          curl -fsSL https://databricks-solutions.github.io/apx/install.sh | sh -s -- --version "$APX_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Typecheck + lint (apx dev check)
+        # Runs TypeScript + Python type checks and the route-tree generation that
+        # actually loads vite + @vitejs/plugin-react — this is the step that catches
+        # a broken vite/plugin-react resolution before it can ship.
+        run: apx dev check
+
+      - name: Production build (apx build)
+        run: apx build

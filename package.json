@@ -31,15 +31,19 @@
         "@opentelemetry/exporter-logs-otlp-http": "^0.219.0",
         "@opentelemetry/resources": "^2.8.0",
         "@opentelemetry/sdk-logs": "^0.219.0",
-        "@tailwindcss/vite": "^0.0.0-insiders.d5ca0ae",
+        "@tailwindcss/vite": "^0.0.0-insiders.94f7907",
         "@tanstack/router-generator": "^1.167.17",
         "@tanstack/router-plugin": "^1.168.18",
         "@types/node": "25.0.3",
         "@types/react": "19.2.7",
         "@types/react-dom": "19.2.3",
-        "@vitejs/plugin-react": "^6.0.2",
+        "@vitejs/plugin-react": "^6.0.3",
         "smol-toml": "1.6.0",
         "typescript": "5.9.3",
-        "vite": "^8.1.0-beta.0"
+        "vite": "^8.1.0"
+    },
+    "//overrides": "apx 0.3.8 rewrites the vite devDependency to ^7.3.6 on every `apx dev` run, but ships @vitejs/plugin-react@6 which requires vite ^8 (it imports vite/internal). This override forces a coherent vite 8.1.0 resolution regardless. Remove once apx pins a compatible vite+plugin-react pair.",
+    "overrides": {
+        "vite": "8.1.0"
     }
 }

@@ -64,9 +64,12 @@ class ParamSpec:
     def draw(self) -> int | str:
         if self.values:
             return random.choice(self.values)
-        lo, hi = (self.min_value, self.max_value) if self.min_value <= self.max_value else (
-            self.max_value,
-            self.min_value,
+        if self.min_value is None or self.max_value is None:
+            raise ValueError(f"ParamSpec {self.name!r} has neither a values list nor a min/max range.")
+        lo, hi = (
+            (self.min_value, self.max_value)
+            if self.min_value <= self.max_value
+            else (self.max_value, self.min_value)
         )
         return random.randint(lo, hi)
 

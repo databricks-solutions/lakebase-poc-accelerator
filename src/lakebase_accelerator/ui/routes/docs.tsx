@@ -156,9 +156,11 @@ WHERE ss_ticket_number = :ticket;`}
             </p>
             <p>There are two permission layers a project owner provisions once, per project:</p>
             <pre className="overflow-x-auto rounded-md border bg-muted/30 p-3 text-xs">
-{`-- Layer 1 — let the SP connect (it has no role in a project it didn't create):
-CREATE ROLE "<app-service-principal>" WITH LOGIN
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+{`-- Layer 1 — let the SP connect (it has no role in a project it didn't create).
+-- Lakebase identities authenticate with Databricks OAuth tokens, so the role must
+-- be created via databricks_auth — a plain CREATE ROLE rejects the token.
+CREATE EXTENSION IF NOT EXISTS databricks_auth;
+SELECT databricks_create_role('<app-service-principal>', 'SERVICE_PRINCIPAL');
 GRANT CONNECT ON DATABASE databricks_postgres TO "<app-service-principal>";
 
 -- Layer 2 — a dedicated schema it OWNS (its entire sandbox):

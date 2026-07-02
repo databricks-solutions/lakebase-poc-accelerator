@@ -66,13 +66,23 @@ def provisioning_sql(sp_role: str, schema: str, database: str, *, include_role: 
     ``include_role`` is True for the Layer-1 case (the SP can't even connect, so its
     role doesn't exist yet); False once we've connected and only the owned schema is
     missing.
+
+    Lakebase identities authenticate with short-lived Databricks OAuth tokens, not
+    native SCRAM passwords, so the SP's Postgres role must be created through the
+    ``databricks_auth`` extension via ``databricks_create_role`` — a plain
+    ``CREATE ROLE`` produces a native role that rejects the OAuth token with
+    "password authentication failed". ``databricks_create_role`` creates the role
+    with LOGIN only; database/schema privileges are still granted separately below.
     """
     schema = _validate_schema(schema)
     lines: list[str] = []
     if include_role:
         lines += [
-            "-- The app service principal has no role in this project yet.",
-            f'CREATE ROLE "{sp_role}" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;',
+            "-- The app service principal has no OAuth role in this project yet.",
+            "-- databricks_auth lets the role authenticate with Databricks OAuth tokens",
+            "-- (a plain CREATE ROLE would reject the token as a bad password).",
+            "CREATE EXTENSION IF NOT EXISTS databricks_auth;",
+            f"SELECT databricks_create_role('{sp_role}', 'SERVICE_PRINCIPAL');",
             f'GRANT CONNECT ON DATABASE {database} TO "{sp_role}";',
         ]
     lines.append(
