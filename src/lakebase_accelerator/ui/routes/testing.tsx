@@ -21,6 +21,7 @@ import {
   DollarSign,
   AlertTriangle,
   CheckCircle2,
+  ScanSearch,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
@@ -437,17 +438,23 @@ function ExplainPlansCard({
   const beforeById = new Map((before ?? []).map((b) => [b.identifier, b]));
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>Query plans (EXPLAIN)</CardTitle>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={analyze} onChange={(e) => onAnalyzeChange(e.target.checked)} />
-            ANALYZE (run for real timings)
-          </label>
-          <Button variant="secondary" size="sm" onClick={onExplain} disabled={busy || verifyBusy}>
-            <Wand2 className="mr-1 h-4 w-4" />
-            {busy ? "Explaining…" : "Explain plans"}
-          </Button>
+      <CardHeader>
+        <div className="flex flex-row items-center justify-between gap-3">
+          <CardTitle>Query plans (EXPLAIN)</CardTitle>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={analyze} onChange={(e) => onAnalyzeChange(e.target.checked)} />
+              ANALYZE (run for real timings)
+            </label>
+            <Button variant="secondary" size="sm" onClick={onExplain} disabled={busy || verifyBusy}>
+              <ScanSearch className="mr-1 h-4 w-4" />
+              {busy ? "Explaining…" : "Explain plans"}
+            </Button>
+            <Button size="sm" onClick={onVerify} disabled={!canVerify || verifyBusy || busy}>
+              <Zap className="mr-1 h-4 w-4" />
+              {verifyBusy ? "Comparing…" : "Apply indexes & compare"}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -455,18 +462,9 @@ function ExplainPlansCard({
         <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">The tuning loop:</span> Explain <em>diagnoses</em> (find
           the Seq Scans) → Optimize <em>prescribes</em> the indexes → Apply <em>fixes</em> → Explain again{" "}
-          <em>confirms</em> the plan flipped to an Index Scan. Use{" "}
-          <span className="font-medium text-foreground">Apply indexes &amp; compare</span> to run that whole loop
-          in one click and see the before/after plan for each query.
-        </div>
-        <div className="flex items-center gap-3">
-          <Button size="sm" onClick={onVerify} disabled={!canVerify || verifyBusy || busy}>
-            <Zap className="mr-1 h-4 w-4" />
-            {verifyBusy ? "Comparing…" : "Apply indexes & compare"}
-          </Button>
-          {!canVerify && (
-            <span className="text-xs text-muted-foreground">Run Optimize first to get index suggestions to apply.</span>
-          )}
+          <em>confirms</em> the plan flipped to an Index Scan. <span className="font-medium text-foreground">Apply
+          indexes &amp; compare</span> runs that whole loop in one click and shows the before/after plan per query
+          {!canVerify && " (run Optimize first to get index suggestions)"}.
         </div>
         <p className="text-xs text-muted-foreground">
           Sample values are drawn for any <code>:param</code>. With ANALYZE the query is executed for real
@@ -1189,6 +1187,10 @@ function PsycopgTab() {
               <Play className="mr-1 h-4 w-4" />
               {runTest.isPending ? "Running…" : "Run test"}
             </Button>
+            <Button variant="secondary" onClick={onExplain} disabled={explain.isPending || verifying}>
+              <ScanSearch className="mr-1 h-4 w-4" />
+              {explain.isPending ? "Explaining…" : "Explain"}
+            </Button>
             <Button variant="secondary" onClick={onOptimize} disabled={runOptimize.isPending}>
               <Wand2 className="mr-1 h-4 w-4" />
               {runOptimize.isPending ? "Analyzing…" : "Optimize"}
@@ -1270,15 +1272,6 @@ function PsycopgTab() {
         </Card>
       )}
 
-      {report && !report.error && conn.project && (
-        <RunCostCard
-          project={conn.project}
-          totalQueries={report.total_queries_executed}
-          durationSeconds={report.total_duration_seconds}
-          window={runWindow}
-        />
-      )}
-
       {baseline && report && baseline !== report && (
         <Card>
           <CardHeader>
@@ -1295,17 +1288,7 @@ function PsycopgTab() {
         </Card>
       )}
 
-      {optimize && (
-        <OptimizeCard
-          optimize={optimize}
-          onApplyOne={onApplyOne}
-          onApplyAll={onApplyAllAndRerun}
-          busy={applyIdx.isPending || runTest.isPending}
-          applyAllLabel="Apply all & re-run test"
-          applyAllNote='"Apply all & re-run" snapshots the current result as the baseline, creates the indexes, and re-runs the test so you can see the before/after impact.'
-        />
-      )}
-
+      {/* Loop order: Explain (diagnose) → Optimize (prescribe) → Cost. */}
       <ExplainPlansCard
         results={explainResults}
         before={explainBefore}
@@ -1317,6 +1300,26 @@ function PsycopgTab() {
         canVerify={!!optimize?.index_suggestions.length}
         verifyBusy={verifying}
       />
+
+      {optimize && (
+        <OptimizeCard
+          optimize={optimize}
+          onApplyOne={onApplyOne}
+          onApplyAll={onApplyAllAndRerun}
+          busy={applyIdx.isPending || runTest.isPending}
+          applyAllLabel="Apply all & re-run test"
+          applyAllNote='"Apply all & re-run" snapshots the current result as the baseline, creates the indexes, and re-runs the test so you can see the before/after impact.'
+        />
+      )}
+
+      {report && !report.error && conn.project && (
+        <RunCostCard
+          project={conn.project}
+          totalQueries={report.total_queries_executed}
+          durationSeconds={report.total_duration_seconds}
+          window={runWindow}
+        />
+      )}
     </div>
   );
 }
@@ -2258,6 +2261,10 @@ function PgbenchTab() {
                   ? "Run local pgbench"
                   : "Submit pgbench job"}
             </Button>
+            <Button variant="outline" onClick={onExplain} disabled={explain.isPending || verifying}>
+              <ScanSearch className="mr-1 h-4 w-4" />
+              {explain.isPending ? "Explaining…" : "Explain"}
+            </Button>
             <Button variant="outline" onClick={onOptimize} disabled={runOptimize.isPending}>
               <Wand2 className="mr-1 h-4 w-4" />
               {runOptimize.isPending ? "Analyzing…" : "Optimize"}
@@ -2380,6 +2387,19 @@ function PgbenchTab() {
         </Card>
       )}
 
+      {/* Loop order: Explain (diagnose) → Optimize (prescribe) → Cost. */}
+      <ExplainPlansCard
+        results={explainResults}
+        before={explainBefore}
+        analyze={explainAnalyze}
+        onAnalyzeChange={setExplainAnalyze}
+        onExplain={onExplain}
+        busy={explain.isPending}
+        onVerify={onVerifyPlans}
+        canVerify={!!optimize?.index_suggestions.length}
+        verifyBusy={verifying}
+      />
+
       {optimize && (
         <OptimizeCard
           optimize={optimize}
@@ -2399,18 +2419,6 @@ function PgbenchTab() {
           window={runWindow}
         />
       )}
-
-      <ExplainPlansCard
-        results={explainResults}
-        before={explainBefore}
-        analyze={explainAnalyze}
-        onAnalyzeChange={setExplainAnalyze}
-        onExplain={onExplain}
-        busy={explain.isPending}
-        onVerify={onVerifyPlans}
-        canVerify={!!optimize?.index_suggestions.length}
-        verifyBusy={verifying}
-      />
     </div>
   );
 }
