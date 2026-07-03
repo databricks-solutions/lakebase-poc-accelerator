@@ -31,3 +31,11 @@ targets:
   dev:
     mode: development
     default: true
+
+  # QA environment in the AZURE workspace. Bound to an explicit host so it always
+  # targets that workspace (deploy with `-p AZURE -t qa`). Separate target = separate
+  # state, so it never collides with the `dev` deployment's Terraform state.
+  qa:
+    mode: development
+    workspace:
+      host: https://adb-984752964297111.11.azuredatabricks.net
