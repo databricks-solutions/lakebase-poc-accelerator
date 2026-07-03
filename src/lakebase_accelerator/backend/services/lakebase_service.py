@@ -115,6 +115,19 @@ def _resolve_project_name(ws: WorkspaceClient, project: str) -> str:
     )
 
 
+def resolve_project_uid(ws: WorkspaceClient, project: str) -> str:
+    """Resolve a project handle to its physical ``uid`` (a UUID).
+
+    ``system.billing.usage`` keys Lakebase rows on ``usage_metadata.project_id``,
+    which is the project's physical uid — not the logical resource-name segment.
+    """
+    project_name = _resolve_project_name(ws, project)
+    uid = getattr(ws.postgres.get_project(name=project_name), "uid", None)
+    if not uid:
+        raise ValueError(f"Could not resolve a uid for project '{project}'.")
+    return uid
+
+
 def resolve_credentials(
     ws: WorkspaceClient, project: str, database: Optional[str] = None
 ) -> PgCredentials:

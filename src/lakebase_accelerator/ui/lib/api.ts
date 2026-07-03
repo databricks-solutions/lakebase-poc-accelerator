@@ -55,6 +55,31 @@ export interface ComplexValue {
     type?: string | null;
     value?: string | null;
 }
+export interface CostDayOut {
+    branch_storage_dsu: number;
+    compute_cost: number;
+    compute_dbus: number;
+    expiring_storage_dsu: number;
+    pitr_storage_dsu: number;
+    storage_cost: number;
+    storage_dsu: number;
+    total_cost: number;
+    usage_date: string;
+}
+export interface CostUsageIn {
+    days?: number;
+    project: string;
+    warehouse_id: string;
+}
+export interface CostUsageOut {
+    compute_cost?: number;
+    days: number;
+    error?: string | null;
+    project_uid?: string | null;
+    rows?: CostDayOut[];
+    storage_cost?: number;
+    total_cost?: number;
+}
 export interface CreateProjectIn {
     display_name: string;
     max_cu: number;
@@ -397,6 +422,42 @@ export interface WarehouseOut {
 }
 export interface WorkspaceInfoOut {
     host?: string | null;
+}
+export const getLakebaseCost = async (data: CostUsageIn, options?: RequestInit): Promise<{
+    data: CostUsageOut;
+}> =>{
+    const res = await fetch("/api/cost/usage", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useGetLakebaseCost(options?: {
+    mutation?: UseMutationOptions<{
+        data: CostUsageOut;
+    }, ApiError, CostUsageIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>getLakebaseCost(data),
+        ...options?.mutation
+    });
 }
 export interface CurrentUserParams {
     "X-Forwarded-Host"?: string | null;

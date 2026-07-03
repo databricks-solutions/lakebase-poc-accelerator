@@ -3,13 +3,14 @@ import { ModeToggle } from "@/components/apx/mode-toggle";
 import { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
 import { Toaster } from "sonner";
-import { Rocket, Database, Gauge, BookOpen, Lightbulb } from "lucide-react";
+import { Rocket, Database, Gauge, BookOpen, Lightbulb, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/", label: "Quickstart", icon: Rocket },
   { to: "/deployment", label: "Deployment", icon: Database },
   { to: "/testing", label: "Concurrency Testing", icon: Gauge },
+  { to: "/cost", label: "Cost", icon: DollarSign },
   { to: "/best-practices", label: "Best Practices", icon: Lightbulb },
   { to: "/docs", label: "Docs", icon: BookOpen },
 ] as const;

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './../routes/__root'
 import { Route as TestingRouteImport } from './../routes/testing'
 import { Route as DocsRouteImport } from './../routes/docs'
 import { Route as DeploymentRouteImport } from './../routes/deployment'
+import { Route as CostRouteImport } from './../routes/cost'
 import { Route as BestPracticesRouteImport } from './../routes/best-practices'
 import { Route as IndexRouteImport } from './../routes/index'
 
@@ -30,6 +31,11 @@ const DeploymentRoute = DeploymentRouteImport.update({
   path: '/deployment',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CostRoute = CostRouteImport.update({
+  id: '/cost',
+  path: '/cost',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BestPracticesRoute = BestPracticesRouteImport.update({
   id: '/best-practices',
   path: '/best-practices',
@@ -44,6 +50,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/best-practices': typeof BestPracticesRoute
+  '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/docs': typeof DocsRoute
   '/testing': typeof TestingRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/best-practices': typeof BestPracticesRoute
+  '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/docs': typeof DocsRoute
   '/testing': typeof TestingRoute
@@ -59,19 +67,27 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/best-practices': typeof BestPracticesRoute
+  '/cost': typeof CostRoute
   '/deployment': typeof DeploymentRoute
   '/docs': typeof DocsRoute
   '/testing': typeof TestingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/best-practices' | '/deployment' | '/docs' | '/testing'
+  fullPaths:
+    | '/'
+    | '/best-practices'
+    | '/cost'
+    | '/deployment'
+    | '/docs'
+    | '/testing'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/best-practices' | '/deployment' | '/docs' | '/testing'
+  to: '/' | '/best-practices' | '/cost' | '/deployment' | '/docs' | '/testing'
   id:
     | '__root__'
     | '/'
     | '/best-practices'
+    | '/cost'
     | '/deployment'
     | '/docs'
     | '/testing'
@@ -80,6 +96,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BestPracticesRoute: typeof BestPracticesRoute
+  CostRoute: typeof CostRoute
   DeploymentRoute: typeof DeploymentRoute
   DocsRoute: typeof DocsRoute
   TestingRoute: typeof TestingRoute
@@ -108,6 +125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DeploymentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cost': {
+      id: '/cost'
+      path: '/cost'
+      fullPath: '/cost'
+      preLoaderRoute: typeof CostRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/best-practices': {
       id: '/best-practices'
       path: '/best-practices'
@@ -128,6 +152,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BestPracticesRoute: BestPracticesRoute,
+  CostRoute: CostRoute,
   DeploymentRoute: DeploymentRoute,
   DocsRoute: DocsRoute,
   TestingRoute: TestingRoute,
