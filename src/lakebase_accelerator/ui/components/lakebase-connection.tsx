@@ -129,8 +129,8 @@ export function LakebaseConnection({ value, onChange }: Props) {
               ))}
             </datalist>
             <p className="text-xs text-muted-foreground">
-              Unqualified table names in your queries resolve here (e.g. a synced schema
-              like <code>anhhoang_chu</code>). Leave blank for <code>public</code>.
+              Unqualified table names in your queries resolve here (e.g. the schema your
+              Delta table was synced into). Leave blank for <code>public</code>.
               Fully-qualified <code>schema.table</code> names always take precedence.
             </p>
           </div>
