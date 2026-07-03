@@ -24,6 +24,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.workspace import ImportFormat
 
 from ..core import logger
+from .connection import search_path_option
 from .lakebase_service import PgCredentials
 
 # Bundled job payload (shipped as package data, see resources/pgbench/).
@@ -219,8 +220,12 @@ def submit(
     config: dict[str, Any],
     queries: list[dict[str, Any]],
     cluster_id: Optional[str] = None,
+    schema: Optional[str] = None,
 ) -> dict[str, Any]:
     """Submit a pgbench run and return job/run identifiers and workspace links."""
+    # Validate the schema up front (raises ValueError) and build the PGOPTIONS the
+    # notebook exports so unqualified table names resolve to the chosen schema.
+    pgoptions = search_path_option(schema) or ""
     query_json = json.dumps(queries)
     if len(query_json) > _INLINE_QUERY_LIMIT:
         raise ValueError(
@@ -242,6 +247,7 @@ def submit(
         "pguser": creds.user,
         "pgpassword": creds.password,
         "pgsslmode": creds.ssl_mode,
+        "pgoptions": pgoptions,
         "pgbench_clients": str(config.get("clients", 8)),
         "pgbench_jobs": str(config.get("jobs", 8)),
         "pgbench_duration": str(config.get("duration_seconds", 30)),

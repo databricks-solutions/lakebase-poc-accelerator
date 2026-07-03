@@ -9,7 +9,7 @@ identity (primary) or pasted OAuth (dev) — never static username & password.
 
 from __future__ import annotations
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..core import create_router, logger
@@ -18,6 +18,14 @@ from ..services import auth, lakebase_service, pgbench_job, pgbench_local, query
 from ..services.connection import ConnectionPool
 
 router = create_router()
+
+
+def _app_sp(request: Request):
+    """The app service principal client (M2M), used to orchestrate the pgbench
+    Databricks Job. The Jobs/Clusters API needs workspace scopes the forwarded user
+    (OBO) token doesn't carry, so the SP *owns* the job while the workload still
+    connects to Lakebase as the user (their creds are passed into the job)."""
+    return request.app.state.workspace_client
 
 
 class QueryIn(BaseModel):
@@ -29,6 +37,9 @@ class PsycopgTestIn(BaseModel):
     auth_method: auth.AuthMethod = "identity"
     project: str | None = None
     database: str | None = None
+    # Default schema (search_path) so unqualified table names in the queries resolve
+    # to the chosen (e.g. synced) schema without needing fully-qualified names.
+    db_schema: str | None = None
     # dev OAuth fallback
     endpoint_host: str | None = None
     access_token: str | None = None
@@ -112,7 +123,10 @@ async def run_psycopg_test(req: PsycopgTestIn, ws: EffectiveClient) -> TestRepor
             # absorbs the cache-counter probes that run alongside the workload.
             base_pool_size=req.concurrency_level,
             max_overflow=max(2, req.concurrency_level // 4),
+            schema=req.db_schema,
         )
+    except ValueError as e:
+        return _empty_report(req.concurrency_level, str(e))
     except Exception as e:  # noqa: BLE001
         logger.info(f"psycopg pool init failed: {e}")
         return _empty_report(req.concurrency_level, f"Connection failed: {e}")
@@ -163,6 +177,8 @@ class PgbenchSubmitIn(BaseModel):
     auth_method: auth.AuthMethod = "identity"
     project: str | None = None
     database: str | None = None
+    # Default schema (search_path); same purpose as PsycopgTestIn.db_schema.
+    db_schema: str | None = None
     # dev OAuth fallback
     endpoint_host: str | None = None
     access_token: str | None = None
@@ -210,8 +226,14 @@ class ClusterListOut(BaseModel):
     response_model=PgbenchSubmitOut,
     operation_id="submitPgbenchJob",
 )
-def submit_pgbench_job(req: PgbenchSubmitIn, ws: EffectiveClient) -> PgbenchSubmitOut:
-    """Submit a pgbench run as a Databricks Job and return its run identifiers."""
+def submit_pgbench_job(req: PgbenchSubmitIn, ws: EffectiveClient, request: Request) -> PgbenchSubmitOut:
+    """Submit a pgbench run as a Databricks Job and return its run identifiers.
+
+    Hybrid identity: the job is created/owned by the app service principal (the Jobs
+    API needs workspace scopes the OBO user token lacks), but Lakebase credentials are
+    resolved as the *user* (OBO) and passed into the job, so the benchmark connects to
+    Postgres as the user.
+    """
     if not req.queries:
         return PgbenchSubmitOut(status="error", error="No queries provided.")
 
@@ -238,12 +260,14 @@ def submit_pgbench_job(req: PgbenchSubmitIn, ws: EffectiveClient) -> PgbenchSubm
         return PgbenchSubmitOut(status="error", error=str(e))
 
     try:
+        # SP orchestrates the job; user creds (above) run the workload.
         result = pgbench_job.submit(
-            ws,
+            _app_sp(request),
             creds=creds,
             config=req.config.model_dump(),
             queries=pgbench_queries,
             cluster_id=req.cluster_id,
+            schema=req.db_schema,
         )
         monitoring_url = lakebase_service.build_monitoring_url(ws, creds)
         return PgbenchSubmitOut(**result, monitoring_url=monitoring_url)
@@ -257,10 +281,12 @@ def submit_pgbench_job(req: PgbenchSubmitIn, ws: EffectiveClient) -> PgbenchSubm
     response_model=PgbenchStatusOut,
     operation_id="getPgbenchRunStatus",
 )
-def get_pgbench_run_status(run_id: str, ws: EffectiveClient) -> PgbenchStatusOut:
-    """Poll a submitted pgbench job run for its status and parsed metrics."""
+def get_pgbench_run_status(run_id: str, request: Request) -> PgbenchStatusOut:
+    """Poll a submitted pgbench job run for its status and parsed metrics.
+
+    Read under the app SP that owns the job (same identity that submitted it)."""
     try:
-        return PgbenchStatusOut(**pgbench_job.run_status(ws, run_id))
+        return PgbenchStatusOut(**pgbench_job.run_status(_app_sp(request), run_id))
     except Exception as e:  # noqa: BLE001
         logger.info(f"pgbench status lookup failed: {e}")
         return PgbenchStatusOut(
@@ -273,10 +299,13 @@ def get_pgbench_run_status(run_id: str, ws: EffectiveClient) -> PgbenchStatusOut
     response_model=ClusterListOut,
     operation_id="listClusters",
 )
-def list_clusters(ws: EffectiveClient) -> ClusterListOut:
-    """List interactive clusters available to attach the pgbench job to (optional)."""
+def list_clusters(request: Request) -> ClusterListOut:
+    """List interactive clusters available to attach the pgbench job to (optional).
+
+    Listed under the app SP that owns/runs the job (Clusters API needs workspace scopes
+    the OBO user token lacks)."""
     try:
-        return ClusterListOut(clusters=[ClusterOut(**c) for c in pgbench_job.list_clusters(ws)])
+        return ClusterListOut(clusters=[ClusterOut(**c) for c in pgbench_job.list_clusters(_app_sp(request))])
     except Exception as e:  # noqa: BLE001
         logger.info(f"cluster listing failed: {e}")
         return ClusterListOut(error=str(e))
@@ -347,6 +376,7 @@ def submit_local_pgbench(req: PgbenchSubmitIn, ws: EffectiveClient) -> PgbenchLo
             creds=creds,
             config=req.config.model_dump(),
             queries=pgbench_queries,
+            schema=req.db_schema,
         )
         monitoring_url = lakebase_service.build_monitoring_url(ws, creds)
         return PgbenchLocalSubmitOut(**result, monitoring_url=monitoring_url)

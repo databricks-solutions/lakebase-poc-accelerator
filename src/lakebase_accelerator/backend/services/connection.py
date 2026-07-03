@@ -10,6 +10,7 @@ OAuth-paste fallback).
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -24,6 +25,25 @@ from sqlalchemy.pool import QueuePool
 from . import query_format
 from .lakebase_service import PgCredentials
 from .stats import percentile
+
+# A schema is interpolated into the libpq ``search_path`` connection option, so it
+# must be a plain identifier (no quoting/escaping games).
+_IDENT_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def search_path_option(schema: Optional[str]) -> Optional[str]:
+    """Build the libpq ``options`` value that sets the connection ``search_path`` to
+    ``<schema>, public``, so unqualified table names in the workload resolve to the
+    chosen (e.g. synced) schema. Returns None when no valid schema is given.
+
+    Shared by the psycopg pool and the pgbench runners (which pass it via ``PGOPTIONS``).
+    """
+    schema = (schema or "").strip()
+    if not schema:
+        return None
+    if not _IDENT_RE.match(schema):
+        raise ValueError(f"Invalid schema name: {schema!r}")
+    return f"-c search_path={schema},public"
 
 
 class ConnectionPool:
@@ -49,8 +69,16 @@ class ConnectionPool:
         pool_timeout: int = 30,
         command_timeout: int = 30,
         connect_timeout: int = 10,
+        schema: Optional[str] = None,
     ) -> None:
         self._host, self._database, self._user = host, database, user
+
+        # Set the connection default schema so unqualified table names resolve to the
+        # chosen (e.g. synced) schema, alongside the per-statement timeout.
+        options = f"-c statement_timeout={command_timeout * 1000}"
+        sp = search_path_option(schema)
+        if sp:
+            options = f"{options} {sp}"
 
         url = (
             f"postgresql+psycopg://{quote_plus(user)}:{quote_plus(password)}"
@@ -71,7 +99,7 @@ class ConnectionPool:
             connect_args={
                 # Fail fast on an unreachable host / DNS hang instead of blocking forever.
                 "connect_timeout": connect_timeout,
-                "options": f"-c statement_timeout={command_timeout * 1000}",
+                "options": options,
             },
         )
         # Validate connectivity up front so failures surface as a clear error.

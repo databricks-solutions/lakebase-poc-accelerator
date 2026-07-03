@@ -25,6 +25,7 @@ class OptimizeIn(BaseModel):
     auth_method: auth.AuthMethod = "identity"
     project: str | None = None
     database: str | None = None
+    db_schema: str | None = None
     endpoint_host: str | None = None
     access_token: str | None = None
     postgres_user_name: str | None = None
@@ -59,6 +60,7 @@ class ApplyIndexIn(BaseModel):
     auth_method: auth.AuthMethod = "identity"
     project: str | None = None
     database: str | None = None
+    db_schema: str | None = None
     endpoint_host: str | None = None
     access_token: str | None = None
     postgres_user_name: str | None = None
@@ -92,7 +94,7 @@ def apply_indexes(req: ApplyIndexIn, ws: EffectiveClient) -> ApplyIndexesOut:
             access_token=req.access_token,
             postgres_user_name=req.postgres_user_name,
         )
-        results = optimize.apply_indexes(creds, req.ddls)
+        results = optimize.apply_indexes(creds, req.ddls, req.db_schema)
         return ApplyIndexesOut(results=[ApplyResultOut(**r) for r in results])
     except Exception as e:  # noqa: BLE001
         logger.info(f"apply_indexes failed: {e}")
@@ -123,7 +125,7 @@ def optimize_analyze(req: OptimizeIn, ws: EffectiveClient) -> OptimizeOut:
                 access_token=req.access_token,
                 postgres_user_name=req.postgres_user_name,
             )
-            raw_findings, stats = optimize.live_introspection(creds, focus_tables)
+            raw_findings, stats = optimize.live_introspection(creds, focus_tables, req.db_schema)
             findings = [
                 FindingOut(
                     severity=f.severity, category=f.category, title=f.title,

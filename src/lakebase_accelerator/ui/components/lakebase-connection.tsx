@@ -7,7 +7,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useListLakebaseProjects } from "@/lib/api";
+import {
+  useListLakebaseProjects,
+  useListLakebaseDatabases,
+  useListLakebaseSchemas,
+} from "@/lib/api";
 
 export type AuthMethod = "identity" | "oauth";
 
@@ -15,6 +19,9 @@ export interface ConnectionConfig {
   auth_method: AuthMethod;
   project: string;
   database: string;
+  // Default schema (search_path) so unqualified table names in the workload resolve
+  // to the chosen (e.g. synced) schema. Blank = public.
+  db_schema: string;
   endpoint_host: string;
   access_token: string;
   postgres_user_name: string;
@@ -24,6 +31,7 @@ export const emptyConnection: ConnectionConfig = {
   auth_method: "identity",
   project: "",
   database: "",
+  db_schema: "",
   endpoint_host: "",
   access_token: "",
   postgres_user_name: "",
@@ -42,6 +50,20 @@ export function LakebaseConnection({ value, onChange }: Props) {
   const { data, isLoading } = useListLakebaseProjects();
   const projects = data?.data.projects ?? [];
   const set = (patch: Partial<ConnectionConfig>) => onChange({ ...value, ...patch });
+
+  // Populate the database + schema pickers once a project is chosen (identity auth).
+  // Best-effort: an empty list just means no suggestions — the fields stay free-text.
+  const projectSet = value.auth_method === "identity" && value.project.trim().length > 0;
+  const { data: dbData } = useListLakebaseDatabases({
+    params: { project: value.project },
+    query: { enabled: projectSet },
+  });
+  const databases = dbData?.data.databases ?? [];
+  const { data: schemaData } = useListLakebaseSchemas({
+    params: { project: value.project, database: value.database || undefined },
+    query: { enabled: projectSet },
+  });
+  const schemas = schemaData?.data.schemas ?? [];
 
   return (
     <div className="space-y-4">
@@ -82,10 +104,35 @@ export function LakebaseConnection({ value, onChange }: Props) {
           <div className="grid gap-2">
             <Label>Database (optional)</Label>
             <Input
+              list="lb-databases"
               placeholder="databricks_postgres"
               value={value.database}
               onChange={(e) => set({ database: e.target.value })}
             />
+            <datalist id="lb-databases">
+              {databases.map((d) => (
+                <option key={d} value={d} />
+              ))}
+            </datalist>
+          </div>
+          <div className="grid gap-2 sm:col-span-2">
+            <Label>Default schema (search_path)</Label>
+            <Input
+              list="lb-schemas"
+              placeholder="public"
+              value={value.db_schema}
+              onChange={(e) => set({ db_schema: e.target.value })}
+            />
+            <datalist id="lb-schemas">
+              {schemas.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+            <p className="text-xs text-muted-foreground">
+              Unqualified table names in your queries resolve here (e.g. a synced schema
+              like <code>anhhoang_chu</code>). Leave blank for <code>public</code>.
+              Fully-qualified <code>schema.table</code> names always take precedence.
+            </p>
           </div>
         </div>
       )}
@@ -123,6 +170,14 @@ export function LakebaseConnection({ value, onChange }: Props) {
               placeholder="databricks_postgres"
               value={value.database}
               onChange={(e) => set({ database: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label>Default schema (search_path)</Label>
+            <Input
+              placeholder="public"
+              value={value.db_schema}
+              onChange={(e) => set({ db_schema: e.target.value })}
             />
           </div>
         </div>

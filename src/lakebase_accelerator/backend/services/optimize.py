@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 import psycopg
 
+from .connection import search_path_option
 from .lakebase_service import PgCredentials
 
 # --- Query parsing -----------------------------------------------------------
@@ -244,14 +245,17 @@ class Finding:
 
 
 def live_introspection(
-    creds: PgCredentials, focus_tables: Optional[set[str]] = None
+    creds: PgCredentials,
+    focus_tables: Optional[set[str]] = None,
+    schema: Optional[str] = None,
 ) -> tuple[list[Finding], dict[str, Any]]:
     """Connect and run detection SQL. Returns (findings, raw_stats). Best-effort:
     individual probes that fail (e.g. missing pg_stat_statements) are skipped.
 
     Table-scoped findings (sequential scans, unused indexes) are restricted to
     ``focus_tables`` — the tables the benchmark queries actually touch — and never
-    include the app's own history table.
+    include the app's own history table. ``schema`` sets the connection search_path
+    so unqualified table references resolve to the chosen (e.g. synced) schema.
     """
     findings: list[Finding] = []
     stats: dict[str, Any] = {}
@@ -264,6 +268,7 @@ def live_introspection(
         password=creds.password,
         sslmode=creds.ssl_mode,
         connect_timeout=10,
+        options=search_path_option(schema) or "",
     ) as conn:
         with conn.cursor() as cur:
             # Cache hit ratio
@@ -359,10 +364,15 @@ def live_introspection(
 _ALLOWED_DDL_PREFIXES = ("create index", "drop index", "analyze")
 
 
-def apply_indexes(creds: PgCredentials, ddls: list[str]) -> list[dict[str, Any]]:
+def apply_indexes(
+    creds: PgCredentials, ddls: list[str], schema: Optional[str] = None
+) -> list[dict[str, Any]]:
     """Execute index DDL against Lakebase. Only CREATE INDEX / DROP INDEX / ANALYZE
     statements are permitted (no arbitrary SQL). Each statement is applied
     independently; failures are reported per-statement rather than aborting the rest.
+
+    ``schema`` sets the connection search_path so DDL that names unqualified tables
+    resolves to the chosen (e.g. synced) schema.
     """
     results: list[dict[str, Any]] = []
     with psycopg.connect(
@@ -374,6 +384,7 @@ def apply_indexes(creds: PgCredentials, ddls: list[str]) -> list[dict[str, Any]]
         sslmode=creds.ssl_mode,
         connect_timeout=10,
         autocommit=True,
+        options=search_path_option(schema) or "",
     ) as conn:
         with conn.cursor() as cur:
             for ddl in ddls:

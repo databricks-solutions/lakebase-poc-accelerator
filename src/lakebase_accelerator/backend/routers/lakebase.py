@@ -54,6 +54,11 @@ class DatabaseListOut(BaseModel):
     error: str | None = None
 
 
+class SchemaListOut(BaseModel):
+    schemas: list[str]
+    error: str | None = None
+
+
 class TokenScopesOut(BaseModel):
     has_obo_token: bool
     scopes: list[str] = []
@@ -125,3 +130,21 @@ def list_lakebase_databases(ws: EffectiveClient, project: str) -> DatabaseListOu
     except Exception as e:  # noqa: BLE001
         logger.info(f"Could not list databases for {project}: {e}")
         return DatabaseListOut(databases=[], error=str(e))
+
+
+@router.get(
+    "/lakebase/schemas",
+    response_model=SchemaListOut,
+    operation_id="listLakebaseSchemas",
+)
+def list_lakebase_schemas(
+    ws: EffectiveClient, project: str, database: str | None = None
+) -> SchemaListOut:
+    """List schemas in a project's database, to populate the default-schema picker."""
+    if not project.strip():
+        return SchemaListOut(schemas=[], error="project is required")
+    try:
+        return SchemaListOut(schemas=lakebase_service.list_schemas(ws, project, database))
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"Could not list schemas for {project}/{database}: {e}")
+        return SchemaListOut(schemas=[], error=str(e))

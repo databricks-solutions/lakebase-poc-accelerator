@@ -24,10 +24,10 @@ import tempfile
 import threading
 import time
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from ..core import logger
-from .connection import cache_hit_delta, read_cache_counters
+from .connection import cache_hit_delta, read_cache_counters, search_path_option
 from .lakebase_service import PgCredentials
 from .pgbench_job import parse_pgbench_stdout
 from .stats import percentile
@@ -88,8 +88,11 @@ def submit(
     creds: PgCredentials,
     config: dict[str, Any],
     queries: list[dict[str, Any]],
+    schema: Optional[str] = None,
 ) -> dict[str, Any]:
     """Start a local pgbench run in a background thread and return its run id."""
+    # Validate the schema up front (raises ValueError) so a bad value fails the request.
+    search_path = search_path_option(schema)
     run_id = uuid.uuid4().hex
     _set(
         run_id,
@@ -101,7 +104,7 @@ def submit(
     )
     thread = threading.Thread(
         target=_run,
-        args=(run_id, creds, dict(config), list(queries)),
+        args=(run_id, creds, dict(config), list(queries), search_path),
         daemon=True,
     )
     thread.start()
@@ -207,6 +210,7 @@ def _run(
     creds: PgCredentials,
     config: dict[str, Any],
     queries: list[dict[str, Any]],
+    search_path: Optional[str] = None,
 ) -> None:
     if not queries:
         _set(run_id, status="failed", message="No queries provided.", progress=100,
@@ -234,6 +238,10 @@ def _run(
                 "PGSSLMODE": creds.ssl_mode,
             }
         )
+        # Default schema via search_path (libpq reads PGOPTIONS) so unqualified table
+        # names in the scripts resolve to the chosen schema.
+        if search_path:
+            env["PGOPTIONS"] = search_path
 
         cmd = _build_cmd(config, query_files)
         # Password lives only in env, so logging the command is safe.

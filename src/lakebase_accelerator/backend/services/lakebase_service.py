@@ -206,3 +206,30 @@ def list_databases(ws: WorkspaceClient, project: str) -> list[str]:
                 "WHERE datistemplate = false ORDER BY datname"
             )
             return [row[0] for row in cur.fetchall()]
+
+
+def list_schemas(
+    ws: WorkspaceClient, project: str, database: Optional[str] = None
+) -> list[str]:
+    """List non-system schemas in ``database`` (used to populate the default-schema
+    picker so unqualified queries resolve to the right, e.g. synced, schema)."""
+    import psycopg
+
+    creds = resolve_credentials(ws, project, database)
+    with psycopg.connect(
+        host=creds.host,
+        port=creds.port,
+        dbname=creds.database,
+        user=creds.user,
+        password=creds.password,
+        sslmode=creds.ssl_mode,
+        connect_timeout=10,
+    ) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT schema_name FROM information_schema.schemata "
+                "WHERE schema_name NOT IN ('information_schema') "
+                "AND schema_name NOT LIKE 'pg_%' "
+                "ORDER BY schema_name"
+            )
+            return [row[0] for row in cur.fetchall()]

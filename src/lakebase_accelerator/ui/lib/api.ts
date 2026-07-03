@@ -16,6 +16,7 @@ export interface ApplyIndexIn {
     access_token?: string | null;
     auth_method?: "identity" | "oauth";
     database?: string | null;
+    db_schema?: string | null;
     ddls?: string[];
     endpoint_host?: string | null;
     postgres_user_name?: string | null;
@@ -169,6 +170,7 @@ export interface OptimizeIn {
     access_token?: string | null;
     auth_method?: "identity" | "oauth";
     database?: string | null;
+    db_schema?: string | null;
     endpoint_host?: string | null;
     postgres_user_name?: string | null;
     project?: string | null;
@@ -216,6 +218,7 @@ export interface PgbenchSubmitIn {
     cluster_id?: string | null;
     config?: PgbenchConfigIn;
     database?: string | null;
+    db_schema?: string | null;
     endpoint_host?: string | null;
     postgres_user_name?: string | null;
     project?: string | null;
@@ -252,6 +255,7 @@ export interface PsycopgTestIn {
     auth_method?: "identity" | "oauth";
     concurrency_level?: number;
     database?: string | null;
+    db_schema?: string | null;
     endpoint_host?: string | null;
     postgres_user_name?: string | null;
     project?: string | null;
@@ -269,6 +273,10 @@ export interface QueryStat {
     p99_time_ms?: number | null;
     query_identifier: string;
     total_time_ms: number;
+}
+export interface SchemaListOut {
+    error?: string | null;
+    schemas: string[];
 }
 export interface SetCuIn {
     endpoint_name: string;
@@ -1009,6 +1017,70 @@ export function useListLakebaseProjectsSuspense<TData = {
     return useSuspenseQuery({
         queryKey: listLakebaseProjectsKey(),
         queryFn: ()=>listLakebaseProjects(),
+        ...options?.query
+    });
+}
+export interface ListLakebaseSchemasParams {
+    project: string;
+    database?: string | null;
+}
+export const listLakebaseSchemas = async (params: ListLakebaseSchemasParams, options?: RequestInit): Promise<{
+    data: SchemaListOut;
+}> =>{
+    const searchParams = new URLSearchParams();
+    if (params.project != null) searchParams.set("project", String(params.project));
+    if (params?.database != null) searchParams.set("database", String(params?.database));
+    const queryString = searchParams.toString();
+    const url = queryString ? `/api/lakebase/schemas?${queryString}` : "/api/lakebase/schemas";
+    const res = await fetch(url, {
+        ...options,
+        method: "GET"
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export const listLakebaseSchemasKey = (params?: ListLakebaseSchemasParams)=>{
+    return [
+        "/api/lakebase/schemas",
+        params
+    ] as const;
+};
+export function useListLakebaseSchemas<TData = {
+    data: SchemaListOut;
+}>(options: {
+    params: ListLakebaseSchemasParams;
+    query?: Omit<UseQueryOptions<{
+        data: SchemaListOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useQuery({
+        queryKey: listLakebaseSchemasKey(options.params),
+        queryFn: ()=>listLakebaseSchemas(options.params),
+        ...options?.query
+    });
+}
+export function useListLakebaseSchemasSuspense<TData = {
+    data: SchemaListOut;
+}>(options: {
+    params: ListLakebaseSchemasParams;
+    query?: Omit<UseSuspenseQueryOptions<{
+        data: SchemaListOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useSuspenseQuery({
+        queryKey: listLakebaseSchemasKey(options.params),
+        queryFn: ()=>listLakebaseSchemas(options.params),
         ...options?.query
     });
 }
