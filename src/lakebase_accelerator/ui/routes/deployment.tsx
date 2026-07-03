@@ -39,6 +39,7 @@ import {
   useListLakebaseBranches,
   useCreateSyncedTable,
   useCheckSyncRequirements,
+  useGetTableSize,
   useListWarehouses,
   useGetWorkspaceInfo,
   type SizingOut,
@@ -91,6 +92,8 @@ interface SyncRow {
   check?: SyncCheckOut;
   // Persistent result of the last create attempt (shown inline, not as a toast).
   result?: { ok: boolean; detail: string };
+  // Last uncompressed-size measurement of the source table.
+  size?: { ok: boolean; message: string };
 }
 
 const emptyRow: SyncRow = {
@@ -446,6 +449,7 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
   const [warehouseId, setWarehouseId] = useState("");
   const createSync = useCreateSyncedTable();
   const checkReq = useCheckSyncRequirements();
+  const measureSize = useGetTableSize();
   const { data: whData, isLoading: whLoading } = useListWarehouses();
   const warehouses = whData?.data.warehouses ?? [];
   const { data: wsInfo } = useGetWorkspaceInfo();
@@ -484,6 +488,20 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
       else toast.warning(res.data.message);
     } catch (e) {
       toast.error(String(e));
+    }
+  };
+
+  const onMeasureSize = async (i: number) => {
+    const row = rows[i];
+    update(i, { size: undefined });
+    try {
+      const res = await measureSize.mutateAsync({
+        table_full_name: row.source_table_full_name,
+        warehouse_id: warehouseId,
+      });
+      update(i, { size: { ok: res.data.ok, message: res.data.message } });
+    } catch (e) {
+      update(i, { size: { ok: false, message: String(e) } });
     }
   };
 
@@ -736,6 +754,39 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                   )}
                 </div>
               )}
+
+              {/* Uncompressed source-table size, to inform Lakebase storage sizing. */}
+              <div className="space-y-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onMeasureSize(i)}
+                  disabled={measureSize.isPending || !row.source_table_full_name || !warehouseId}
+                >
+                  {measureSize.isPending ? "Measuring…" : "Measure source size (uncompressed)"}
+                </Button>
+                {!warehouseId && (
+                  <p className="text-xs text-muted-foreground">Select a SQL warehouse above to measure size.</p>
+                )}
+                {row.size && (
+                  <div
+                    className={`rounded-md border p-3 text-xs ${
+                      row.size.ok
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {row.size.ok ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      )}
+                      <span className="whitespace-pre-wrap break-words">{row.size.message}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <Button
                 onClick={() => onSyncOne(i)}

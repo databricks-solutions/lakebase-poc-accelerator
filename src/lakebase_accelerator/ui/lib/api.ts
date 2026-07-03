@@ -324,6 +324,16 @@ export interface SyncTableIn {
     storage_schema?: string | null;
     target_uc_name: string;
 }
+export interface TableSizeIn {
+    table_full_name: string;
+    warehouse_id: string;
+}
+export interface TableSizeOut {
+    message: string;
+    ok: boolean;
+    size_mb: number;
+    uncompressed_bytes: number;
+}
 export interface TestReportOut {
     average_execution_time_ms: number;
     cache_hit_pct?: number | null;
@@ -711,6 +721,42 @@ export function useCreateSyncedTable(options?: {
 }) {
     return useMutation({
         mutationFn: (data)=>createSyncedTable(data),
+        ...options?.mutation
+    });
+}
+export const getTableSize = async (data: TableSizeIn, options?: RequestInit): Promise<{
+    data: TableSizeOut;
+}> =>{
+    const res = await fetch("/api/deployment/table-size", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useGetTableSize(options?: {
+    mutation?: UseMutationOptions<{
+        data: TableSizeOut;
+    }, ApiError, TableSizeIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>getTableSize(data),
         ...options?.mutation
     });
 }

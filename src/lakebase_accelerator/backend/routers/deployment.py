@@ -163,6 +163,35 @@ def check_sync_requirements(req: SyncCheckIn, ws: EffectiveClient) -> SyncCheckO
     )
 
 
+class TableSizeIn(BaseModel):
+    table_full_name: str
+    warehouse_id: str
+
+
+class TableSizeOut(BaseModel):
+    ok: bool
+    uncompressed_bytes: int
+    size_mb: float
+    message: str
+
+
+@router.post(
+    "/deployment/table-size",
+    response_model=TableSizeOut,
+    operation_id="getTableSize",
+)
+def get_table_size(req: TableSizeIn, ws: EffectiveClient) -> TableSizeOut:
+    """Estimate a source Delta table's uncompressed size (for Lakebase storage sizing)."""
+    try:
+        r = deployment.get_table_uncompressed_size(ws, req.table_full_name, req.warehouse_id)
+        return TableSizeOut(
+            ok=r.ok, uncompressed_bytes=r.uncompressed_bytes, size_mb=r.size_mb, message=r.message,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"get_table_size failed for {req.table_full_name}: {e}")
+        return TableSizeOut(ok=False, uncompressed_bytes=0, size_mb=0.0, message=str(e))
+
+
 # --- Existing-project inspection + provisioning ------------------------------
 
 

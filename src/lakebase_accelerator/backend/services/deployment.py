@@ -63,6 +63,61 @@ def _cdf_enabled_via_warehouse(ws: WorkspaceClient, warehouse_id: str, table: st
 
 
 @dataclass
+class TableSize:
+    ok: bool
+    uncompressed_bytes: int
+    size_mb: float
+    message: str
+
+
+def get_table_uncompressed_size(
+    ws: WorkspaceClient, table_full_name: str, warehouse_id: str
+) -> TableSize:
+    """Estimate a Delta table's uncompressed size via a SQL warehouse.
+
+    Ported from the legacy cost estimator: ``sum(len(to_csv(struct(*))) + 32)``
+    approximates each row's uncompressed byte size (the +32 is per-row overhead).
+    This informs Lakebase storage sizing, since synced tables are stored uncompressed
+    in Postgres. Runs on the supplied warehouse using only the ``sql`` scope (still
+    governed by the user's UC permissions); ``table_full_name`` must be a validated
+    three-part name to keep it safe to interpolate.
+    """
+    if not _TABLE_NAME_RE.match(table_full_name):
+        return TableSize(
+            ok=False, uncompressed_bytes=0, size_mb=0.0,
+            message=f"'{table_full_name}' is not a valid three-part table name (catalog.schema.table).",
+        )
+    if not warehouse_id:
+        return TableSize(
+            ok=False, uncompressed_bytes=0, size_mb=0.0,
+            message="Select a SQL warehouse to measure the table's uncompressed size.",
+        )
+    resp = ws.statement_execution.execute_statement(
+        statement=(
+            "SELECT COALESCE(SUM(LEN(TO_CSV(STRUCT(*))) + 32), 0) AS uncompressed_bytes "
+            f"FROM {table_full_name}"
+        ),
+        warehouse_id=warehouse_id,
+        wait_timeout="50s",
+    )
+    state = str(resp.status.state) if resp.status and resp.status.state else "UNKNOWN"
+    if "SUCCEEDED" not in state:
+        err = resp.status.error.message if resp.status and resp.status.error else state
+        return TableSize(
+            ok=False, uncompressed_bytes=0, size_mb=0.0,
+            message=f"Size query failed ({state}): {err}",
+        )
+    rows = (resp.result.data_array if resp.result else None) or []
+    raw = rows[0][0] if rows and rows[0] else 0
+    total = int(raw) if raw is not None else 0
+    size_mb = total / (1024**2)
+    return TableSize(
+        ok=True, uncompressed_bytes=total, size_mb=size_mb,
+        message=f"{table_full_name}: {size_mb:,.2f} MB uncompressed ({total:,} bytes).",
+    )
+
+
+@dataclass
 class EndpointInfo:
     name: str
     endpoint_type: Optional[str]
