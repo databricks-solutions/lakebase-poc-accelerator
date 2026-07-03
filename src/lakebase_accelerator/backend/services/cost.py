@@ -19,6 +19,7 @@ discounts or the Lakebase compute promotion, so treat them as an upper-bound est
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 
 from databricks.sdk import WorkspaceClient
@@ -60,49 +61,28 @@ class CostReport:
 
 def _cost_query(project_uid: str, days: int) -> str:
     # project_uid is regex-validated and days is an int, so both are safe to
-    # interpolate. Cost = SUM(usage * list_price) so multiple regional SKUs (each
-    # with its own price) roll up correctly into a single daily figure.
+    # interpolate. Single pass over system.billing.usage with conditional
+    # aggregation (compute vs storage keyed off sku_name) — half the scan of
+    # separate CTEs. LEFT JOIN keeps usage rows even if a SKU has no current list
+    # price. Cost = SUM(usage * list_price) so multiple regional SKUs roll up
+    # correctly. Column order must match the parser in get_lakebase_cost.
     return f"""
-WITH compute_costs AS (
-  SELECT u.usage_date AS d,
-         ROUND(SUM(u.usage_quantity), 4) AS compute_dbus,
-         ROUND(SUM(u.usage_quantity * p.pricing.default), 2) AS compute_cost
-  FROM system.billing.usage u
-  JOIN system.billing.list_prices p
-    ON u.sku_name = p.sku_name AND p.price_end_time IS NULL
-  WHERE u.billing_origin_product = 'LAKEBASE'
-    AND u.sku_name ILIKE '%_DATABASE_SERVERLESS_COMPUTE_%'
-    AND u.usage_metadata.project_id = '{project_uid}'
-    AND u.usage_date >= current_date() - INTERVAL {days} DAYS
-  GROUP BY u.usage_date
-),
-storage_costs AS (
-  SELECT u.usage_date AS d,
-         ROUND(SUM(CASE WHEN u.product_features.lakebase.storage_type = 'BRANCH_DATA_STORAGE' THEN u.usage_quantity ELSE 0 END), 2) AS branch_dsu,
-         ROUND(SUM(CASE WHEN u.product_features.lakebase.storage_type = 'BRANCH_HISTORY_STORAGE' THEN u.usage_quantity ELSE 0 END), 2) AS pitr_dsu,
-         ROUND(SUM(CASE WHEN u.product_features.lakebase.storage_type = 'BRANCH_CHANGE_STORAGE' THEN u.usage_quantity ELSE 0 END), 4) AS expiring_dsu,
-         ROUND(SUM(u.usage_quantity), 2) AS storage_dsu,
-         ROUND(SUM(u.usage_quantity * p.pricing.default), 2) AS storage_cost
-  FROM system.billing.usage u
-  JOIN system.billing.list_prices p
-    ON u.sku_name = p.sku_name AND p.price_end_time IS NULL
-  WHERE u.billing_origin_product = 'LAKEBASE'
-    AND u.sku_name ILIKE '%_DATABRICKS_STORAGE_%'
-    AND u.usage_metadata.project_id = '{project_uid}'
-    AND u.usage_date >= current_date() - INTERVAL {days} DAYS
-  GROUP BY u.usage_date
-)
-SELECT CAST(COALESCE(c.d, s.d) AS STRING) AS usage_date,
-       COALESCE(c.compute_dbus, 0) AS compute_dbus,
-       COALESCE(c.compute_cost, 0) AS compute_cost,
-       COALESCE(s.branch_dsu, 0) AS branch_storage_dsu,
-       COALESCE(s.pitr_dsu, 0) AS pitr_storage_dsu,
-       COALESCE(s.expiring_dsu, 0) AS expiring_storage_dsu,
-       COALESCE(s.storage_dsu, 0) AS storage_dsu,
-       COALESCE(s.storage_cost, 0) AS storage_cost,
-       ROUND(COALESCE(c.compute_cost, 0) + COALESCE(s.storage_cost, 0), 2) AS total_cost
-FROM compute_costs c
-FULL OUTER JOIN storage_costs s ON c.d = s.d
+SELECT CAST(u.usage_date AS STRING) AS usage_date,
+       ROUND(SUM(CASE WHEN u.sku_name ILIKE '%_DATABASE_SERVERLESS_COMPUTE_%' THEN u.usage_quantity ELSE 0 END), 4) AS compute_dbus,
+       ROUND(SUM(CASE WHEN u.sku_name ILIKE '%_DATABASE_SERVERLESS_COMPUTE_%' THEN u.usage_quantity * COALESCE(p.pricing.default, 0) ELSE 0 END), 2) AS compute_cost,
+       ROUND(SUM(CASE WHEN u.product_features.lakebase.storage_type = 'BRANCH_DATA_STORAGE' THEN u.usage_quantity ELSE 0 END), 2) AS branch_storage_dsu,
+       ROUND(SUM(CASE WHEN u.product_features.lakebase.storage_type = 'BRANCH_HISTORY_STORAGE' THEN u.usage_quantity ELSE 0 END), 2) AS pitr_storage_dsu,
+       ROUND(SUM(CASE WHEN u.product_features.lakebase.storage_type = 'BRANCH_CHANGE_STORAGE' THEN u.usage_quantity ELSE 0 END), 4) AS expiring_storage_dsu,
+       ROUND(SUM(CASE WHEN u.sku_name ILIKE '%_DATABRICKS_STORAGE_%' THEN u.usage_quantity ELSE 0 END), 2) AS storage_dsu,
+       ROUND(SUM(CASE WHEN u.sku_name ILIKE '%_DATABRICKS_STORAGE_%' THEN u.usage_quantity * COALESCE(p.pricing.default, 0) ELSE 0 END), 2) AS storage_cost,
+       ROUND(SUM(u.usage_quantity * COALESCE(p.pricing.default, 0)), 2) AS total_cost
+FROM system.billing.usage u
+LEFT JOIN system.billing.list_prices p
+  ON u.sku_name = p.sku_name AND p.price_end_time IS NULL
+WHERE u.billing_origin_product = 'LAKEBASE'
+  AND u.usage_metadata.project_id = '{project_uid}'
+  AND u.usage_date >= current_date() - INTERVAL {days} DAYS
+GROUP BY u.usage_date
 ORDER BY usage_date
 """.strip()
 
@@ -115,16 +95,32 @@ def _f(v: object) -> float:
         return 0.0
 
 
-def _run_sql(ws: WorkspaceClient, statement: str, warehouse_id: str) -> list[list]:
-    """Run a statement on a warehouse and return its data rows (or raise)."""
+def _run_sql(
+    ws: WorkspaceClient, statement: str, warehouse_id: str, max_wait_s: int = 180
+) -> list[list]:
+    """Run a statement on a warehouse and return its data rows (or raise).
+
+    Waits synchronously for up to 30s, then polls — so a cold/starting warehouse
+    (which can take longer than one wait window to serve the first query) returns
+    results instead of failing at a hard cap. Result sets here are small (<=365
+    daily rows / a single aggregate), so the first inline chunk holds everything.
+    """
     resp = ws.statement_execution.execute_statement(
-        statement=statement, warehouse_id=warehouse_id, wait_timeout="50s"
+        statement=statement, warehouse_id=warehouse_id, wait_timeout="30s"
     )
-    state = str(resp.status.state) if resp.status and resp.status.state else "UNKNOWN"
-    if "SUCCEEDED" not in state:
-        err = resp.status.error.message if resp.status and resp.status.error else state
-        raise RuntimeError(f"Billing query failed ({state}): {err}")
-    return (resp.result.data_array if resp.result else None) or []
+    deadline = time.monotonic() + max_wait_s
+    while True:
+        state = str(resp.status.state) if resp.status and resp.status.state else "UNKNOWN"
+        if "SUCCEEDED" in state:
+            return (resp.result.data_array if resp.result else None) or []
+        if any(bad in state for bad in ("FAILED", "CANCELED", "CLOSED")):
+            err = resp.status.error.message if resp.status and resp.status.error else state
+            raise RuntimeError(f"Billing query failed ({state}): {err}")
+        statement_id = resp.statement_id
+        if not statement_id or time.monotonic() > deadline:
+            raise RuntimeError(f"Billing query timed out after {max_wait_s}s (state {state}).")
+        time.sleep(2)
+        resp = ws.statement_execution.get_statement(statement_id=statement_id)
 
 
 # --- Per-benchmark-run cost attribution -------------------------------------
@@ -305,18 +301,8 @@ def get_lakebase_cost(
     if not warehouse_id:
         raise ValueError("A SQL warehouse is required to query billing usage.")
 
-    resp = ws.statement_execution.execute_statement(
-        statement=_cost_query(project_uid, days),
-        warehouse_id=warehouse_id,
-        wait_timeout="50s",
-    )
-    state = str(resp.status.state) if resp.status and resp.status.state else "UNKNOWN"
-    if "SUCCEEDED" not in state:
-        err = resp.status.error.message if resp.status and resp.status.error else state
-        raise RuntimeError(f"Billing query failed ({state}): {err}")
-
     report = CostReport(project_uid=project_uid, days=days)
-    for row in (resp.result.data_array if resp.result else None) or []:
+    for row in _run_sql(ws, _cost_query(project_uid, days), warehouse_id):
         day = CostDay(
             usage_date=str(row[0]) if row[0] is not None else "",
             compute_dbus=_f(row[1]),
