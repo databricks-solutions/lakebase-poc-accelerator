@@ -78,6 +78,62 @@ class ApplyIndexesOut(BaseModel):
     error: str | None = None
 
 
+class ExplainIn(BaseModel):
+    auth_method: auth.AuthMethod = "identity"
+    project: str | None = None
+    database: str | None = None
+    db_schema: str | None = None
+    endpoint_host: str | None = None
+    access_token: str | None = None
+    postgres_user_name: str | None = None
+    queries: list[OptimizeQueryIn] = []
+    analyze: bool = True  # EXPLAIN ANALYZE (real timings, rolled back) vs plan-only
+
+
+class ExplainResultOut(BaseModel):
+    identifier: str
+    plan: str
+    seq_scan: bool
+    error: str | None = None
+
+
+class ExplainOut(BaseModel):
+    results: list[ExplainResultOut] = []
+    error: str | None = None
+
+
+@router.post("/optimize/explain", response_model=ExplainOut, operation_id="explainQueries")
+def explain_queries(req: ExplainIn, ws: EffectiveClient) -> ExplainOut:
+    """Return the EXPLAIN (ANALYZE) plan for each tested query, for query tuning."""
+    if not req.queries:
+        return ExplainOut(error="No queries provided")
+    try:
+        creds = auth.resolve(
+            ws,
+            auth_method=req.auth_method,
+            project=req.project,
+            database=req.database,
+            endpoint_host=req.endpoint_host,
+            access_token=req.access_token,
+            postgres_user_name=req.postgres_user_name,
+        )
+        results = optimize.explain_queries(
+            creds,
+            [(q.identifier, q.content) for q in req.queries],
+            req.db_schema,
+            req.analyze,
+        )
+        return ExplainOut(
+            results=[
+                ExplainResultOut(identifier=r.identifier, plan=r.plan, seq_scan=r.seq_scan, error=r.error)
+                for r in results
+            ]
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"explain_queries failed: {e}")
+        return ExplainOut(error=str(e))
+
+
 @router.post("/optimize/apply-indexes", response_model=ApplyIndexesOut, operation_id="applyIndexes")
 def apply_indexes(req: ApplyIndexIn, ws: EffectiveClient) -> ApplyIndexesOut:
     """Apply CREATE INDEX (etc.) DDL to Lakebase, so the user can re-run the test

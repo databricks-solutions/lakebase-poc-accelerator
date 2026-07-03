@@ -104,6 +104,27 @@ export interface EndpointInfoOut {
     name: string;
     state?: string | null;
 }
+export interface ExplainIn {
+    access_token?: string | null;
+    analyze?: boolean;
+    auth_method?: "identity" | "oauth";
+    database?: string | null;
+    db_schema?: string | null;
+    endpoint_host?: string | null;
+    postgres_user_name?: string | null;
+    project?: string | null;
+    queries?: OptimizeQueryIn[];
+}
+export interface ExplainOut {
+    error?: string | null;
+    results?: ExplainResultOut[];
+}
+export interface ExplainResultOut {
+    error?: string | null;
+    identifier: string;
+    plan: string;
+    seq_scan: boolean;
+}
 export interface FindingOut {
     actions: string[];
     category: string;
@@ -1451,6 +1472,42 @@ export function useApplyIndexes(options?: {
 }) {
     return useMutation({
         mutationFn: (data)=>applyIndexes(data),
+        ...options?.mutation
+    });
+}
+export const explainQueries = async (data: ExplainIn, options?: RequestInit): Promise<{
+    data: ExplainOut;
+}> =>{
+    const res = await fetch("/api/optimize/explain", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useExplainQueries(options?: {
+    mutation?: UseMutationOptions<{
+        data: ExplainOut;
+    }, ApiError, ExplainIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>explainQueries(data),
         ...options?.mutation
     });
 }

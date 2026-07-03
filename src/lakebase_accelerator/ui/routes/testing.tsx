@@ -75,11 +75,13 @@ import {
   useListWarehouses,
   useGetProjectInfo,
   useGetRunCost,
+  useExplainQueries,
   type TestReportOut,
   type OptimizeOut,
   type QueryStat,
   type HistoryRunOut,
   type RunCostOut,
+  type ExplainResultOut,
 } from "@/lib/api";
 import {
   type HistoryPref,
@@ -376,6 +378,65 @@ function OptimizeCard({
   );
 }
 
+// EXPLAIN (ANALYZE) plans for the tested queries. A Seq Scan on a benchmark query is
+// the headline tuning smell — highlight it. Shared by both tabs.
+function ExplainPlansCard({
+  results,
+  analyze,
+  onAnalyzeChange,
+  onExplain,
+  busy,
+}: {
+  results: ExplainResultOut[] | null;
+  analyze: boolean;
+  onAnalyzeChange: (v: boolean) => void;
+  onExplain: () => void;
+  busy: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>Query plans (EXPLAIN)</CardTitle>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={analyze} onChange={(e) => onAnalyzeChange(e.target.checked)} />
+            ANALYZE (run for real timings)
+          </label>
+          <Button variant="secondary" size="sm" onClick={onExplain} disabled={busy}>
+            <Wand2 className="mr-1 h-4 w-4" />
+            {busy ? "Explaining…" : "Explain plans"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Sample values are drawn for any <code>:param</code>. With ANALYZE the query is executed for real
+          row counts and timings, inside a transaction that is rolled back (writes don't persist).
+        </p>
+        {!results && (
+          <p className="text-sm text-muted-foreground">Run "Explain plans" to see each query's execution plan.</p>
+        )}
+        {results?.map((r) => (
+          <div key={r.identifier} className="rounded-md border">
+            <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
+              <span className="text-sm font-medium">{r.identifier}</span>
+              {r.seq_scan && (
+                <Badge variant="destructive" className="gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Seq Scan
+                </Badge>
+              )}
+              {r.error && <Badge variant="secondary">error</Badge>}
+            </div>
+            <pre className="overflow-x-auto p-3 text-xs leading-relaxed">
+              {r.error ? r.error : r.plan}
+            </pre>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function monitoringHint(host: string | null | undefined) {
   return (
     <p className="text-xs text-muted-foreground">
@@ -650,6 +711,9 @@ function PsycopgTab() {
   const runTest = useRunPsycopgTest();
   const runOptimize = useOptimizeAnalyze();
   const applyIdx = useApplyIndexes();
+  const explain = useExplainQueries();
+  const [explainResults, setExplainResults] = useState<ExplainResultOut[] | null>(null);
+  const [explainAnalyze, setExplainAnalyze] = useState(true);
   const { data: wsInfo } = useGetWorkspaceInfo();
   const host = wsInfo?.data.host;
 
@@ -784,6 +848,19 @@ function PsycopgTab() {
       });
       setOptimize(res.data);
       toast.success("Optimization analysis complete");
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const onExplain = async () => {
+    try {
+      const res = await explain.mutateAsync({ ...body(), queries, analyze: explainAnalyze });
+      if (res.data.error) {
+        toast.error(res.data.error);
+        return;
+      }
+      setExplainResults(res.data.results ?? []);
     } catch (e) {
       toast.error(String(e));
     }
@@ -991,6 +1068,14 @@ function PsycopgTab() {
           applyAllNote='"Apply all & re-run" snapshots the current result as the baseline, creates the indexes, and re-runs the test so you can see the before/after impact.'
         />
       )}
+
+      <ExplainPlansCard
+        results={explainResults}
+        analyze={explainAnalyze}
+        onAnalyzeChange={setExplainAnalyze}
+        onExplain={onExplain}
+        busy={explain.isPending}
+      />
     </div>
   );
 }

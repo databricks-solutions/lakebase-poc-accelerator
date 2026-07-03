@@ -19,6 +19,7 @@ import psycopg
 
 from .connection import search_path_option
 from .lakebase_service import PgCredentials
+from .query_format import parse_query, render_psycopg_sql
 
 # --- Query parsing -----------------------------------------------------------
 
@@ -403,9 +404,30 @@ def apply_indexes(
     return results
 
 
-def explain_query(creds: PgCredentials, sql: str) -> str:
-    """Run EXPLAIN (ANALYZE, BUFFERS) for a single statement and return the plan text."""
-    sql = _strip_comments(sql).rstrip(";")
+@dataclass
+class ExplainResult:
+    identifier: str
+    plan: str
+    seq_scan: bool          # plan contains a Seq Scan — the headline tuning smell
+    error: Optional[str] = None
+
+
+def explain_queries(
+    creds: PgCredentials,
+    queries: list[tuple[str, str]],
+    schema: Optional[str] = None,
+    analyze: bool = True,
+) -> list[ExplainResult]:
+    """Return the EXPLAIN plan for each tested query.
+
+    Sample values are drawn for any ``:name`` params so the statement is runnable.
+    With ``analyze`` the plan includes real timings/rows (EXPLAIN ANALYZE, BUFFERS);
+    the statement runs inside a transaction that is always rolled back, so a write
+    query (INSERT/UPDATE/DELETE) is planned without persisting changes. Each query is
+    independent — one failure is reported in-line and doesn't abort the rest.
+    """
+    opts = "ANALYZE, BUFFERS, VERBOSE, FORMAT TEXT" if analyze else "VERBOSE, FORMAT TEXT"
+    out: list[ExplainResult] = []
     with psycopg.connect(
         host=creds.host,
         port=creds.port,
@@ -414,8 +436,26 @@ def explain_query(creds: PgCredentials, sql: str) -> str:
         password=creds.password,
         sslmode=creds.ssl_mode,
         connect_timeout=10,
+        autocommit=False,
+        options=search_path_option(schema) or "",
     ) as conn:
-        with conn.cursor() as cur:
-            # Dynamic EXPLAIN of caller-supplied SQL (controlled internal op).
-            cur.execute(f"EXPLAIN (ANALYZE, BUFFERS) {sql}")  # ty: ignore[no-matching-overload]
-            return "\n".join(row[0] for row in cur.fetchall())
+        for identifier, content in queries:
+            try:
+                parsed = parse_query(identifier, content)
+                sql = render_psycopg_sql(parsed).rstrip(";")
+                params = {s.name: s.draw() for s in parsed.params}
+                with conn.cursor() as cur:
+                    # Dynamic EXPLAIN of a tested query (controlled internal op); the
+                    # query's own values are passed as bound params, not interpolated.
+                    cur.execute(f"EXPLAIN ({opts}) {sql}", params)  # ty: ignore[invalid-argument-type]
+                    plan = "\n".join(row[0] for row in cur.fetchall())
+                out.append(ExplainResult(
+                    identifier=identifier, plan=plan, seq_scan="Seq Scan" in plan,
+                ))
+            except Exception as e:  # noqa: BLE001
+                out.append(ExplainResult(identifier=identifier, plan="", seq_scan=False, error=str(e)))
+            finally:
+                # Undo any writes an ANALYZE'd statement performed, and clear a failed
+                # transaction so the next query can run on the same connection.
+                conn.rollback()
+    return out
