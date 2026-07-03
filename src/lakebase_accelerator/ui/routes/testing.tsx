@@ -1610,6 +1610,9 @@ function PgbenchTab() {
   const submitLocal = useSubmitLocalPgbench();
   const runOptimize = useOptimizeAnalyze();
   const applyIdx = useApplyIndexes();
+  const explain = useExplainQueries();
+  const [explainResults, setExplainResults] = useState<ExplainResultOut[] | null>(null);
+  const [explainAnalyze, setExplainAnalyze] = useState(true);
   const clustersQuery = useListClusters();
   const clusters = clustersQuery.data?.data.clusters ?? [];
   const { data: wsInfo } = useGetWorkspaceInfo();
@@ -1689,6 +1692,19 @@ function PgbenchTab() {
       setSubmitted(res.data);
       setRunId(res.data.run_id ?? null);
       toast.success(isLocal ? "local pgbench started" : "pgbench job submitted");
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const onExplain = async () => {
+    try {
+      const res = await explain.mutateAsync({ ...body(), queries, analyze: explainAnalyze });
+      if (res.data.error) {
+        toast.error(res.data.error);
+        return;
+      }
+      setExplainResults(res.data.results ?? []);
     } catch (e) {
       toast.error(String(e));
     }
@@ -2146,6 +2162,14 @@ function PgbenchTab() {
           window={runWindow}
         />
       )}
+
+      <ExplainPlansCard
+        results={explainResults}
+        analyze={explainAnalyze}
+        onAnalyzeChange={setExplainAnalyze}
+        onExplain={onExplain}
+        busy={explain.isPending}
+      />
     </div>
   );
 }
