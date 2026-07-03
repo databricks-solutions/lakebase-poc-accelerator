@@ -18,6 +18,8 @@ import {
   Info,
   ChevronRight,
   ChevronDown,
+  DollarSign,
+  AlertTriangle,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
@@ -70,10 +72,14 @@ import {
   useListLakebaseHistory,
   useListLakebaseHistoryTables,
   useGetWorkspaceInfo,
+  useListWarehouses,
+  useGetProjectInfo,
+  useGetRunCost,
   type TestReportOut,
   type OptimizeOut,
   type QueryStat,
   type HistoryRunOut,
+  type RunCostOut,
 } from "@/lib/api";
 import {
   type HistoryPref,
@@ -461,6 +467,175 @@ function TestingPage() {
   );
 }
 
+const usd = (n: number | null | undefined, digits = 4) =>
+  n == null ? "—" : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: digits })}`;
+
+// Attributes Lakebase *compute* cost to a single benchmark run: a deterministic
+// modeled figure (CU x $/CU-hr x duration) plus, once usage lands, the run's share
+// of actual billed compute proportionally allocated across the 10-minute buckets it
+// spanned. Storage is excluded — it's a function of data size, not the run.
+function RunCostCard({
+  project,
+  totalQueries,
+  durationSeconds,
+  window,
+}: {
+  project: string;
+  totalQueries: number;
+  durationSeconds: number;
+  window: { start: string; end: string } | null;
+}) {
+  const { data: whData, isLoading: whLoading } = useListWarehouses();
+  const warehouses = whData?.data.warehouses ?? [];
+  const projectInfo = useGetProjectInfo({ params: { project }, query: { enabled: !!project } });
+  const endpoints = projectInfo.data?.data.endpoints ?? [];
+  // Default CU to the endpoint's max (upper bound). Pinning min=max makes it exact.
+  const endpointMaxCu = endpoints.find((e) => e.max_cu)?.max_cu ?? null;
+  const endpointMinCu = endpoints.find((e) => e.min_cu)?.min_cu ?? null;
+  const pinned = endpointMinCu != null && endpointMinCu === endpointMaxCu;
+
+  const [warehouseId, setWarehouseId] = useState("");
+  const [cu, setCu] = useState<string>("");
+  const [promo, setPromo] = useState(true); // 50% Lakebase compute promo (through Jan 2027)
+  const [result, setResult] = useState<RunCostOut | null>(null);
+
+  // Seed the CU input from the endpoint once project info loads.
+  useEffect(() => {
+    if (!cu && endpointMaxCu != null) setCu(String(endpointMaxCu));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpointMaxCu]);
+
+  const getRunCost = useGetRunCost();
+
+  const onEstimate = async () => {
+    setResult(null);
+    try {
+      const res = await getRunCost.mutateAsync({
+        project,
+        warehouse_id: warehouseId,
+        cu: Number(cu),
+        duration_seconds: durationSeconds,
+        total_queries: totalQueries,
+        discount: promo ? 0.5 : 0,
+        start: window?.start ?? null,
+        end: window?.end ?? null,
+      });
+      setResult(res.data);
+    } catch (e) {
+      setResult({ error: String(e) });
+    }
+  };
+
+  const est = result?.estimate;
+  const rec = result?.reconcile;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <DollarSign className="h-4 w-4" /> Run cost (Lakebase compute)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="grid gap-2">
+            <LabelWithTip label="SQL warehouse" tip="Used to read pricing and billing usage from the system tables." />
+            <Select value={warehouseId} onValueChange={setWarehouseId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder={whLoading ? "Loading…" : "Select a warehouse"} />
+              </SelectTrigger>
+              <SelectContent>
+                {warehouses.map((w) => (
+                  <SelectItem key={w.id} value={w.id}>
+                    {w.name}
+                    {w.state ? ` · ${w.state}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <LabelWithTip
+              label="CU during run"
+              tip="Capacity Units the benchmark ran at. Pin the endpoint min=max (scale-to-zero off) so this is exact; otherwise it's an upper bound."
+            />
+            <Input
+              type="number"
+              step="0.5"
+              min="0.5"
+              value={cu}
+              onChange={(e) => setCu(e.target.value)}
+              className="w-32"
+            />
+          </div>
+          <label className="flex items-center gap-2 pb-2 text-sm">
+            <input type="checkbox" checked={promo} onChange={(e) => setPromo(e.target.checked)} />
+            50% compute promo
+          </label>
+          <Button onClick={onEstimate} disabled={getRunCost.isPending || !warehouseId || !cu}>
+            {getRunCost.isPending ? "Estimating…" : "Estimate run cost"}
+          </Button>
+        </div>
+
+        {!pinned && endpointMaxCu != null && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            This endpoint autoscales ({endpointMinCu}–{endpointMaxCu} CU); the modeled cost uses the
+            value above as an upper bound. Pin min=max for an exact figure, or use the reconciled cost.
+          </p>
+        )}
+
+        {result?.error && (
+          <div className="flex items-start gap-2 rounded-md border p-3 text-sm text-red-600 dark:text-red-400">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span className="whitespace-pre-wrap break-words">{result.error}</span>
+          </div>
+        )}
+
+        {est && (
+          <div>
+            <h3 className="mb-2 text-sm font-medium">Modeled (CU × ${est.price_per_cu_hour.toFixed(4)}/CU-hr × duration)</h3>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {metric("Run cost", usd(est.cost))}
+              {metric("$ / 1M queries", usd(est.cost_per_million_queries, 2))}
+              {metric("Queries / $", est.queries_per_dollar != null ? est.queries_per_dollar.toLocaleString() : "—")}
+            </div>
+            {est.price_source === "default" && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                No compute usage history for this project yet — used the default list price ($0.111/CU-hr).
+              </p>
+            )}
+          </div>
+        )}
+
+        {rec && (
+          <div className="border-t pt-4">
+            <h3 className="mb-2 text-sm font-medium">Reconciled with actual billing</h3>
+            {rec.available ? (
+              <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                {metric("Actual cost", usd(rec.cost))}
+                {metric("$ / 1M queries", usd(rec.cost_per_million_queries, 2))}
+                {metric("Effective avg CU", rec.effective_avg_cu != null ? rec.effective_avg_cu.toString() : "—")}
+                {metric("CU-hours", rec.cu_hours.toFixed(4))}
+              </div>
+            ) : null}
+            <p className="mt-2 text-xs text-muted-foreground">{rec.note}</p>
+          </div>
+        )}
+
+        <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Compute only (storage bills daily by data size, not per run) and from <span className="font-medium text-foreground">list
+            prices</span>. The load generator's own compute (pgbench job / this app) is excluded — that's client
+            cost, not database cost. Use <span className="font-medium text-foreground">$ / 1M queries</span> to compare
+            against other systems.
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function PsycopgTab() {
   const [conn, setConn] = useState<ConnectionConfig>(emptyConnection);
   const [concurrency, setConcurrency] = useState(10);
@@ -469,6 +644,8 @@ function PsycopgTab() {
   const [report, setReport] = useState<TestReportOut | null>(null);
   const [baseline, setBaseline] = useState<TestReportOut | null>(null);
   const [optimize, setOptimize] = useState<OptimizeOut | null>(null);
+  // Wall-clock window of the last run, for billing reconciliation in the cost card.
+  const [runWindow, setRunWindow] = useState<{ start: string; end: string } | null>(null);
 
   const runTest = useRunPsycopgTest();
   const runOptimize = useOptimizeAnalyze();
@@ -502,12 +679,14 @@ function PsycopgTab() {
   });
 
   const runOnce = async (): Promise<TestReportOut | null> => {
+    const start = new Date().toISOString();
     const res = await runTest.mutateAsync({
       ...body(),
       concurrency_level: concurrency,
       total_executions: totalExecutions,
       queries,
     });
+    setRunWindow({ start, end: new Date().toISOString() });
     return res.data;
   };
 
@@ -775,6 +954,15 @@ function PsycopgTab() {
             </Tabs>
           </CardContent>
         </Card>
+      )}
+
+      {report && !report.error && conn.project && (
+        <RunCostCard
+          project={conn.project}
+          totalQueries={report.total_queries_executed}
+          durationSeconds={report.total_duration_seconds}
+          window={runWindow}
+        />
       )}
 
       {baseline && report && baseline !== report && (

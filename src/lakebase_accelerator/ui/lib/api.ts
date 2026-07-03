@@ -303,6 +303,43 @@ export interface QueryStat {
     query_identifier: string;
     total_time_ms: number;
 }
+export interface RunCostEstimateOut {
+    cost: number;
+    cost_per_million_queries?: number | null;
+    cu: number;
+    discount: number;
+    duration_seconds: number;
+    price_per_cu_hour: number;
+    price_source: string;
+    queries_per_dollar?: number | null;
+    total_queries: number;
+}
+export interface RunCostIn {
+    cu: number;
+    discount?: number;
+    duration_seconds: number;
+    end?: string | null;
+    project: string;
+    start?: string | null;
+    total_queries: number;
+    warehouse_id: string;
+}
+export interface RunCostOut {
+    error?: string | null;
+    estimate?: RunCostEstimateOut | null;
+    reconcile?: RunCostReconcileOut | null;
+}
+export interface RunCostReconcileOut {
+    allocated_dbu: number;
+    available: boolean;
+    buckets: number;
+    cost: number;
+    cost_per_million_queries?: number | null;
+    cu_hours: number;
+    effective_avg_cu?: number | null;
+    note: string;
+    queries_per_dollar?: number | null;
+}
 export interface SchemaListOut {
     error?: string | null;
     schemas: string[];
@@ -422,6 +459,42 @@ export interface WarehouseOut {
 }
 export interface WorkspaceInfoOut {
     host?: string | null;
+}
+export const getRunCost = async (data: RunCostIn, options?: RequestInit): Promise<{
+    data: RunCostOut;
+}> =>{
+    const res = await fetch("/api/cost/run", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useGetRunCost(options?: {
+    mutation?: UseMutationOptions<{
+        data: RunCostOut;
+    }, ApiError, RunCostIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>getRunCost(data),
+        ...options?.mutation
+    });
 }
 export const getLakebaseCost = async (data: CostUsageIn, options?: RequestInit): Promise<{
     data: CostUsageOut;
