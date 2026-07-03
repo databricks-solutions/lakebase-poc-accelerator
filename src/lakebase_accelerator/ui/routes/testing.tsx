@@ -222,6 +222,37 @@ function metric(label: string, value: string, tone?: "good" | "warn" | "bad") {
   );
 }
 
+// Contextualizes this run's latency/throughput against Lakebase's published
+// reference targets (from the Lakebase FAQ), so a number reads as good/marginal
+// rather than just a bare figure. Targets assume OLTP point access — range scans
+// and heavy joins legitimately run slower, so this is guidance, not a verdict.
+function ReferenceBands({ p99, qps }: { p99: number; qps: number }) {
+  const latTone = p99 <= 10 ? "good" : p99 <= 50 ? "warn" : "bad";
+  const latText =
+    p99 <= 10
+      ? "within the <10 ms point read/write target"
+      : p99 <= 50
+        ? "above the <10 ms point-read target but within the tens-of-ms range"
+        : "well above Lakebase's typical latency — likely a scan/join, not a point lookup";
+  const dot =
+    latTone === "good" ? "bg-emerald-500" : latTone === "warn" ? "bg-amber-500" : "bg-red-500";
+  return (
+    <div className="mt-4 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+      <div className="mb-1 font-medium text-foreground">Reference (Lakebase FAQ targets)</div>
+      <div className="flex items-center gap-2">
+        <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
+        <span>
+          p99 {p99.toFixed(0)} ms — {latText}.
+        </span>
+      </div>
+      <div className="mt-1">
+        Throughput {qps.toFixed(0)} qps. Reference reads run ~10–30k/s per Provisioned CU (≈8 Autoscaling
+        CU); &gt;100k QPS or scans over ~100k rows are outside Lakebase's OLTP sweet spot.
+      </div>
+    </div>
+  );
+}
+
 // Per-query breakdown table, mirroring Lakebase's query performance view
 // (calls / avg / total / p95 / p99). Used by both the psycopg and pgbench results.
 function PerQueryTable({ rows }: { rows?: QueryStat[] | null }) {
@@ -1018,6 +1049,10 @@ function PsycopgTab() {
                       report.cache_hit_pct >= 99 ? "good" : report.cache_hit_pct >= 90 ? "warn" : "bad",
                     )}
                 </div>
+                <ReferenceBands
+                  p99={report.p99_execution_time_ms}
+                  qps={report.throughput_queries_per_second}
+                />
                 {report.per_query && report.per_query.length > 0 && (
                   <div className="mt-6">
                     <h3 className="mb-2 text-sm font-medium">Per-query breakdown</h3>

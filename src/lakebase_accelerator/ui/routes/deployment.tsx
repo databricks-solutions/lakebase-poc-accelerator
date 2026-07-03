@@ -59,6 +59,9 @@ const SYNC_MODES = {
     detail:
       "One-time full copy of the source. Re-run manually to refresh. No source requirements. ~10× more efficient than incremental when you change >10% of rows per refresh.",
     requiresCdf: false,
+    // 1 table per pipeline so you can re-snapshot one table without re-syncing all.
+    strategy: "1 table per pipeline — don't reuse pipelines (re-snapshot one table without re-syncing everything).",
+    cost: "Every run re-copies the whole table (~2,000 rows/s/CU). Cost scales with table size × refresh frequency.",
   },
   TRIGGERED: {
     label: "Triggered",
@@ -66,6 +69,8 @@ const SYNC_MODES = {
     detail:
       "Incremental updates on demand or on a schedule. Requires Change Data Feed (CDF) on the source. Supports only additive schema changes.",
     requiresCdf: true,
+    strategy: "1 table per pipeline.",
+    cost: "One-time initial snapshot, then you pay only to process changed rows (~150 rows/s/CU incremental).",
   },
   CONTINUOUS: {
     label: "Continuous",
@@ -73,6 +78,9 @@ const SYNC_MODES = {
     detail:
       "Real-time streaming with seconds of latency. Highest cost, minimum 15s intervals. Requires CDF on the source. Supports only additive schema changes.",
     requiresCdf: true,
+    // Pipeline runs 24/7, so bundle many tables into one to amortize the fixed cost.
+    strategy: "MANY tables per pipeline — the pipeline runs 24/7, so bundling amortizes the fixed compute cost across tables.",
+    cost: "Fixed ~730 hrs/month of serverless pipeline compute regardless of data volume. One table per continuous pipeline is an antipattern — bundle ~10s of tables.",
   },
 } as const;
 
@@ -721,7 +729,26 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                 <div className="mt-1">
                   <span className="font-medium text-foreground">Use it for:</span> {modeInfo.use}
                 </div>
+                <div className="mt-1">
+                  <span className="font-medium text-foreground">Pipeline strategy:</span> {modeInfo.strategy}
+                </div>
+                <div className="mt-1">
+                  <span className="font-medium text-foreground">Cost:</span> {modeInfo.cost}
+                </div>
               </div>
+
+              {/* Continuous single-table antipattern warning */}
+              {row.scheduling_policy === "CONTINUOUS" && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    A continuous pipeline runs 24/7 (~$2,000/mo of serverless compute). One table per
+                    continuous pipeline is an <span className="font-medium">antipattern</span> — you pay the
+                    full 24/7 cost for a single table. Bundle multiple tables into one continuous pipeline (via a
+                    shared storage catalog/schema) to amortize it, or use Triggered if seconds-fresh isn't required.
+                  </span>
+                </div>
+              )}
 
               {/* CDF requirement check for triggered/continuous */}
               {modeInfo.requiresCdf && (
