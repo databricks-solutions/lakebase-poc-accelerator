@@ -460,13 +460,19 @@ function ExplainPlansCard({
           indexes &amp; compare</span> runs that whole loop in one click and shows the before/after plan per query
           {!canVerify && " (run Optimize first to get index suggestions)"}.
         </div>
-        <p className="text-xs text-muted-foreground">
-          Sample values are drawn for any <code>:param</code>. With ANALYZE the query is executed for real
-          row counts and timings, inside a transaction that is rolled back (writes don't persist).
-        </p>
+        <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">ANALYZE (run for real timings):</span>{" "}
+          <span className="font-medium text-foreground">On</span> — actually runs each query and reports real
+          per-node timings, actual row counts, and cache hits vs disk reads. This is what powers the before/after
+          timing comparison and the estimate-vs-actual (stale stats) hint. The run happens inside a transaction
+          that is rolled back, so writes don't persist.{" "}
+          <span className="font-medium text-foreground">Off</span> — plan shape and planner estimates only; the
+          query is not executed (faster, and safe for very expensive queries).
+          {" "}Sample values are drawn for any <code>:param</code> either way.
+        </div>
         {results && <ExplainLegend />}
         {!results && (
-          <p className="text-sm text-muted-foreground">Run "Explain plans" to see each query's execution plan.</p>
+          <p className="text-sm text-muted-foreground">Use the "Explain" button above to see each query's execution plan.</p>
         )}
         {results?.map((r) => (
           <ExplainRow key={r.identifier} r={r} before={beforeById.get(r.identifier) ?? null} />
