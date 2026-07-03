@@ -419,7 +419,6 @@ function ExplainPlansCard({
   before,
   analyze,
   onAnalyzeChange,
-  onExplain,
   busy,
   onVerify,
   canVerify,
@@ -429,7 +428,6 @@ function ExplainPlansCard({
   before: ExplainResultOut[] | null;
   analyze: boolean;
   onAnalyzeChange: (v: boolean) => void;
-  onExplain: () => void;
   busy: boolean;
   onVerify: () => void;
   canVerify: boolean;
@@ -442,14 +440,10 @@ function ExplainPlansCard({
         <div className="flex flex-row items-center justify-between gap-3">
           <CardTitle>Query plans (EXPLAIN)</CardTitle>
           <div className="flex flex-wrap items-center justify-end gap-3">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm" title="Off: plan + planner estimates only, no execution. On: runs the query for real timings, actual row counts, and cache hits — needed for the before/after comparison.">
               <input type="checkbox" checked={analyze} onChange={(e) => onAnalyzeChange(e.target.checked)} />
               ANALYZE (run for real timings)
             </label>
-            <Button variant="secondary" size="sm" onClick={onExplain} disabled={busy || verifyBusy}>
-              <ScanSearch className="mr-1 h-4 w-4" />
-              {busy ? "Explaining…" : "Explain plans"}
-            </Button>
             <Button size="sm" onClick={onVerify} disabled={!canVerify || verifyBusy || busy}>
               <Zap className="mr-1 h-4 w-4" />
               {verifyBusy ? "Comparing…" : "Apply indexes & compare"}
@@ -1294,7 +1288,6 @@ function PsycopgTab() {
         before={explainBefore}
         analyze={explainAnalyze}
         onAnalyzeChange={setExplainAnalyze}
-        onExplain={onExplain}
         busy={explain.isPending}
         onVerify={onVerifyPlans}
         canVerify={!!optimize?.index_suggestions.length}
@@ -2393,7 +2386,6 @@ function PgbenchTab() {
         before={explainBefore}
         analyze={explainAnalyze}
         onAnalyzeChange={setExplainAnalyze}
-        onExplain={onExplain}
         busy={explain.isPending}
         onVerify={onVerifyPlans}
         canVerify={!!optimize?.index_suggestions.length}
