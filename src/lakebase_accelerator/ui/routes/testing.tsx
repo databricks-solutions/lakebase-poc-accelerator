@@ -444,27 +444,114 @@ function ExplainPlansCard({
           Sample values are drawn for any <code>:param</code>. With ANALYZE the query is executed for real
           row counts and timings, inside a transaction that is rolled back (writes don't persist).
         </p>
+        {results && <ExplainLegend />}
         {!results && (
           <p className="text-sm text-muted-foreground">Run "Explain plans" to see each query's execution plan.</p>
         )}
         {results?.map((r) => (
-          <div key={r.identifier} className="rounded-md border">
-            <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
-              <span className="text-sm font-medium">{r.identifier}</span>
-              {r.seq_scan && (
-                <Badge variant="destructive" className="gap-1">
-                  <AlertTriangle className="h-3 w-3" /> Seq Scan
-                </Badge>
-              )}
-              {r.error && <Badge variant="secondary">error</Badge>}
-            </div>
-            <pre className="overflow-x-auto p-3 text-xs leading-relaxed">
-              {r.error ? r.error : r.plan}
-            </pre>
-          </div>
+          <ExplainRow key={r.identifier} r={r} />
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+// A collapsible "how to read a plan" cheatsheet, so the guidance is one click away
+// without permanently crowding the card.
+function ExplainLegend() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-md border bg-muted/30 text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left font-medium"
+      >
+        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        How to read a plan
+      </button>
+      {open && (
+        <ul className="list-disc space-y-1 px-3 pb-3 pl-8 text-muted-foreground">
+          <li><span className="font-medium text-foreground">Seq Scan</span> on a big table → reads every row; add an index on the WHERE/JOIN columns.</li>
+          <li><span className="font-medium text-foreground">Index Scan / Index Only Scan</span> → good; the index is being used.</li>
+          <li><span className="font-medium text-foreground">actual time=start..end</span> → real time at that node (ANALYZE only); the top node's end is the query's total time.</li>
+          <li><span className="font-medium text-foreground">rows=</span> (planner estimate) far from <span className="font-medium text-foreground">actual rows=</span> → stale statistics; run <code>ANALYZE &lt;table&gt;</code>.</li>
+          <li><span className="font-medium text-foreground">Rows Removed by Filter</span> high → rows read then thrown away; a more selective index avoids the work.</li>
+          <li><span className="font-medium text-foreground">Sort Method: external merge Disk</span> → spilled to disk; too many rows for memory (work_mem).</li>
+          <li><span className="font-medium text-foreground">Buffers: shared hit</span> = from cache, <span className="font-medium text-foreground">read</span> = from disk; lots of reads = cold cache.</li>
+          <li>Read the plan <span className="font-medium text-foreground">bottom-up</span> — the most-indented nodes run first.</li>
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// Heuristic tuning hints derived from the plan text (client-side, best-effort).
+function planHints(plan: string): { tone: "warn" | "info"; text: string }[] {
+  const hints: { tone: "warn" | "info"; text: string }[] = [];
+  if (/Seq Scan/.test(plan))
+    hints.push({ tone: "warn", text: "Sequential scan — Postgres reads the whole table. Add an index on the filtered/joined columns for point or range access." });
+  if (/(external merge\s+Disk|external sort\s+Disk|Sort Method:[^\n]*Disk)/.test(plan))
+    hints.push({ tone: "warn", text: "A sort or hash spilled to disk — the working set exceeded memory. Reduce the rows scanned (a better index) so it fits in work_mem." });
+  const removed = [...plan.matchAll(/Rows Removed by Filter:\s*([\d,]+)/g)].map((m) => Number(m[1].replace(/,/g, "")));
+  const maxRemoved = removed.length ? Math.max(...removed) : 0;
+  if (maxRemoved >= 1000)
+    hints.push({ tone: "warn", text: `~${maxRemoved.toLocaleString()} rows were read then discarded by a filter — a more selective index would avoid scanning them.` });
+  // Top-node planner estimate vs actual (ANALYZE only) — a large gap = stale stats.
+  const est = plan.match(/\brows=(\d+)/);
+  const act = plan.match(/actual time=[\d.]+\.\.[\d.]+ rows=(\d+)/);
+  if (est && act) {
+    const e = Number(est[1]);
+    const a = Number(act[1]);
+    if (a > 0 && e > 0 && (e / a >= 10 || a / e >= 10))
+      hints.push({ tone: "warn", text: `Planner estimate (${e.toLocaleString()} rows) is far from actual (${a.toLocaleString()}) — statistics look stale. Run ANALYZE on the table.` });
+  }
+  if (!hints.length)
+    hints.push({ tone: "info", text: "No obvious red flags — index scans and in-memory operations." });
+  return hints;
+}
+
+// One collapsible per query (default collapsed) to keep the page uncluttered.
+function ExplainRow({ r }: { r: ExplainResultOut }) {
+  const [open, setOpen] = useState(false);
+  const hints = r.error ? [] : planHints(r.plan);
+  const warnCount = hints.filter((h) => h.tone === "warn").length;
+  return (
+    <div className="rounded-md border">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 border-b bg-muted/30 px-3 py-2 text-left"
+      >
+        {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+        <span className="text-sm font-medium">{r.identifier}</span>
+        {r.seq_scan && (
+          <Badge variant="destructive" className="gap-1">
+            <AlertTriangle className="h-3 w-3" /> Seq Scan
+          </Badge>
+        )}
+        {r.error && <Badge variant="secondary">error</Badge>}
+        {!open && !r.error && warnCount > 0 && (
+          <span className="ml-auto text-xs text-amber-600 dark:text-amber-400">
+            {warnCount} hint{warnCount > 1 ? "s" : ""}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div>
+          {!r.error && (
+            <ul className="space-y-1 border-b p-3 text-xs">
+              {hints.map((h, i) => (
+                <li key={i} className={h.tone === "warn" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
+                  • {h.text}
+                </li>
+              ))}
+            </ul>
+          )}
+          <pre className="overflow-x-auto p-3 text-xs leading-relaxed">{r.error ? r.error : r.plan}</pre>
+        </div>
+      )}
+    </div>
   );
 }
 
