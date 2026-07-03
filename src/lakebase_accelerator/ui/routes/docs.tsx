@@ -158,7 +158,10 @@ CREATE EXTENSION IF NOT EXISTS databricks_auth;
 SELECT databricks_create_role('<app-service-principal>', 'SERVICE_PRINCIPAL');
 GRANT CONNECT ON DATABASE databricks_postgres TO "<app-service-principal>";
 
--- Layer 2 — a dedicated schema it OWNS (its entire sandbox):
+-- Layer 2 — a dedicated schema it OWNS (its entire sandbox).
+-- You must be a member of the SP role to create objects it will own
+-- (Postgres requires being able to SET ROLE to the authorizing role):
+GRANT "<app-service-principal>" TO CURRENT_USER;
 CREATE SCHEMA IF NOT EXISTS accelerator_history
   AUTHORIZATION "<app-service-principal>";`}
             </pre>
@@ -166,6 +169,12 @@ CREATE SCHEMA IF NOT EXISTS accelerator_history
               The Enable step previews the exact statements with the real SP role name filled in. Runs
               are attributed to the actual user via <code>created_by</code>. No setup is needed for the
               browser destination.
+            </p>
+            <p className="text-xs">
+              The SP does <strong className="text-foreground">not</strong> need a project-level
+              permission (Settings → Permissions) to connect — access is controlled entirely by the
+              OAuth Postgres role above. The project's <em>Database connections</em> must have{" "}
+              <strong className="text-foreground">OAuth</strong> enabled (it is by default).
             </p>
           </CardContent>
         </Card>

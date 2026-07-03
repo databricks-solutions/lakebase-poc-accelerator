@@ -86,6 +86,11 @@ def provisioning_sql(sp_role: str, schema: str, database: str, *, include_role: 
             f'GRANT CONNECT ON DATABASE {database} TO "{sp_role}";',
         ]
     lines.append(
+        "-- Postgres requires you to be a member of a role to create objects it will own"
+    )
+    lines.append("-- (i.e. to be able to SET ROLE to it); grant yourself membership first.")
+    lines.append(f'GRANT "{sp_role}" TO CURRENT_USER;')
+    lines.append(
         f"-- Dedicated schema the SP owns — its entire sandbox; no access to your other data."
     )
     lines.append(f'CREATE SCHEMA IF NOT EXISTS {schema} AUTHORIZATION "{sp_role}";')
