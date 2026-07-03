@@ -20,6 +20,7 @@ import {
   ChevronDown,
   DollarSign,
   AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
@@ -410,20 +411,30 @@ function OptimizeCard({
 }
 
 // EXPLAIN (ANALYZE) plans for the tested queries. A Seq Scan on a benchmark query is
-// the headline tuning smell — highlight it. Shared by both tabs.
+// the headline tuning smell — highlight it. Shared by both tabs. When `before` is set
+// (from the "apply indexes & compare" loop) each row shows a before→after plan diff.
 function ExplainPlansCard({
   results,
+  before,
   analyze,
   onAnalyzeChange,
   onExplain,
   busy,
+  onVerify,
+  canVerify,
+  verifyBusy,
 }: {
   results: ExplainResultOut[] | null;
+  before: ExplainResultOut[] | null;
   analyze: boolean;
   onAnalyzeChange: (v: boolean) => void;
   onExplain: () => void;
   busy: boolean;
+  onVerify: () => void;
+  canVerify: boolean;
+  verifyBusy: boolean;
 }) {
+  const beforeById = new Map((before ?? []).map((b) => [b.identifier, b]));
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
@@ -433,13 +444,30 @@ function ExplainPlansCard({
             <input type="checkbox" checked={analyze} onChange={(e) => onAnalyzeChange(e.target.checked)} />
             ANALYZE (run for real timings)
           </label>
-          <Button variant="secondary" size="sm" onClick={onExplain} disabled={busy}>
+          <Button variant="secondary" size="sm" onClick={onExplain} disabled={busy || verifyBusy}>
             <Wand2 className="mr-1 h-4 w-4" />
             {busy ? "Explaining…" : "Explain plans"}
           </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* The tuning loop, spelled out so the two actions read as one workflow. */}
+        <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">The tuning loop:</span> Explain <em>diagnoses</em> (find
+          the Seq Scans) → Optimize <em>prescribes</em> the indexes → Apply <em>fixes</em> → Explain again{" "}
+          <em>confirms</em> the plan flipped to an Index Scan. Use{" "}
+          <span className="font-medium text-foreground">Apply indexes &amp; compare</span> to run that whole loop
+          in one click and see the before/after plan for each query.
+        </div>
+        <div className="flex items-center gap-3">
+          <Button size="sm" onClick={onVerify} disabled={!canVerify || verifyBusy || busy}>
+            <Zap className="mr-1 h-4 w-4" />
+            {verifyBusy ? "Comparing…" : "Apply indexes & compare"}
+          </Button>
+          {!canVerify && (
+            <span className="text-xs text-muted-foreground">Run Optimize first to get index suggestions to apply.</span>
+          )}
+        </div>
         <p className="text-xs text-muted-foreground">
           Sample values are drawn for any <code>:param</code>. With ANALYZE the query is executed for real
           row counts and timings, inside a transaction that is rolled back (writes don't persist).
@@ -449,11 +477,25 @@ function ExplainPlansCard({
           <p className="text-sm text-muted-foreground">Run "Explain plans" to see each query's execution plan.</p>
         )}
         {results?.map((r) => (
-          <ExplainRow key={r.identifier} r={r} />
+          <ExplainRow key={r.identifier} r={r} before={beforeById.get(r.identifier) ?? null} />
         ))}
       </CardContent>
     </Card>
   );
+}
+
+// The scan node that headlines a plan (Seq Scan is worst; report it first).
+function scanKind(plan: string): string {
+  for (const k of ["Seq Scan", "Bitmap Heap Scan", "Index Only Scan", "Index Scan"]) {
+    if (plan.includes(k)) return k;
+  }
+  return "—";
+}
+
+// Top-node total wall time (ANALYZE only): "actual time=start..END".
+function topTimeMs(plan: string): number | null {
+  const m = plan.match(/actual time=[\d.]+\.\.([\d.]+)/);
+  return m ? Number(m[1]) : null;
 }
 
 // A collapsible "how to read a plan" cheatsheet, so the guidance is one click away
@@ -511,11 +553,18 @@ function planHints(plan: string): { tone: "warn" | "info"; text: string }[] {
   return hints;
 }
 
-// One collapsible per query (default collapsed) to keep the page uncluttered.
-function ExplainRow({ r }: { r: ExplainResultOut }) {
+// One collapsible per query (default collapsed) to keep the page uncluttered. When a
+// `before` plan is supplied, the header summarizes the before→after change and the body
+// shows both plans stacked.
+function ExplainRow({ r, before }: { r: ExplainResultOut; before: ExplainResultOut | null }) {
   const [open, setOpen] = useState(false);
   const hints = r.error ? [] : planHints(r.plan);
   const warnCount = hints.filter((h) => h.tone === "warn").length;
+
+  const cmp = before && !before.error && !r.error ? compareExplain(before, r) : null;
+
+  const fmtMs = (n: number | null) => (n != null ? `${n.toFixed(1)} ms` : "");
+
   return (
     <div className="rounded-md border">
       <button
@@ -525,16 +574,31 @@ function ExplainRow({ r }: { r: ExplainResultOut }) {
       >
         {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
         <span className="text-sm font-medium">{r.identifier}</span>
-        {r.seq_scan && (
-          <Badge variant="destructive" className="gap-1">
-            <AlertTriangle className="h-3 w-3" /> Seq Scan
-          </Badge>
-        )}
-        {r.error && <Badge variant="secondary">error</Badge>}
-        {!open && !r.error && warnCount > 0 && (
-          <span className="ml-auto text-xs text-amber-600 dark:text-amber-400">
-            {warnCount} hint{warnCount > 1 ? "s" : ""}
+        {cmp ? (
+          <span className="flex items-center gap-1 text-xs">
+            <span className="text-muted-foreground">
+              {cmp.beforeKind} {fmtMs(cmp.beforeMs)}
+            </span>
+            <span className="text-muted-foreground">→</span>
+            <span className={cmp.improved ? "font-medium text-emerald-600 dark:text-emerald-400" : "text-foreground"}>
+              {cmp.afterKind} {fmtMs(cmp.afterMs)}
+            </span>
+            {cmp.improved && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
           </span>
+        ) : (
+          <>
+            {r.seq_scan && (
+              <Badge variant="destructive" className="gap-1">
+                <AlertTriangle className="h-3 w-3" /> Seq Scan
+              </Badge>
+            )}
+            {r.error && <Badge variant="secondary">error</Badge>}
+            {!open && !r.error && warnCount > 0 && (
+              <span className="ml-auto text-xs text-amber-600 dark:text-amber-400">
+                {warnCount} hint{warnCount > 1 ? "s" : ""}
+              </span>
+            )}
+          </>
         )}
       </button>
       {open && (
@@ -548,11 +612,30 @@ function ExplainRow({ r }: { r: ExplainResultOut }) {
               ))}
             </ul>
           )}
+          {before && (
+            <div className="border-b">
+              <div className="px-3 pt-2 text-xs font-medium text-muted-foreground">Before (no index)</div>
+              <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-muted-foreground">
+                {before.error ? before.error : before.plan}
+              </pre>
+            </div>
+          )}
+          {before && <div className="px-3 pt-2 text-xs font-medium text-foreground">After (index applied)</div>}
           <pre className="overflow-x-auto p-3 text-xs leading-relaxed">{r.error ? r.error : r.plan}</pre>
         </div>
       )}
     </div>
   );
+}
+
+function compareExplain(before: ExplainResultOut, after: ExplainResultOut) {
+  const beforeKind = scanKind(before.plan);
+  const afterKind = scanKind(after.plan);
+  const beforeMs = topTimeMs(before.plan);
+  const afterMs = topTimeMs(after.plan);
+  const droppedSeqScan = beforeKind === "Seq Scan" && afterKind !== "Seq Scan";
+  const faster = beforeMs != null && afterMs != null && afterMs < beforeMs * 0.9;
+  return { beforeKind, afterKind, beforeMs, afterMs, improved: droppedSeqScan || faster };
 }
 
 function monitoringHint(host: string | null | undefined) {
@@ -831,7 +914,9 @@ function PsycopgTab() {
   const applyIdx = useApplyIndexes();
   const explain = useExplainQueries();
   const [explainResults, setExplainResults] = useState<ExplainResultOut[] | null>(null);
+  const [explainBefore, setExplainBefore] = useState<ExplainResultOut[] | null>(null);
   const [explainAnalyze, setExplainAnalyze] = useState(true);
+  const [verifying, setVerifying] = useState(false);
   const { data: wsInfo } = useGetWorkspaceInfo();
   const host = wsInfo?.data.host;
 
@@ -971,16 +1056,46 @@ function PsycopgTab() {
     }
   };
 
+  const runExplain = async (): Promise<ExplainResultOut[] | null> => {
+    const res = await explain.mutateAsync({ ...body(), queries, analyze: explainAnalyze });
+    if (res.data.error) {
+      toast.error(res.data.error);
+      return null;
+    }
+    return res.data.results ?? [];
+  };
+
   const onExplain = async () => {
     try {
-      const res = await explain.mutateAsync({ ...body(), queries, analyze: explainAnalyze });
-      if (res.data.error) {
-        toast.error(res.data.error);
-        return;
+      const out = await runExplain();
+      if (out) {
+        setExplainBefore(null); // single-plan view
+        setExplainResults(out);
       }
-      setExplainResults(res.data.results ?? []);
     } catch (e) {
       toast.error(String(e));
+    }
+  };
+
+  // The full loop in one click: EXPLAIN (before) → apply the suggested indexes →
+  // EXPLAIN (after), then show the plan diff per query.
+  const onVerifyPlans = async () => {
+    if (!optimize?.index_suggestions.length) return;
+    setVerifying(true);
+    try {
+      const beforePlans = await runExplain();
+      if (!beforePlans) return;
+      const ok = await applyDdls(optimize.index_suggestions.map((s) => s.ddl));
+      if (!ok) return; // applyDdls surfaces its own errors
+      const afterPlans = await runExplain();
+      if (!afterPlans) return;
+      setExplainBefore(beforePlans);
+      setExplainResults(afterPlans);
+      toast.success("Compared plans before/after applying indexes");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -1193,10 +1308,14 @@ function PsycopgTab() {
 
       <ExplainPlansCard
         results={explainResults}
+        before={explainBefore}
         analyze={explainAnalyze}
         onAnalyzeChange={setExplainAnalyze}
         onExplain={onExplain}
         busy={explain.isPending}
+        onVerify={onVerifyPlans}
+        canVerify={!!optimize?.index_suggestions.length}
+        verifyBusy={verifying}
       />
     </div>
   );
@@ -1699,7 +1818,9 @@ function PgbenchTab() {
   const applyIdx = useApplyIndexes();
   const explain = useExplainQueries();
   const [explainResults, setExplainResults] = useState<ExplainResultOut[] | null>(null);
+  const [explainBefore, setExplainBefore] = useState<ExplainResultOut[] | null>(null);
   const [explainAnalyze, setExplainAnalyze] = useState(true);
+  const [verifying, setVerifying] = useState(false);
   const clustersQuery = useListClusters();
   const clusters = clustersQuery.data?.data.clusters ?? [];
   const { data: wsInfo } = useGetWorkspaceInfo();
@@ -1784,16 +1905,45 @@ function PgbenchTab() {
     }
   };
 
+  const runExplain = async (): Promise<ExplainResultOut[] | null> => {
+    const res = await explain.mutateAsync({ ...body(), queries, analyze: explainAnalyze });
+    if (res.data.error) {
+      toast.error(res.data.error);
+      return null;
+    }
+    return res.data.results ?? [];
+  };
+
   const onExplain = async () => {
     try {
-      const res = await explain.mutateAsync({ ...body(), queries, analyze: explainAnalyze });
-      if (res.data.error) {
-        toast.error(res.data.error);
-        return;
+      const out = await runExplain();
+      if (out) {
+        setExplainBefore(null);
+        setExplainResults(out);
       }
-      setExplainResults(res.data.results ?? []);
     } catch (e) {
       toast.error(String(e));
+    }
+  };
+
+  // EXPLAIN (before) → apply suggested indexes → EXPLAIN (after) → show the plan diff.
+  const onVerifyPlans = async () => {
+    if (!optimize?.index_suggestions.length) return;
+    setVerifying(true);
+    try {
+      const beforePlans = await runExplain();
+      if (!beforePlans) return;
+      const ok = await applyDdls(optimize.index_suggestions.map((s) => s.ddl));
+      if (!ok) return;
+      const afterPlans = await runExplain();
+      if (!afterPlans) return;
+      setExplainBefore(beforePlans);
+      setExplainResults(afterPlans);
+      toast.success("Compared plans before/after applying indexes");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -2252,10 +2402,14 @@ function PgbenchTab() {
 
       <ExplainPlansCard
         results={explainResults}
+        before={explainBefore}
         analyze={explainAnalyze}
         onAnalyzeChange={setExplainAnalyze}
         onExplain={onExplain}
         busy={explain.isPending}
+        onVerify={onVerifyPlans}
+        canVerify={!!optimize?.index_suggestions.length}
+        verifyBusy={verifying}
       />
     </div>
   );
