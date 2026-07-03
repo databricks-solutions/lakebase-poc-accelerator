@@ -1602,6 +1602,9 @@ function PgbenchTab() {
   const [runId, setRunId] = useState<string | null>(null);
   const [optimize, setOptimize] = useState<OptimizeOut | null>(null);
   const [baseline, setBaseline] = useState<Record<string, unknown> | null>(null);
+  // Wall-clock window of the last completed run, for billing reconciliation.
+  const [runWindow, setRunWindow] = useState<{ start: string; end: string } | null>(null);
+  const runStartRef = useRef<string>("");
 
   const submit = useSubmitPgbenchJob();
   const submitLocal = useSubmitLocalPgbench();
@@ -1673,6 +1676,8 @@ function PgbenchTab() {
       setBaseline(null);
     }
     capturedRef.current = "";
+    runStartRef.current = new Date().toISOString();
+    setRunWindow(null);
     try {
       const res = isLocal
         ? await submitLocal.mutateAsync(payload)
@@ -1749,6 +1754,7 @@ function PgbenchTab() {
   useEffect(() => {
     if (status?.status !== "completed" || !r || !runId || capturedRef.current === runId) return;
     capturedRef.current = runId;
+    setRunWindow({ start: runStartRef.current, end: new Date().toISOString() });
     const before = baselineRef.current;
     saveBrowserRun({
       id: runIdRef.current || (runIdRef.current = newRunId()),
@@ -2129,6 +2135,15 @@ function PgbenchTab() {
           busy={applyIdx.isPending}
           applyAllLabel="Apply all indexes"
           applyAllNote="Applies the indexes and snapshots the current result as the baseline. Re-run pgbench (above) to record the before/after."
+        />
+      )}
+
+      {r && conn.project && status?.status === "completed" && (
+        <RunCostCard
+          project={conn.project}
+          totalQueries={num(r.total_transactions) ?? 0}
+          durationSeconds={config.duration_seconds}
+          window={runWindow}
         />
       )}
     </div>
