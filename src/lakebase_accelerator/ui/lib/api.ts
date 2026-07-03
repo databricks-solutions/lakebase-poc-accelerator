@@ -31,6 +31,10 @@ export interface ApplyResultOut {
     detail: string;
     ok: boolean;
 }
+export interface BranchListOut {
+    branches: string[];
+    error?: string | null;
+}
 export interface CapabilitiesOut {
     pgbench_local_available?: boolean;
 }
@@ -904,6 +908,68 @@ export function useListLakebaseHistoryTables(options?: {
     return useMutation({
         mutationFn: (data)=>listLakebaseHistoryTables(data),
         ...options?.mutation
+    });
+}
+export interface ListLakebaseBranchesParams {
+    project: string;
+}
+export const listLakebaseBranches = async (params: ListLakebaseBranchesParams, options?: RequestInit): Promise<{
+    data: BranchListOut;
+}> =>{
+    const searchParams = new URLSearchParams();
+    if (params.project != null) searchParams.set("project", String(params.project));
+    const queryString = searchParams.toString();
+    const url = queryString ? `/api/lakebase/branches?${queryString}` : "/api/lakebase/branches";
+    const res = await fetch(url, {
+        ...options,
+        method: "GET"
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export const listLakebaseBranchesKey = (params?: ListLakebaseBranchesParams)=>{
+    return [
+        "/api/lakebase/branches",
+        params
+    ] as const;
+};
+export function useListLakebaseBranches<TData = {
+    data: BranchListOut;
+}>(options: {
+    params: ListLakebaseBranchesParams;
+    query?: Omit<UseQueryOptions<{
+        data: BranchListOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useQuery({
+        queryKey: listLakebaseBranchesKey(options.params),
+        queryFn: ()=>listLakebaseBranches(options.params),
+        ...options?.query
+    });
+}
+export function useListLakebaseBranchesSuspense<TData = {
+    data: BranchListOut;
+}>(options: {
+    params: ListLakebaseBranchesParams;
+    query?: Omit<UseSuspenseQueryOptions<{
+        data: BranchListOut;
+    }, ApiError, TData>, "queryKey" | "queryFn">;
+}) {
+    return useSuspenseQuery({
+        queryKey: listLakebaseBranchesKey(options.params),
+        queryFn: ()=>listLakebaseBranches(options.params),
+        ...options?.query
     });
 }
 export interface ListLakebaseDatabasesParams {

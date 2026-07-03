@@ -208,6 +208,19 @@ def list_databases(ws: WorkspaceClient, project: str) -> list[str]:
             return [row[0] for row in cur.fetchall()]
 
 
+def list_branches(ws: WorkspaceClient, project: str) -> list[str]:
+    """List a project's branch resource names (``projects/<id>/branches/<id>``), for
+    the synced-table branch picker. The synced-table spec's ``branch`` field wants the
+    full resource name, so we return that (the UI shows the trailing branch id)."""
+    project_name = _resolve_project_name(ws, project)
+    names: list[str] = []
+    for b in ws.postgres.list_branches(parent=project_name):
+        name = getattr(b, "name", None)
+        if name:
+            names.append(name)
+    return names
+
+
 def list_schemas(
     ws: WorkspaceClient, project: str, database: Optional[str] = None
 ) -> list[str]:

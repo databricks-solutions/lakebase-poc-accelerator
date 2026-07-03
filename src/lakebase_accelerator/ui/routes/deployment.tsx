@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -36,6 +36,7 @@ import {
   useCreateProject,
   useGetProjectInfo,
   useListLakebaseProjects,
+  useListLakebaseBranches,
   useCreateSyncedTable,
   useCheckSyncRequirements,
   useListWarehouses,
@@ -82,9 +83,14 @@ interface SyncRow {
   primary_key_columns: string;
   scheduling_policy: SyncPolicy;
   database: string;
+  // Target branch resource name (projects/<id>/branches/<id>). Blank = inferred from a
+  // database catalog; required for a standard catalog.
+  branch: string;
   storage_catalog: string;
   storage_schema: string;
   check?: SyncCheckOut;
+  // Persistent result of the last create attempt (shown inline, not as a toast).
+  result?: { ok: boolean; detail: string };
 }
 
 const emptyRow: SyncRow = {
@@ -93,6 +99,7 @@ const emptyRow: SyncRow = {
   primary_key_columns: "",
   scheduling_policy: "SNAPSHOT",
   database: "",
+  branch: "",
   storage_catalog: "",
   storage_schema: "",
 };
@@ -424,6 +431,16 @@ function exploreUrl(host: string | null | undefined, fullName: string): string |
   return `${host}/explore/data/${parts[0]}/${parts[1]}/${parts[2]}`;
 }
 
+function branchLabel(fullName: string): string {
+  // "projects/<id>/branches/<id>" → "<id>" for display.
+  return fullName.split("/").pop() || fullName;
+}
+
+// Prefer "production" as the default branch, else the first available.
+function defaultBranch(branches: string[]): string {
+  return branches.find((b) => branchLabel(b) === "production") ?? branches[0] ?? "";
+}
+
 function SyncSection({ projectLabel }: { projectLabel: string }) {
   const [rows, setRows] = useState<SyncRow[]>([{ ...sampleRow }]);
   const [warehouseId, setWarehouseId] = useState("");
@@ -433,6 +450,22 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
   const warehouses = whData?.data.warehouses ?? [];
   const { data: wsInfo } = useGetWorkspaceInfo();
   const host = wsInfo?.data.host;
+  // Branches of the target project, for the per-table branch picker.
+  const { data: branchData } = useListLakebaseBranches({
+    params: { project: projectLabel },
+    query: { enabled: projectLabel.trim().length > 0 },
+  });
+  const branches = branchData?.data.branches ?? [];
+
+  // Default each row's branch to production (or the first available) once branches load.
+  useEffect(() => {
+    if (branches.length === 0) return;
+    const def = defaultBranch(branches);
+    setRows((rs) =>
+      rs.map((r) => (r.branch ? r : { ...r, branch: def })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchData]);
 
   const update = (i: number, patch: Partial<SyncRow>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -456,6 +489,7 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
 
   const onSyncOne = async (i: number) => {
     const row = rows[i];
+    update(i, { result: undefined }); // clear the previous result
     try {
       const res = await createSync.mutateAsync({
         target_uc_name: row.target_uc_name,
@@ -463,12 +497,15 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
         primary_key_columns: row.primary_key_columns.split(",").map((s) => s.trim()).filter(Boolean),
         scheduling_policy: row.scheduling_policy,
         database: row.database || null,
+        branch: row.branch || null,
         storage_catalog: row.storage_catalog,
         storage_schema: row.storage_schema,
       });
-      res.data.ok ? toast.success(res.data.detail) : toast.error(res.data.detail);
+      // Persist the outcome inline (both success and error) so it doesn't vanish
+      // like a toast — the user asked to see the message on the page.
+      update(i, { result: { ok: res.data.ok, detail: res.data.detail } });
     } catch (e) {
-      toast.error(String(e));
+      update(i, { result: { ok: false, detail: String(e) } });
     }
   };
 
@@ -586,6 +623,27 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                 </div>
                 <div className="grid gap-2">
                   <LabelWithTip
+                    label="Branch"
+                    tip="The branch of this project to sync into (e.g. production)."
+                  />
+                  <Select
+                    value={row.branch}
+                    onValueChange={(v) => update(i, { branch: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={branches.length ? "Select a branch" : "Loading…"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branches.map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {branchLabel(b)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <LabelWithTip
                     label="Primary key column(s)"
                     tip="Comma-separated. Required — the synced table is keyed on these for upserts."
                   />
@@ -690,6 +748,25 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
               >
                 {createSync.isPending ? "Creating…" : "Create synced table"}
               </Button>
+
+              {row.result && (
+                <div
+                  className={`rounded-md border p-3 text-xs ${
+                    row.result.ok
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    {row.result.ok ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    <span className="whitespace-pre-wrap break-words">{row.result.detail}</span>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

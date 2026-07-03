@@ -59,6 +59,11 @@ class SchemaListOut(BaseModel):
     error: str | None = None
 
 
+class BranchListOut(BaseModel):
+    branches: list[str]
+    error: str | None = None
+
+
 class TokenScopesOut(BaseModel):
     has_obo_token: bool
     scopes: list[str] = []
@@ -148,3 +153,19 @@ def list_lakebase_schemas(
     except Exception as e:  # noqa: BLE001
         logger.info(f"Could not list schemas for {project}/{database}: {e}")
         return SchemaListOut(schemas=[], error=str(e))
+
+
+@router.get(
+    "/lakebase/branches",
+    response_model=BranchListOut,
+    operation_id="listLakebaseBranches",
+)
+def list_lakebase_branches(ws: EffectiveClient, project: str) -> BranchListOut:
+    """List a project's branches, to populate the synced-table branch picker."""
+    if not project.strip():
+        return BranchListOut(branches=[], error="project is required")
+    try:
+        return BranchListOut(branches=lakebase_service.list_branches(ws, project))
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"Could not list branches for {project}: {e}")
+        return BranchListOut(branches=[], error=str(e))
