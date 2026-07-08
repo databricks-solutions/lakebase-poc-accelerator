@@ -1805,6 +1805,7 @@ function PgbenchTab() {
   const [queries, setQueries] = useState<QueryRow[]>(SAMPLE_QUERIES);
   const [runMode, setRunMode] = useState<"job" | "local">("job");
   const [submitted, setSubmitted] = useState<PgbenchRunInfo | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [optimize, setOptimize] = useState<OptimizeOut | null>(null);
   const [baseline, setBaseline] = useState<Record<string, unknown> | null>(null);
@@ -1886,11 +1887,16 @@ function PgbenchTab() {
     capturedRef.current = "";
     runStartRef.current = new Date().toISOString();
     setRunWindow(null);
+    setSubmitError(null);
     try {
       const res = isLocal
         ? await submitLocal.mutateAsync(payload)
         : await submit.mutateAsync(payload);
       if (res.data.error) {
+        // Persist submit-time failures (e.g. the app SP lacking cluster-create or
+        // secret-scope permission) in a box — the message is long and a toast alone is
+        // easy to miss.
+        setSubmitError(res.data.error);
         toast.error(res.data.error);
         return;
       }
@@ -1898,6 +1904,7 @@ function PgbenchTab() {
       setRunId(res.data.run_id ?? null);
       toast.success(isLocal ? "local pgbench started" : "pgbench job submitted");
     } catch (e) {
+      setSubmitError(String(e));
       toast.error(String(e));
     }
   };
@@ -2245,6 +2252,13 @@ function PgbenchTab() {
           </div>
         </CardContent>
       </Card>
+
+      {submitError && (
+        <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="whitespace-pre-wrap break-words">{submitError}</span>
+        </div>
+      )}
 
       {submitted && (
         <Card>
