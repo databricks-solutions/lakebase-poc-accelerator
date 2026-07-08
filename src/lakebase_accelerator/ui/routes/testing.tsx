@@ -1157,7 +1157,7 @@ function PsycopgTab() {
             <div className="grid gap-2">
               <LabelWithTip
                 label="Concurrency level"
-                tip="How many queries run in parallel against Lakebase. The connection pool is sized from this (base pool ≈ level/4, max overflow = level), then the query mix is replayed concurrently to measure latency and throughput."
+                tip="How many queries run in parallel against Lakebase. The connection pool is sized from this (base pool = level, max overflow ≈ level/4), then the query mix is replayed concurrently. Each slot is a real Postgres backend, so keep it below the instance's max_connections (~209 per Autoscaling CU; a Provisioned CU is ~8× larger) — realistic app concurrency is tens-to-low-hundreds. See Best Practices → Load testing."
               />
               <Input
                 type="number"
@@ -1171,7 +1171,7 @@ function PsycopgTab() {
             <div className="grid gap-2">
               <LabelWithTip
                 label="Total executions"
-                tip="Total number of query executions for the run, distributed across the queries in proportion to each query's WEIGHT. Every query runs at least once."
+                tip="Total number of query executions for the run, distributed across the queries in proportion to each query's WEIGHT. Every query runs at least once. Aim for roughly concurrency × 200–500 so the run lasts ~30–60 s and the percentiles are stable."
               />
               <Input
                 type="number"
@@ -1195,6 +1195,18 @@ function PsycopgTab() {
               {runOptimize.isPending ? "Analyzing…" : "Optimize"}
             </Button>
           </div>
+          {concurrency > 300 && (
+            <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Concurrency {concurrency} is high. Each slot opens a real Postgres backend, and
+                Lakebase caps connections (~209 per Autoscaling CU; a Provisioned CU is ~8× larger) —
+                excess connections are refused and show up as a low success rate, not query errors.
+                The psycopg client is also GIL-bound, so effective parallelism is usually far lower.
+                Sweep 25 → 50 → 100 → 200 instead. See Best Practices → Load testing.
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 

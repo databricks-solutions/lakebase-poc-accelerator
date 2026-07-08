@@ -8,6 +8,7 @@ import {
   Activity,
   KeyRound,
   ShieldCheck,
+  FlaskConical,
   type LucideIcon,
 } from "lucide-react";
 
@@ -73,6 +74,50 @@ const SECTIONS: Section[] = [
       {
         title: "Keep transactions short",
         body: "Long-running transactions hold locks and bloat MVCC. Commit promptly; avoid idle-in-transaction sessions.",
+      },
+    ],
+  },
+  {
+    icon: FlaskConical,
+    title: "Load testing: psycopg vs pgbench",
+    practices: [
+      {
+        title: "The two tests measure two different ceilings",
+        body: "The psycopg test runs from the app backend as a real Python client (thread pool + SQLAlchemy pool, count-based: concurrency × total executions) — it tells you what your application can drive. The pgbench test is submitted as a Databricks Job on a dedicated cluster using the native C pgbench binary (duration-based: clients, threads, seconds) — it tells you Lakebase's server-side headroom. pgbench will report higher QPS and lower latency; that's the efficient client, not a fairer test. Report both.",
+      },
+      {
+        title: "Keep concurrency below the connection limit",
+        body: "Every concurrent slot opens a real Postgres backend. Max connections scale with RAM (~209 per Autoscaling CU); a Provisioned CU is ~8× larger, so a provisioned CU_1 (~16 GB) allows ~1,600. Postgres reserves some and each synced table uses up to 16, so treat the usable number as lower. Exceed it and the excess connections are refused — that surfaces as a low success rate, not query errors.",
+        code: `Capacity            RAM      ~max_connections
+Autoscale 0.5 CU    1 GB     104
+Autoscale 1 CU      2 GB     209
+Autoscale 8 CU      16 GB    1,678
+Provisioned CU_1    ~16 GB   ~1,600   (≈ 8 Autoscaling CU)
+16 CU / 32+ CU      32+ GB   3,357 / 4,000 (cap)
+
+Confirm live with:  SHOW max_connections;`,
+      },
+      {
+        title: "Match the psycopg and pgbench knobs",
+        body: "Set the same client count in both, keep pgbench threads (-j) at or below the cluster's cores, and choose psycopg total executions so its run lasts about as long as the pgbench duration (concurrency × 200–500).",
+        code: `pgbench                psycopg
+-c clients        =    concurrency_level   (concurrent connections — set equal)
+-j jobs                (none)              keep ≤ cluster cores (8–16)
+-T seconds        ≈    total_executions    duration-based vs count-based
+
+total_executions ≈ concurrency × 200–500   → ~30–60 s run, stable percentiles
+
+Suggested sweep (CU_1):
+  pgbench  -c 25/50/100/200  -j 8/8/16/16  -T 60
+  psycopg  concurrency 25/50/100/200,  total 7.5k/15k/30k/60k`,
+      },
+      {
+        title: "Sweep concurrency to find the knee",
+        body: "Raise concurrency in steps (25 → 50 → 100 → 200). Throughput climbs then flattens while p95/p99 keep rising — that flat-QPS / rising-latency point is saturation. Past it, adding workers only adds queuing latency, not throughput.",
+      },
+      {
+        title: "Remember the psycopg client is GIL-bound",
+        body: "The Python runner executes under the GIL, so effective parallelism ≈ QPS × avg latency, often far below the level you set (e.g. 10,000 requested can behave like ~250). If success rate stays high but QPS stops rising as you add concurrency, you've hit the client, not Lakebase — trust pgbench for the platform ceiling.",
       },
     ],
   },
