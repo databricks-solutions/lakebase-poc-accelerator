@@ -243,7 +243,8 @@ def _get_or_create_benchmark_cluster(ws: WorkspaceClient) -> str:
 # Job lifecycle
 # --------------------------------------------------------------------------- #
 def _find_job_id(ws: WorkspaceClient, name: str) -> Optional[int]:
-    for job in ws.jobs.list():
+    # Filter by name server-side so we don't page through every job in the workspace.
+    for job in ws.jobs.list(name=name):
         if job.settings and job.settings.name == name:
             return job.job_id
     return None
@@ -309,6 +310,30 @@ def _ensure_token_secret(ws: WorkspaceClient, token: str) -> None:
         ) from e
 
 
+# Per-process cache of the (stable) benchmark cluster + job ids. The first submit of each
+# worker does the full, slow setup (list workspace jobs/clusters, upload the notebook +
+# init script, create/reset the job); later submits reuse these and just run_now, so they
+# don't hang for seconds. A redeploy starts a fresh process, so a changed notebook/config
+# is still picked up. Invalidated (force=True) after a run_now failure in case the job or
+# cluster was deleted out from under us.
+_cached_cluster_id: Optional[str] = None
+_cached_job_id: Optional[str] = None
+
+
+def _resolve_job(ws: WorkspaceClient, *, force: bool = False) -> str:
+    """Return the pgbench job id, provisioning the cluster + job on first use and caching
+    both for the life of the worker process."""
+    global _cached_cluster_id, _cached_job_id
+    if force:
+        _cached_cluster_id = None
+        _cached_job_id = None
+    if _cached_cluster_id is None:
+        _cached_cluster_id = _get_or_create_benchmark_cluster(ws)
+    if _cached_job_id is None:
+        _cached_job_id = _get_or_create_job(ws, _cached_cluster_id)
+    return _cached_job_id
+
+
 def submit(
     ws: WorkspaceClient,
     *,
@@ -327,11 +352,6 @@ def submit(
             "Query payload is too large to pass inline to the job. "
             "Reduce the number/size of queries."
         )
-
-    # Always run on the app-owned, fixed-size dedicated cluster (portable across
-    # workspaces, stable egress IP, no per-run resize).
-    cluster_id = _get_or_create_benchmark_cluster(ws)
-    job_id = _get_or_create_job(ws, cluster_id)
 
     # Stash the DB token in a secret scope; the notebook reads it via dbutils.secrets.get
     # (redacted) so the token never appears in the job run parameters. The username is
@@ -359,7 +379,14 @@ def submit(
         "query_config": query_json,
     }
 
-    run = ws.jobs.run_now(job_id=int(job_id), notebook_params=params)
+    # Resolve the job/cluster from the per-process cache (fast after the first submit);
+    # rebuild once if the cached job was deleted and run_now fails.
+    job_id = _resolve_job(ws)
+    try:
+        run = ws.jobs.run_now(job_id=int(job_id), notebook_params=params)
+    except Exception:  # noqa: BLE001 - stale cache (job/cluster removed) → rebuild once
+        job_id = _resolve_job(ws, force=True)
+        run = ws.jobs.run_now(job_id=int(job_id), notebook_params=params)
     run_id = str(run.run_id)
 
     base = _workspace_url(ws)
