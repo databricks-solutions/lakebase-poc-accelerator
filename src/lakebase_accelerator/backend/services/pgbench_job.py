@@ -42,6 +42,13 @@ _JOB_NAME = "lakebase_accelerator_pgbench_job"
 # cluster the app SP creates makes the app self-sufficient in any workspace instead of
 # depending on a pre-existing cluster, and reusing it keeps a stable egress IP for the
 # cluster's lifetime (far fewer workspace IP-ACL edits than an ephemeral job cluster).
+# Secret scope/key the app SP writes the (OBO-user-minted) DB token to, so the notebook
+# reads it via ``dbutils.secrets.get`` (redacted) instead of receiving it as a job
+# parameter. Runs are serialized (max_concurrent_runs=1) and there is one app deployment
+# per workspace (shared job/cluster names already assume this), so a fixed scope+key
+# overwritten per run is safe; the token is short-lived and self-expires.
+_SECRET_SCOPE = "lakebase-pgbench"
+_SECRET_KEY = "db_token"
 _CLUSTER_NAME = "lakebase_accelerator_pgbench_cluster"
 # Auto-termination window (minutes) for the app-owned cluster, deployment-configurable via
 # PGBENCH_CLUSTER_AUTOTERMINATION_MIN. Lower = less idle cost but the egress IP is more
@@ -255,7 +262,11 @@ def _get_or_create_job(ws: WorkspaceClient, cluster_id: str) -> str:
     settings = {
         "name": _JOB_NAME,
         "tasks": [task],
+        # Serialize execution (one benchmark at a time on the shared cluster) but *queue*
+        # excess runs instead of dropping them: without queueing, a submit that exceeds
+        # max_concurrent_runs is SKIPPED (which surfaces as a failed run).
         "max_concurrent_runs": 1,
+        "queue": {"enabled": True},
         "timeout_seconds": _TIMEOUT_SECONDS,
     }
 
@@ -272,6 +283,30 @@ def _get_or_create_job(ws: WorkspaceClient, cluster_id: str) -> str:
     )
     logger.info(f"pgbench job: reused/updated job {existing_id}")
     return str(existing_id)
+
+
+def _ensure_token_secret(ws: WorkspaceClient, token: str) -> None:
+    """Stash the DB token in a secret scope owned by the app SP.
+
+    The token is minted in the backend as the OBO user (see ``resolve_credentials``), so
+    the benchmark still connects to Postgres as the user; writing it to a secret and
+    reading it via ``dbutils.secrets.get`` in the notebook keeps it out of the job's run
+    parameters/logs. Idempotent: the scope is created once, the key overwritten per run.
+    """
+    try:
+        ws.secrets.create_scope(scope=_SECRET_SCOPE)
+    except Exception as e:  # noqa: BLE001 - already-exists is expected on reruns
+        if "RESOURCE_ALREADY_EXISTS" not in str(e):
+            logger.info(f"pgbench: secret scope create note: {e}")
+    try:
+        ws.secrets.put_secret(scope=_SECRET_SCOPE, key=_SECRET_KEY, string_value=token)
+    except Exception as e:  # noqa: BLE001
+        sp = _current_identity(ws)
+        raise ValueError(
+            f"Could not store the database token in secret scope '{_SECRET_SCOPE}'. The "
+            f"app service principal ({sp}) needs permission to create/write secret scopes "
+            f"in this workspace. Ask a workspace admin to grant it, then retry. ({e})"
+        ) from e
 
 
 def submit(
@@ -298,6 +333,10 @@ def submit(
     cluster_id = _get_or_create_benchmark_cluster(ws)
     job_id = _get_or_create_job(ws, cluster_id)
 
+    # Stash the DB token in a secret scope; the notebook reads it via dbutils.secrets.get
+    # (redacted) so the token never appears in the job run parameters. The username is
+    # not sensitive and is passed directly.
+    _ensure_token_secret(ws, creds.password)
     params = {
         "lakebase_instance_name": creds.host,
         "database_name": creds.database,
@@ -305,9 +344,10 @@ def submit(
         "pgport": str(creds.port),
         "pgdatabase": creds.database,
         "pguser": creds.user,
-        "pgpassword": creds.password,
         "pgsslmode": creds.ssl_mode,
         "pgoptions": pgoptions,
+        "secret_scope": _SECRET_SCOPE,
+        "secret_key": _SECRET_KEY,
         "pgbench_clients": str(config.get("clients", 8)),
         "pgbench_jobs": str(config.get("jobs", 8)),
         "pgbench_duration": str(config.get("duration_seconds", 30)),
@@ -334,7 +374,10 @@ def submit(
 
 
 _STATE_MAP = {
+    "QUEUED": "pending",
     "PENDING": "pending",
+    "BLOCKED": "pending",
+    "WAITING_FOR_RETRY": "pending",
     "RUNNING": "running",
     "TERMINATING": "running",
     "TERMINATED": "completed",
@@ -398,7 +441,7 @@ def _failure_detail(ws: WorkspaceClient, run: Any) -> Optional[str]:
                 pass
     cause = "\n".join(causes).strip()
 
-    suggestion = _permission_suggestion(ws, cause) or _ip_acl_suggestion(cause)
+    suggestion = _permission_suggestion(ws, cause) or _ip_acl_suggestion(ws, cause)
     if suggestion:
         return f"{cause}\n\n{suggestion}" if cause else suggestion
     return cause or None
@@ -429,9 +472,10 @@ def _permission_suggestion(ws: WorkspaceClient, cause: str) -> Optional[str]:
     )
 
 
-def _ip_acl_suggestion(cause: Optional[str]) -> Optional[str]:
+def _ip_acl_suggestion(ws: WorkspaceClient, cause: Optional[str]) -> Optional[str]:
     """If the failure is a workspace IP-ACL rejection, extract the blocked source IP and
-    explain the one-time allow-list fix.
+    explain the one-time allow-list fix — naming the exact workspace and targeting the
+    CLI command at it (so an admin with multiple profiles doesn't hit the wrong one).
 
     Lakebase connections traverse the public endpoint and are gated by the *workspace*
     IP access list. A benchmark cluster's egress IP that isn't on the allow-list is
@@ -441,26 +485,49 @@ def _ip_acl_suggestion(cause: Optional[str]) -> Optional[str]:
         return None
     m = re.search(r"source ip address:\s*([0-9a-fA-F:.]+)", cause or "", re.IGNORECASE)
     ip = m.group(1).rstrip(".") if m else None
+    m_ws = re.search(r"workspace:\s*(\d+)", cause or "", re.IGNORECASE)
+    ws_id = m_ws.group(1) if m_ws else None
+    host = _workspace_url(ws)  # the workspace this app (and its cluster) run in
+
+    where = ""
+    if host:
+        where = f" of workspace {host}" + (f" (id {ws_id})" if ws_id else "")
+    elif ws_id:
+        where = f" of workspace id {ws_id}"
 
     msg = (
-        f"The pgbench cluster's egress IP{f' ({ip})' if ip else ''} is blocked by this "
-        f"workspace's IP access list, so it can't reach the Lakebase endpoint. Ask a "
-        f"workspace admin to add the source IP to the workspace IP access list "
-        f"(Settings → Security → IP access list)."
+        f"The pgbench cluster's egress IP{f' ({ip})' if ip else ''} is blocked by the IP "
+        f"access list{where}, so it can't reach the Lakebase endpoint. A workspace admin "
+        f"must add the source IP to that workspace's IP access list "
+        f"(Settings → Security → IP access list, or the CLI below)."
     )
     if ip:
         label = "lakebase-pgbench-" + ip.replace(".", "-").replace(":", "-")
-        cmd = (
-            "databricks ip-access-lists create --json "
-            + "'{\"label\":\"" + label + "\",\"list_type\":\"ALLOW\","
+        json_body = (
+            "'{\"label\":\"" + label + "\",\"list_type\":\"ALLOW\","
             + "\"ip_addresses\":[\"" + ip + "/32\"]}'"
         )
-        msg += "\n\nAdd it with:\n  " + cmd
+        cmd = f"databricks ip-access-lists create -p <profile> --json {json_body}"
+        msg += (
+            "\n\nRun this with the Databricks CLI on your machine (not in the app), "
+            "authenticated as an admin of that workspace:\n  " + cmd
+        )
+        hint = (
+            f"whose host is {host}" if host else "pointing at this workspace"
+        )
+        msg += (
+            f"\n\nReplace `<profile>` with the ~/.databrickscfg profile {hint} — run "
+            f"`databricks auth profiles` to find it. (The CLI has no `--host` flag; "
+            f"without `-p` it uses your DEFAULT profile, which may be a different "
+            f"workspace.)"
+        )
     return msg
 
 
 def _status_message(life: str, result: Optional[str]) -> str:
-    if life == "PENDING":
+    if life == "QUEUED":
+        return "Run is queued behind another pgbench run"
+    if life in ("PENDING", "BLOCKED", "WAITING_FOR_RETRY"):
         return "Job is pending execution"
     if life in ("RUNNING", "TERMINATING"):
         return "Job is running the pgbench test"
