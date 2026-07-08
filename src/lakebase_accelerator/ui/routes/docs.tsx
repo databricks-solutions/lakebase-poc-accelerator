@@ -13,7 +13,7 @@ function DocsPage() {
         title="Docs"
         description="How to use the Lakebase POC Accelerator, end to end."
       />
-      <div className="mx-auto max-w-3xl space-y-6 p-8">
+      <div className="space-y-6 p-8">
         <Card>
           <CardHeader>
             <CardTitle>Why this app (vs. the native Databricks UI)</CardTitle>
@@ -53,7 +53,46 @@ function DocsPage() {
             <p>
               <strong className="text-foreground">3. Optimize.</strong> Click Optimize after a run
               to get ready-to-run <code>CREATE INDEX</code> statements derived from your queries,
-              plus live findings (cache-hit ratio, sequential scans, unused indexes).
+              plus live findings (cache-hit ratio, sequential scans, unused indexes). Apply the
+              indexes and re-run to compare the EXPLAIN plans before vs. after.
+            </p>
+            <p className="text-xs">
+              <strong className="text-foreground">Try the sample workload.</strong> Every workspace
+              has <code>samples.tpcds_sf1.store_sales</code> (~2.9M rows). Sync it as{" "}
+              <code>store_sales</code> on the Deployment page, then run the 5 bundled sample queries
+              through Testing → Optimize.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Concurrency Testing: psycopg &amp; pgbench</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              Run your query mix against Lakebase at a <strong className="text-foreground">target
+              concurrency level</strong> and get throughput (TPS), success rate, and latency
+              percentiles (p50/p95/p99). Two engines are available:
+            </p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                <strong className="text-foreground">psycopg (in-app)</strong> — a quick, in-process
+                test for fast iteration.
+              </li>
+              <li>
+                <strong className="text-foreground">pgbench (Databricks job)</strong> — heavier,
+                native PostgreSQL load run as a Databricks Job on a single-node cluster.
+              </li>
+            </ul>
+            <p className="text-xs">
+              pgbench is a single-process load generator — it runs entirely on the cluster's driver
+              and uses <strong className="text-foreground">no Spark workers</strong> (the cluster is
+              single-node by design). Higher concurrency is served by a bigger single node (more
+              vCPUs/RAM), not more nodes: threads (<code>-j</code>) map to cores and each client
+              (<code>-c</code>) costs load-generator memory. The cluster is a fixed max-tier single
+              node (64 vCPU / 256 GB) shared across all runs, so per-run concurrency never resizes it
+              and pgbench itself is never the bottleneck.
             </p>
           </CardContent>
         </Card>
@@ -175,6 +214,36 @@ CREATE SCHEMA IF NOT EXISTS accelerator_history
               permission (Settings → Permissions) to connect — access is controlled entirely by the
               OAuth Postgres role above. The project's <em>Database connections</em> must have{" "}
               <strong className="text-foreground">OAuth</strong> enabled (it is by default).
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Cost: actual spend</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              The Cost page shows real Lakebase spend from{" "}
+              <code>system.billing.usage</code> — daily compute and storage cost for a project.
+            </p>
+            <p className="text-xs">
+              Load-generator compute — the pgbench job and this app — is excluded; that is
+              client-side cost, not Lakebase.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Best Practices</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              The Best Practices page collects curated guidance for running OLTP / reverse-ETL
+              workloads on Lakebase. The <strong className="text-foreground">Optimize</strong> tab
+              automates many of these checks against your live database (sequential scans, cache-hit
+              ratio, unused indexes).
             </p>
           </CardContent>
         </Card>

@@ -168,6 +168,46 @@ client-side cost, not Lakebase.)
 
 ![Cost page](docs/images/cost.png)
 
+### Run history & permissions
+The psycopg tab can save each test run — including the **before/after (baseline →
+optimized)** pair — to one of two destinations, chosen at runtime:
+
+- **This browser** (default) — stored in `localStorage`. No setup, no database writes;
+  private to your browser, survives refreshes and app redeploys, but not shared across
+  machines or users.
+- **Lakebase table** — shared, durable history written into the connected project.
+  Opt-in and consent-gated.
+
+**This app is standalone** — it is not attached to any Lakebase project, so it can test
+many projects. For the Lakebase destination it connects as its **service principal** and
+is held to **least privilege**: the SP is confined to a single dedicated schema it *owns*
+(`accelerator_history`) and has no access to your other tables — Postgres denies anything
+not explicitly granted, and the app only ever touches
+`‹schema›._accelerator_run_history`.
+
+A project owner provisions two permission layers once, per project (the in-app Enable step
+previews the exact statements with the real SP role name filled in):
+
+```sql
+-- Layer 1 — let the SP connect (it has no role in a project it didn't create).
+-- Lakebase identities authenticate with Databricks OAuth tokens, so the role must
+-- be created via databricks_auth — a plain CREATE ROLE rejects the token.
+CREATE EXTENSION IF NOT EXISTS databricks_auth;
+SELECT databricks_create_role('<app-service-principal>', 'SERVICE_PRINCIPAL');
+GRANT CONNECT ON DATABASE databricks_postgres TO "<app-service-principal>";
+
+-- Layer 2 — a dedicated schema it OWNS (its entire sandbox).
+-- You must be a member of the SP role to create objects it will own
+-- (Postgres requires being able to SET ROLE to the authorizing role):
+GRANT "<app-service-principal>" TO CURRENT_USER;
+CREATE SCHEMA IF NOT EXISTS accelerator_history
+  AUTHORIZATION "<app-service-principal>";
+```
+
+Runs are attributed to the actual user via `created_by`. No setup is needed for the
+browser destination. The SP does **not** need a project-level permission (Settings →
+Permissions) to connect — access is controlled entirely by the OAuth Postgres role above.
+
 ### Best Practices & Docs
 Curated guidance for running OLTP / reverse-ETL workloads on Lakebase (the Optimize tab
 automates many of these checks against your live database), plus an in-app Docs page that
