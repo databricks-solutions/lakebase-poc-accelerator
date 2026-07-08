@@ -502,24 +502,30 @@ def _ip_acl_suggestion(ws: WorkspaceClient, cause: Optional[str]) -> Optional[st
         f"(Settings → Security → IP access list, or the CLI below)."
     )
     if ip:
-        label = "lakebase-pgbench-" + ip.replace(".", "-").replace(":", "-")
+        # One stable-label entry that is created once and *updated* when the cluster's
+        # egress IP rotates — avoids accumulating a new single-IP allow entry per IP.
+        label = "lakebase-pgbench-egress"
         json_body = (
-            "'{\"label\":\"" + label + "\",\"list_type\":\"ALLOW\","
+            "'{\"label\":\"" + label + "\",\"list_type\":\"ALLOW\",\"enabled\":true,"
             + "\"ip_addresses\":[\"" + ip + "/32\"]}'"
         )
-        cmd = f"databricks ip-access-lists create -p <profile> --json {json_body}"
-        msg += (
-            "\n\nRun this with the Databricks CLI on your machine (not in the app), "
-            "authenticated as an admin of that workspace:\n  " + cmd
-        )
-        hint = (
-            f"whose host is {host}" if host else "pointing at this workspace"
+        create_cmd = f"databricks ip-access-lists create -p <profile> --json {json_body}"
+        list_cmd = "databricks ip-access-lists list -p <profile>"
+        update_cmd = (
+            f"databricks ip-access-lists update <list_id> -p <profile> --json {json_body}"
         )
         msg += (
-            f"\n\nReplace `<profile>` with the ~/.databrickscfg profile {hint} — run "
-            f"`databricks auth profiles` to find it. (The CLI has no `--host` flag; "
-            f"without `-p` it uses your DEFAULT profile, which may be a different "
-            f"workspace.)"
+            "\n\nRun the Databricks CLI on your machine (not in the app), authenticated "
+            "as an admin of that workspace:"
+            f"\n\n• First time — add the IP:\n  {create_cmd}"
+            "\n\n• If it already exists (the egress IP changed) — update that entry in "
+            f"place. Find its id with `{list_cmd}` (the `{label}` row), then:\n  {update_cmd}"
+        )
+        hint = f"whose host is {host}" if host else "pointing at this workspace"
+        msg += (
+            f"\n\nReplace `<profile>` with the ~/.databrickscfg profile {hint} (run "
+            f"`databricks auth profiles`). The CLI has no `--host` flag; without `-p` it "
+            f"uses your DEFAULT profile, which may be a different workspace."
         )
     return msg
 
