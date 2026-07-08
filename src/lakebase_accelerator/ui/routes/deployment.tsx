@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
@@ -39,11 +40,13 @@ import {
   useListLakebaseBranches,
   useCreateSyncedTable,
   useCheckSyncRequirements,
+  useGetSyncedTableStatus,
   useGetTableSize,
   useListWarehouses,
   useGetWorkspaceInfo,
   type SizingOut,
   type SyncCheckOut,
+  type SyncStatusOut,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/deployment")({
@@ -102,6 +105,8 @@ interface SyncRow {
   result?: { ok: boolean; detail: string };
   // Last uncompressed-size measurement of the source table.
   size?: { ok: boolean; message: string };
+  // Live replication status of the synced table (pipeline id, state, last sync).
+  status?: SyncStatusOut;
 }
 
 const emptyRow: SyncRow = {
@@ -452,11 +457,30 @@ function defaultBranch(branches: string[]): string {
   return branches.find((b) => branchLabel(b) === "production") ?? branches[0] ?? "";
 }
 
+// Turn the raw SYNCED_TABLE_* enum into a short, human label.
+function syncStateLabel(state: string | null | undefined): string {
+  if (!state) return "Unknown";
+  return state
+    .replace(/^SYNCED_TABLE_/, "")
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Color + wording per status bucket returned by the backend (ok | syncing | failed).
+const SYNC_STATUS_STYLES: Record<string, { dot: string; text: string }> = {
+  ok: { dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  syncing: { dot: "bg-amber-500 animate-pulse", text: "text-amber-600 dark:text-amber-400" },
+  failed: { dot: "bg-red-500", text: "text-red-600 dark:text-red-400" },
+  unknown: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
+};
+
 function SyncSection({ projectLabel }: { projectLabel: string }) {
   const [rows, setRows] = useState<SyncRow[]>([{ ...sampleRow }]);
   const [warehouseId, setWarehouseId] = useState("");
   const createSync = useCreateSyncedTable();
   const checkReq = useCheckSyncRequirements();
+  const checkStatus = useGetSyncedTableStatus();
   const measureSize = useGetTableSize();
   const { data: whData, isLoading: whLoading } = useListWarehouses();
   const warehouses = whData?.data.warehouses ?? [];
@@ -530,8 +554,21 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
       // Persist the outcome inline (both success and error) so it doesn't vanish
       // like a toast — the user asked to see the message on the page.
       update(i, { result: { ok: res.data.ok, detail: res.data.detail } });
+      // Auto-pull the initial pipeline status right after a successful create.
+      if (res.data.ok) onCheckStatus(i);
     } catch (e) {
       update(i, { result: { ok: false, detail: String(e) } });
+    }
+  };
+
+  const onCheckStatus = async (i: number) => {
+    const row = rows[i];
+    update(i, { status: undefined });
+    try {
+      const res = await checkStatus.mutateAsync({ target_uc_name: row.target_uc_name });
+      update(i, { status: res.data });
+    } catch (e) {
+      update(i, { status: { ok: false, name: row.target_uc_name, exists: false, kind: "unknown", error: String(e) } });
     }
   };
 
@@ -845,6 +882,79 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                   </div>
                 </div>
               )}
+
+              {/* Live replication status: poll the Lakeflow pipeline behind the synced table. */}
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onCheckStatus(i)}
+                    disabled={checkStatus.isPending || !row.target_uc_name}
+                  >
+                    <RefreshCw
+                      className={`mr-1 h-4 w-4 ${checkStatus.isPending ? "animate-spin" : ""}`}
+                    />
+                    Check sync status
+                  </Button>
+                  <InfoTip text="Reads the synced table's Lakeflow pipeline state and last completed sync time. Poll this after creating (snapshot/triggered finish; continuous stays online)." />
+                </div>
+
+                {row.status && (
+                  <div className="rounded-md border p-3 text-xs">
+                    {row.status.error || !row.status.exists ? (
+                      <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span className="whitespace-pre-wrap break-words">
+                          {row.status.error ?? "Synced table not found yet — it may still be provisioning."}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div
+                          className={`flex items-center gap-2 font-medium ${
+                            (SYNC_STATUS_STYLES[row.status.kind ?? "unknown"] ?? SYNC_STATUS_STYLES.unknown).text
+                          }`}
+                        >
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              (SYNC_STATUS_STYLES[row.status.kind ?? "unknown"] ?? SYNC_STATUS_STYLES.unknown).dot
+                            }`}
+                          />
+                          {syncStateLabel(row.status.detailed_state)}
+                        </div>
+                        {row.status.last_sync_time && (
+                          <div className="text-muted-foreground">
+                            Last sync: {row.status.last_sync_time}
+                          </div>
+                        )}
+                        {row.status.message && (
+                          <div className="text-muted-foreground whitespace-pre-wrap break-words">
+                            {row.status.message}
+                          </div>
+                        )}
+                        {row.status.pipeline_id && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <span>
+                              Pipeline <code>{row.status.pipeline_id}</code>
+                            </span>
+                            {host && (
+                              <a
+                                href={`${host}/pipelines/${row.status.pipeline_id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                              >
+                                Open in Lakeflow <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

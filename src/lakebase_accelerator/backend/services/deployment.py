@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.errors import NotFound
 from databricks.sdk.service import postgres as pg
 
 from .lakebase_service import _resolve_project_name
@@ -343,3 +344,71 @@ def create_synced_table(
     )
     result = op.wait()
     return result.name or target_uc_name
+
+
+# Map the raw SyncedTableState enum to a compact status bucket the UI can color:
+# "ok" (steady/online), "syncing" (provisioning or an update in flight), or "failed".
+_SYNCED_STATE_KIND = {
+    "SYNCED_TABLE_ONLINE": "ok",
+    "SYNCED_TABLE_ONLINE_NO_PENDING_UPDATE": "ok",
+    "SYNCED_TABLE_ONLINE_CONTINUOUS_UPDATE": "ok",
+    "SYNCED_TABLE_ONLINE_TRIGGERED_UPDATE": "syncing",
+    "SYNCED_TABLE_ONLINE_UPDATING_PIPELINE_RESOURCES": "syncing",
+    "SYNCED_TABLE_PROVISIONING": "syncing",
+    "SYNCED_TABLE_PROVISIONING_INITIAL_SNAPSHOT": "syncing",
+    "SYNCED_TABLE_PROVISIONING_PIPELINE_RESOURCES": "syncing",
+    "SYNCED_TABLE_OFFLINE": "failed",
+    "SYNCED_TABLE_OFFLINE_FAILED": "failed",
+    "SYNCED_TABLE_ONLINE_PIPELINE_FAILED": "failed",
+}
+
+
+@dataclass
+class SyncedTableStatusInfo:
+    ok: bool
+    name: str
+    exists: bool = False
+    detailed_state: Optional[str] = None  # raw SyncedTableState enum value
+    kind: str = "unknown"                 # ok | syncing | failed | unknown
+    pipeline_id: Optional[str] = None
+    last_sync_time: Optional[str] = None  # ISO-ish timestamp of the last completed sync
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+def get_synced_table_status(ws: WorkspaceClient, name: str) -> SyncedTableStatusInfo:
+    """Read the live replication status of a synced table via ``w.postgres``.
+
+    ``name`` is the synced table's three-part UC name (the ``synced_table_id`` /
+    ``target_uc_name`` used at creation). Surfaces the Lakeflow pipeline id (so the UI
+    can deep-link to it), the detailed state, and the last completed sync time.
+    """
+    if not _TABLE_NAME_RE.match(name):
+        return SyncedTableStatusInfo(
+            ok=False, name=name, error="name must be a three-part UC name catalog.schema.table"
+        )
+    try:
+        st = ws.postgres.get_synced_table(name=name)
+    except NotFound:
+        # Not created yet (or wrong name). Let the UI show its "still provisioning" hint.
+        return SyncedTableStatusInfo(ok=True, name=name, exists=False)
+    except Exception as e:  # noqa: BLE001
+        return SyncedTableStatusInfo(ok=False, name=name, exists=False, error=str(e))
+
+    status = st.status
+    if status is None:
+        return SyncedTableStatusInfo(ok=True, name=st.name or name, exists=True, kind="unknown")
+
+    raw_state = status.detailed_state
+    state_str = raw_state.value if hasattr(raw_state, "value") else (str(raw_state) if raw_state else None)
+    last_sync = getattr(status, "last_sync_time", None)
+    return SyncedTableStatusInfo(
+        ok=True,
+        name=st.name or name,
+        exists=True,
+        detailed_state=state_str,
+        kind=_SYNCED_STATE_KIND.get(state_str or "", "unknown"),
+        pipeline_id=status.pipeline_id,
+        last_sync_time=str(last_sync) if last_sync else None,
+        message=status.message,
+    )

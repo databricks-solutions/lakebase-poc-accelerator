@@ -68,7 +68,6 @@ import {
   useSubmitLocalPgbench,
   useGetLocalPgbenchStatus,
   useGetTestingCapabilities,
-  useListClusters,
   useEnableLakebaseHistory,
   useArchiveLakebaseHistory,
   useListLakebaseHistory,
@@ -1804,7 +1803,6 @@ function PgbenchTab() {
   const [conn, setConn] = useState<ConnectionConfig>(emptyConnection);
   const [config, setConfig] = useState<PgbenchConfigState>(PGBENCH_DEFAULT_CONFIG);
   const [queries, setQueries] = useState<QueryRow[]>(SAMPLE_QUERIES);
-  const [clusterId, setClusterId] = useState<string>("auto");
   const [runMode, setRunMode] = useState<"job" | "local">("job");
   const [submitted, setSubmitted] = useState<PgbenchRunInfo | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
@@ -1823,8 +1821,6 @@ function PgbenchTab() {
   const [explainBefore, setExplainBefore] = useState<ExplainResultOut[] | null>(null);
   const [explainAnalyze, setExplainAnalyze] = useState(true);
   const [verifying, setVerifying] = useState(false);
-  const clustersQuery = useListClusters();
-  const clusters = clustersQuery.data?.data.clusters ?? [];
   const { data: wsInfo } = useGetWorkspaceInfo();
   const host = wsInfo?.data.host;
 
@@ -1880,7 +1876,6 @@ function PgbenchTab() {
       ...body(),
       config,
       queries,
-      cluster_id: clusterId === "auto" ? null : clusterId,
     };
     // A fresh run (not the re-run after applying indexes) starts a new lineage.
     if (!baselineRef.current) {
@@ -2134,27 +2129,6 @@ function PgbenchTab() {
                 </Select>
               </div>
             )}
-            {!isLocal && (
-              <div className="grid gap-2">
-                <LabelWithTip
-                  label="Cluster"
-                  tip="Which compute runs the pgbench job. Auto provisions a right-sized single-node job cluster; or attach an existing interactive cluster."
-                />
-                <Select value={clusterId} onValueChange={setClusterId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={clustersQuery.isLoading ? "Loading…" : "Auto job cluster"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto job cluster</SelectItem>
-                    {clusters.map((c) => (
-                      <SelectItem key={c.cluster_id} value={c.cluster_id}>
-                        {c.cluster_name} · {c.state}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
           {isLocal && (
             <p className="text-xs text-muted-foreground">
@@ -2307,6 +2281,13 @@ function PgbenchTab() {
                 </a>
               )}
             </div>
+
+            {status?.status === "failed" && status?.error && (
+              <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="whitespace-pre-wrap break-words">{status.error}</span>
+              </div>
+            )}
 
             <Tabs defaultValue="metrics">
               <TabsList>

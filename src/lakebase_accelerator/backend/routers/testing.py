@@ -186,7 +186,6 @@ class PgbenchSubmitIn(BaseModel):
     # workload — same unified query format as psycopg (QueryIn)
     config: PgbenchConfigIn = Field(default_factory=PgbenchConfigIn)
     queries: list[QueryIn] = Field(default_factory=list)
-    cluster_id: str | None = None
 
 
 class PgbenchSubmitOut(BaseModel):
@@ -206,18 +205,6 @@ class PgbenchStatusOut(BaseModel):
     message: str
     progress: int
     pgbench_results: dict | None = None
-    error: str | None = None
-
-
-class ClusterOut(BaseModel):
-    cluster_id: str
-    cluster_name: str
-    state: str
-    node_type_id: str | None = None
-
-
-class ClusterListOut(BaseModel):
-    clusters: list[ClusterOut] = Field(default_factory=list)
     error: str | None = None
 
 
@@ -266,7 +253,6 @@ def submit_pgbench_job(req: PgbenchSubmitIn, ws: EffectiveClient, request: Reque
             creds=creds,
             config=req.config.model_dump(),
             queries=pgbench_queries,
-            cluster_id=req.cluster_id,
             schema=req.db_schema,
         )
         monitoring_url = lakebase_service.build_monitoring_url(ws, creds)
@@ -292,23 +278,6 @@ def get_pgbench_run_status(run_id: str, request: Request) -> PgbenchStatusOut:
         return PgbenchStatusOut(
             run_id=run_id, status="failed", message=str(e), progress=0, error=str(e)
         )
-
-
-@router.get(
-    "/testing/clusters",
-    response_model=ClusterListOut,
-    operation_id="listClusters",
-)
-def list_clusters(request: Request) -> ClusterListOut:
-    """List interactive clusters available to attach the pgbench job to (optional).
-
-    Listed under the app SP that owns/runs the job (Clusters API needs workspace scopes
-    the OBO user token lacks)."""
-    try:
-        return ClusterListOut(clusters=[ClusterOut(**c) for c in pgbench_job.list_clusters(_app_sp(request))])
-    except Exception as e:  # noqa: BLE001
-        logger.info(f"cluster listing failed: {e}")
-        return ClusterListOut(error=str(e))
 
 
 # --------------------------------------------------------------------------- #

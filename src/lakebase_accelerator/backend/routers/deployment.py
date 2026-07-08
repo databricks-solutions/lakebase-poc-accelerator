@@ -293,3 +293,35 @@ def create_synced_table(req: SyncTableIn, ws: EffectiveClient) -> OpResultOut:
     except Exception as e:  # noqa: BLE001
         logger.info(f"create_synced_table failed: {e}")
         return OpResultOut(ok=False, detail=str(e))
+
+
+class SyncStatusIn(BaseModel):
+    # Three-part UC name (the target_uc_name / synced_table_id used at creation).
+    target_uc_name: str
+
+
+class SyncStatusOut(BaseModel):
+    ok: bool
+    name: str
+    exists: bool = False
+    detailed_state: str | None = None
+    kind: str = "unknown"  # ok | syncing | failed | unknown
+    pipeline_id: str | None = None
+    last_sync_time: str | None = None
+    message: str | None = None
+    error: str | None = None
+
+
+@router.post(
+    "/deployment/sync-status",
+    response_model=SyncStatusOut,
+    operation_id="getSyncedTableStatus",
+)
+def get_synced_table_status(req: SyncStatusIn, ws: EffectiveClient) -> SyncStatusOut:
+    """Read a synced table's live replication status (pipeline id, state, last sync)."""
+    r = deployment.get_synced_table_status(ws, req.target_uc_name)
+    return SyncStatusOut(
+        ok=r.ok, name=r.name, exists=r.exists, detailed_state=r.detailed_state,
+        kind=r.kind, pipeline_id=r.pipeline_id, last_sync_time=r.last_sync_time,
+        message=r.message, error=r.error,
+    )

@@ -38,16 +38,6 @@ export interface BranchListOut {
 export interface CapabilitiesOut {
     pgbench_local_available?: boolean;
 }
-export interface ClusterListOut {
-    clusters?: ClusterOut[];
-    error?: string | null;
-}
-export interface ClusterOut {
-    cluster_id: string;
-    cluster_name: string;
-    node_type_id?: string | null;
-    state: string;
-}
 export interface ComplexValue {
     display?: string | null;
     primary?: boolean | null;
@@ -265,7 +255,6 @@ export interface PgbenchStatusOut {
 export interface PgbenchSubmitIn {
     access_token?: string | null;
     auth_method?: "identity" | "oauth";
-    cluster_id?: string | null;
     config?: PgbenchConfigIn;
     database?: string | null;
     db_schema?: string | null;
@@ -396,6 +385,20 @@ export interface SyncCheckOut {
     ok: boolean;
     table_exists: boolean;
     verified: boolean;
+}
+export interface SyncStatusIn {
+    target_uc_name: string;
+}
+export interface SyncStatusOut {
+    detailed_state?: string | null;
+    error?: string | null;
+    exists?: boolean;
+    kind?: string;
+    last_sync_time?: string | null;
+    message?: string | null;
+    name: string;
+    ok: boolean;
+    pipeline_id?: string | null;
 }
 export interface SyncTableIn {
     branch?: string | null;
@@ -876,6 +879,42 @@ export function useCreateSyncedTable(options?: {
 }) {
     return useMutation({
         mutationFn: (data)=>createSyncedTable(data),
+        ...options?.mutation
+    });
+}
+export const getSyncedTableStatus = async (data: SyncStatusIn, options?: RequestInit): Promise<{
+    data: SyncStatusOut;
+}> =>{
+    const res = await fetch("/api/deployment/sync-status", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useGetSyncedTableStatus(options?: {
+    mutation?: UseMutationOptions<{
+        data: SyncStatusOut;
+    }, ApiError, SyncStatusIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>getSyncedTableStatus(data),
         ...options?.mutation
     });
 }
@@ -1560,58 +1599,6 @@ export function useGetTestingCapabilitiesSuspense<TData = {
     return useSuspenseQuery({
         queryKey: getTestingCapabilitiesKey(),
         queryFn: ()=>getTestingCapabilities(),
-        ...options?.query
-    });
-}
-export const listClusters = async (options?: RequestInit): Promise<{
-    data: ClusterListOut;
-}> =>{
-    const res = await fetch("/api/testing/clusters", {
-        ...options,
-        method: "GET"
-    });
-    if (!res.ok) {
-        const body = await res.text();
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(body);
-        } catch  {
-            parsed = body;
-        }
-        throw new ApiError(res.status, res.statusText, parsed);
-    }
-    return {
-        data: await res.json()
-    };
-};
-export const listClustersKey = ()=>{
-    return [
-        "/api/testing/clusters"
-    ] as const;
-};
-export function useListClusters<TData = {
-    data: ClusterListOut;
-}>(options?: {
-    query?: Omit<UseQueryOptions<{
-        data: ClusterListOut;
-    }, ApiError, TData>, "queryKey" | "queryFn">;
-}) {
-    return useQuery({
-        queryKey: listClustersKey(),
-        queryFn: ()=>listClusters(),
-        ...options?.query
-    });
-}
-export function useListClustersSuspense<TData = {
-    data: ClusterListOut;
-}>(options?: {
-    query?: Omit<UseSuspenseQueryOptions<{
-        data: ClusterListOut;
-    }, ApiError, TData>, "queryKey" | "queryFn">;
-}) {
-    return useSuspenseQuery({
-        queryKey: listClustersKey(),
-        queryFn: ()=>listClusters(),
         ...options?.query
     });
 }

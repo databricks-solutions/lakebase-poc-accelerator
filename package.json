@@ -31,7 +31,7 @@
         "@opentelemetry/exporter-logs-otlp-http": "^0.219.0",
         "@opentelemetry/resources": "^2.8.0",
         "@opentelemetry/sdk-logs": "^0.219.0",
-        "@tailwindcss/vite": "^0.0.0-insiders.94f7907",
+        "@tailwindcss/vite": "^4.3.2",
         "@tanstack/router-generator": "^1.167.17",
         "@tanstack/router-plugin": "^1.168.18",
         "@types/node": "25.0.3",
@@ -42,8 +42,8 @@
         "typescript": "5.9.3",
         "vite": "^8.1.0"
     },
-    "//overrides": "apx 0.3.8 rewrites the vite devDependency to ^7.3.6 on every `apx dev` run, but ships @vitejs/plugin-react@6 which requires vite ^8 (it imports vite/internal). This override forces a coherent vite 8.1.0 resolution regardless. Remove once apx pins a compatible vite+plugin-react pair.",
-    "overrides": {
+    "//resolutions": "apx 0.3.8 rewrites the vite devDependency to ^7.3.6 on every `apx dev` run, but ships @vitejs/plugin-react@6 which requires vite ^8 (it imports vite/internal). This pin forces a coherent vite 8.1.0 resolution regardless. Uses `resolutions` (honored by bun, our package manager; ignored by npm) rather than `overrides` — an npm `overrides` entry for a package that is also a direct dependency errors with EOVERRIDE, which breaks any `npx` run from this dir. Remove once apx pins a compatible vite+plugin-react pair.",
+    "resolutions": {
         "vite": "8.1.0"
     }
 }

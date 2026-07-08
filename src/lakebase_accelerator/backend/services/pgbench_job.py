@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -37,6 +38,37 @@ _WS_DIR = "/Shared/pgbench_resources"
 _NOTEBOOK_WS_PATH = f"{_WS_DIR}/pgbench_parameterized"
 _INIT_SCRIPT_WS_PATH = f"{_WS_DIR}/init.sh"
 _JOB_NAME = "lakebase_accelerator_pgbench_job"
+# App-owned dedicated benchmark cluster (one per workspace, looked up by name). Owning a
+# cluster the app SP creates makes the app self-sufficient in any workspace instead of
+# depending on a pre-existing cluster, and reusing it keeps a stable egress IP for the
+# cluster's lifetime (far fewer workspace IP-ACL edits than an ephemeral job cluster).
+_CLUSTER_NAME = "lakebase_accelerator_pgbench_cluster"
+# Auto-termination window (minutes) for the app-owned cluster, deployment-configurable via
+# PGBENCH_CLUSTER_AUTOTERMINATION_MIN. Lower = less idle cost but the egress IP is more
+# likely to rotate on restart (→ another IP-ACL allow); 0 disables auto-termination for a
+# stable "allow the IP once" setup at the cost of an always-on cluster. Databricks requires
+# either 0 or >= 10 minutes.
+_CLUSTER_AUTOTERMINATION_ENV = "PGBENCH_CLUSTER_AUTOTERMINATION_MIN"
+_CLUSTER_AUTOTERMINATION_DEFAULT_MIN = 30
+
+
+def _cluster_autotermination_min() -> int:
+    """Resolve the configured auto-termination window, clamped to Databricks' rules
+    (0 = never, otherwise a minimum of 10 minutes)."""
+    raw = os.environ.get(_CLUSTER_AUTOTERMINATION_ENV)
+    if raw is None or not raw.strip():
+        return _CLUSTER_AUTOTERMINATION_DEFAULT_MIN
+    try:
+        minutes = int(raw)
+    except ValueError:
+        logger.info(
+            f"pgbench cluster: invalid {_CLUSTER_AUTOTERMINATION_ENV}={raw!r}; "
+            f"using default {_CLUSTER_AUTOTERMINATION_DEFAULT_MIN}"
+        )
+        return _CLUSTER_AUTOTERMINATION_DEFAULT_MIN
+    if minutes <= 0:
+        return 0
+    return max(minutes, 10)
 
 _SPARK_VERSION = "14.3.x-scala2.12"
 _TIMEOUT_SECONDS = 3600
@@ -65,36 +97,19 @@ _INSTANCE_MAP = {
     "gcp": {"small": "n2-highmem-4", "medium": "n2-highmem-8", "large": "n2-highmem-16",
             "xlarge": "n2-highmem-32", "2xlarge": "n2-highmem-64"},
 }
-# (tier, max_threads, memory_gb)
-_TIERS = [("small", 4, 16), ("medium", 8, 32), ("large", 16, 64),
-          ("xlarge", 32, 128), ("2xlarge", 64, 256)]
+# Fixed at the largest single-node tier (64 vCPU / 256 GB). The shared benchmark cluster
+# is one fixed size for *all* runs so per-run concurrency (clients/threads) never reshapes
+# it — that removes the resize→restart→egress-IP-rotation conflict between concurrent
+# users, and guarantees the single-process pgbench load generator is never the bottleneck
+# (up to the UI's 1000-client / 100-thread ceiling) so measurements reflect Lakebase.
+_BENCHMARK_TIER = "2xlarge"
 
 
-def _node_type_for_workload(ws: WorkspaceClient, threads: int, clients: int) -> str:
-    """Pick a single-node instance sized to the pgbench worker threads and clients.
-
-    Primary criterion is worker threads → cores (capped at 64); the tier is then
-    upgraded if the client count needs more memory (~200 MB per client).
-    """
+def _benchmark_node_type(ws: WorkspaceClient) -> str:
+    """Return the fixed max-tier single-node instance type for the detected cloud."""
     cloud = _detect_cloud(ws)
-    threads = min(max(threads, 1), 64)
-    required_mem_gb = (clients * 200) / 1024
-
-    tier, tier_mem = "2xlarge", 256
-    for name, max_threads, mem in _TIERS:
-        if threads <= max_threads:
-            tier, tier_mem = name, mem
-            break
-    if required_mem_gb > tier_mem:
-        for name, _max_threads, mem in _TIERS:
-            if required_mem_gb <= mem:
-                tier, tier_mem = name, mem
-                break
-        else:
-            tier, tier_mem = "2xlarge", 256
-
-    node_type = _INSTANCE_MAP.get(cloud, _INSTANCE_MAP["aws"])[tier]
-    logger.info(f"pgbench job: node_type={node_type} (tier {tier}) for {threads}t/{clients}c on {cloud}")
+    node_type = _INSTANCE_MAP.get(cloud, _INSTANCE_MAP["aws"])[_BENCHMARK_TIER]
+    logger.info(f"pgbench cluster: node_type={node_type} (fixed {_BENCHMARK_TIER}) on {cloud}")
     return node_type
 
 
@@ -167,6 +182,57 @@ def _workspace_url(ws: WorkspaceClient) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# App-owned benchmark cluster
+# --------------------------------------------------------------------------- #
+def _benchmark_cluster_config(ws: WorkspaceClient, node_type: str) -> dict:
+    """All-purpose single-node cluster spec for the app-owned pgbench cluster.
+
+    Reuses the job-cluster builder (single-node, init script that installs
+    ``postgresql-client``, sizing) and adds the bits an interactive cluster needs: a
+    stable name, auto-termination, and a lookup tag.
+    """
+    cfg = _new_cluster_config(ws, node_type, _current_identity(ws), _upload_init_script(ws))
+    cfg["cluster_name"] = _CLUSTER_NAME
+    cfg["autotermination_minutes"] = _cluster_autotermination_min()
+    cfg["custom_tags"] = {**cfg.get("custom_tags", {}), "pgbench_cluster": "true"}
+    return cfg
+
+
+def _find_benchmark_cluster(ws: WorkspaceClient) -> Optional[Any]:
+    for c in ws.clusters.list():
+        if c.cluster_name == _CLUSTER_NAME:
+            return c
+    return None
+
+
+def _get_or_create_benchmark_cluster(ws: WorkspaceClient) -> str:
+    """Return the app-owned dedicated pgbench cluster, creating it if absent.
+
+    The app service principal owns one fixed-size single-node cluster per workspace
+    (looked up by name), so the app works in every workspace with no pre-provisioning and
+    every run reuses the same warm cluster — no per-run resize, so no restart and a stable
+    egress IP. A terminated cluster is auto-started when the job attaches. If the fixed
+    tier changed (a redeploy) the existing cluster is edited to match.
+    """
+    node_type = _benchmark_node_type(ws)
+    existing = _find_benchmark_cluster(ws)
+    cfg = _benchmark_cluster_config(ws, node_type)
+    if existing is None:
+        resp = ws.api_client.do("POST", "/api/2.0/clusters/create", body=cfg)
+        cluster_id = str(resp.get("cluster_id")) if isinstance(resp, dict) else ""
+        logger.info(f"pgbench cluster: created {cluster_id} (node_type={node_type})")
+        return cluster_id
+
+    cluster_id = existing.cluster_id or ""
+    if (existing.node_type_id or "") != node_type:
+        ws.api_client.do("POST", "/api/2.0/clusters/edit", body={**cfg, "cluster_id": cluster_id})
+        logger.info(f"pgbench cluster: reconciled {cluster_id} to node_type={node_type}")
+    else:
+        logger.info(f"pgbench cluster: reusing {cluster_id} (node_type={node_type})")
+    return cluster_id
+
+
+# --------------------------------------------------------------------------- #
 # Job lifecycle
 # --------------------------------------------------------------------------- #
 def _find_job_id(ws: WorkspaceClient, name: str) -> Optional[int]:
@@ -176,20 +242,15 @@ def _find_job_id(ws: WorkspaceClient, name: str) -> Optional[int]:
     return None
 
 
-def _get_or_create_job(ws: WorkspaceClient, cluster_id: Optional[str], node_type: str) -> str:
-    """Return the reusable pgbench job, creating or re-pointing its cluster as needed."""
+def _get_or_create_job(ws: WorkspaceClient, cluster_id: str) -> str:
+    """Return the reusable pgbench job, pointed at the app-owned benchmark cluster."""
     notebook_path = _upload_notebook(ws)
     task: dict[str, Any] = {
         "task_key": "pgbench_test",
         "notebook_task": {"notebook_path": notebook_path, "base_parameters": {}},
         "timeout_seconds": _TIMEOUT_SECONDS,
+        "existing_cluster_id": cluster_id,
     }
-    if cluster_id and cluster_id.strip():
-        task["existing_cluster_id"] = cluster_id.strip()
-    else:
-        task["new_cluster"] = _new_cluster_config(
-            ws, node_type, _current_identity(ws), _upload_init_script(ws)
-        )
 
     settings = {
         "name": _JOB_NAME,
@@ -205,7 +266,7 @@ def _get_or_create_job(ws: WorkspaceClient, cluster_id: Optional[str], node_type
         logger.info(f"pgbench job: created job {job_id}")
         return job_id
 
-    # Reset so the cluster (existing vs job cluster) always matches this request.
+    # Reset so the job always points at the current benchmark cluster.
     ws.api_client.do(
         "POST", "/api/2.1/jobs/reset", body={"job_id": existing_id, "new_settings": settings}
     )
@@ -219,7 +280,6 @@ def submit(
     creds: PgCredentials,
     config: dict[str, Any],
     queries: list[dict[str, Any]],
-    cluster_id: Optional[str] = None,
     schema: Optional[str] = None,
 ) -> dict[str, Any]:
     """Submit a pgbench run and return job/run identifiers and workspace links."""
@@ -233,10 +293,10 @@ def submit(
             "Reduce the number/size of queries."
         )
 
-    node_type = _node_type_for_workload(
-        ws, int(config.get("jobs", 8)), int(config.get("clients", 8))
-    )
-    job_id = _get_or_create_job(ws, cluster_id, node_type)
+    # Always run on the app-owned, fixed-size dedicated cluster (portable across
+    # workspaces, stable egress IP, no per-run resize).
+    cluster_id = _get_or_create_benchmark_cluster(ws)
+    job_id = _get_or_create_job(ws, cluster_id)
 
     params = {
         "lakebase_instance_name": creds.host,
@@ -308,7 +368,95 @@ def run_status(ws: WorkspaceClient, run_id: str) -> dict[str, Any]:
             out["pgbench_results"] = _fetch_pgbench_results(ws, run)
         except Exception as e:  # noqa: BLE001
             logger.info(f"pgbench job: could not read run output: {e}")
+    elif status == "failed":
+        out["error"] = _failure_detail(ws, run)
     return out
+
+
+def _failure_detail(ws: WorkspaceClient, run: Any) -> Optional[str]:
+    """Extract the underlying failure cause from the run and, when it's a recognizable
+    permission problem, append an actionable suggestion for the user."""
+    causes: list[str] = []
+    state = run.state
+    if state and getattr(state, "state_message", None):
+        causes.append(state.state_message)
+    for task in run.tasks or []:
+        ts = getattr(task, "state", None)
+        msg = getattr(ts, "state_message", None) if ts else None
+        if msg and msg not in causes:
+            causes.append(msg)
+        # The pgbench stderr (e.g. an IP-ACL rejection) surfaces in the task's run
+        # output error, not the state message, so pull that too.
+        tr_id = getattr(task, "run_id", None)
+        if tr_id:
+            try:
+                out = ws.jobs.get_run_output(tr_id)
+                err = getattr(out, "error", None) if out else None
+                if err and err not in causes:
+                    causes.append(err)
+            except Exception:  # noqa: BLE001
+                pass
+    cause = "\n".join(causes).strip()
+
+    suggestion = _permission_suggestion(ws, cause) or _ip_acl_suggestion(cause)
+    if suggestion:
+        return f"{cause}\n\n{suggestion}" if cause else suggestion
+    return cause or None
+
+
+def _permission_suggestion(ws: WorkspaceClient, cause: str) -> Optional[str]:
+    """If the failure is a cluster-create permission denial, explain the fix.
+
+    The pgbench job cluster is created by the app *service principal*, so the fix is to
+    grant that SP the cluster-create entitlement (or reuse an existing cluster)."""
+    low = (cause or "").lower()
+    is_cluster_perm = "not authorized to create clusters" in low or (
+        "permission_denied" in low and "cluster" in low
+    )
+    if not is_cluster_perm:
+        return None
+    try:
+        sp = _current_identity(ws)
+    except Exception:  # noqa: BLE001
+        sp = "the app service principal"
+    return (
+        f"The pgbench job cluster is created by this app's service principal ({sp}), "
+        f"which is not authorized to create clusters in this workspace. To fix this, ask "
+        f"a workspace admin to grant that service principal the \"Allow unrestricted "
+        f"cluster creation\" entitlement (Settings → Identity and access → Service "
+        f"principals → select the SP → Entitlements), or select an existing cluster in "
+        f"the Cluster field before submitting so no new cluster needs to be created."
+    )
+
+
+def _ip_acl_suggestion(cause: Optional[str]) -> Optional[str]:
+    """If the failure is a workspace IP-ACL rejection, extract the blocked source IP and
+    explain the one-time allow-list fix.
+
+    Lakebase connections traverse the public endpoint and are gated by the *workspace*
+    IP access list. A benchmark cluster's egress IP that isn't on the allow-list is
+    dropped at the edge with ``FATAL: External authorization failed`` before auth."""
+    low = (cause or "").lower()
+    if "external authorization failed" not in low and "blocked by databricks ip acl" not in low:
+        return None
+    m = re.search(r"source ip address:\s*([0-9a-fA-F:.]+)", cause or "", re.IGNORECASE)
+    ip = m.group(1).rstrip(".") if m else None
+
+    msg = (
+        f"The pgbench cluster's egress IP{f' ({ip})' if ip else ''} is blocked by this "
+        f"workspace's IP access list, so it can't reach the Lakebase endpoint. Ask a "
+        f"workspace admin to add the source IP to the workspace IP access list "
+        f"(Settings → Security → IP access list)."
+    )
+    if ip:
+        label = "lakebase-pgbench-" + ip.replace(".", "-").replace(":", "-")
+        cmd = (
+            "databricks ip-access-lists create --json "
+            + "'{\"label\":\"" + label + "\",\"list_type\":\"ALLOW\","
+            + "\"ip_addresses\":[\"" + ip + "/32\"]}'"
+        )
+        msg += "\n\nAdd it with:\n  " + cmd
+    return msg
 
 
 def _status_message(life: str, result: Optional[str]) -> str:
@@ -400,21 +548,3 @@ def parse_pgbench_stdout(raw_output: str) -> Optional[dict[str, Any]]:
         results["success_rate"] = round((total - (failed or 0)) / total * 100, 2)
 
     return results if "tps" in results else None
-
-
-# --------------------------------------------------------------------------- #
-# Clusters (optional picker)
-# --------------------------------------------------------------------------- #
-def list_clusters(ws: WorkspaceClient) -> list[dict[str, Any]]:
-    """List interactive clusters the caller can attach the pgbench job to."""
-    out: list[dict[str, Any]] = []
-    for c in ws.clusters.list():
-        out.append(
-            {
-                "cluster_id": c.cluster_id or "",
-                "cluster_name": c.cluster_name or (c.cluster_id or ""),
-                "state": c.state.value if c.state else "UNKNOWN",
-                "node_type_id": c.node_type_id,
-            }
-        )
-    return out
