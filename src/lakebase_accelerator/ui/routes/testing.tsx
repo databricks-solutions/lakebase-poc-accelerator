@@ -2336,6 +2336,9 @@ function PgbenchTab() {
                     Metrics appear once the run completes.
                   </p>
                 )}
+                {r && num(r.latency_p99_ms) != null && num(r.tps) != null && (
+                  <ReferenceBands p99={num(r.latency_p99_ms)!} qps={num(r.tps)!} />
+                )}
                 {r && Array.isArray(r.per_query) && r.per_query.length > 0 && (
                   <div className="mt-6">
                     <h3 className="mb-2 text-sm font-medium">Per-query breakdown</h3>

@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -50,6 +51,13 @@ export function LakebaseConnection({ value, onChange }: Props) {
   const { data, isLoading } = useListLakebaseProjects();
   const projects = data?.data.projects ?? [];
   const set = (patch: Partial<ConnectionConfig>) => onChange({ ...value, ...patch });
+
+  // Unique datalist ids per instance: this component is rendered once per Testing tab and
+  // all tabs stay mounted (forceMount), so a fixed id would collide across tabs and every
+  // input would bind to the first datalist in the DOM (empty for the other tabs).
+  const uid = useId();
+  const dbListId = `lb-databases-${uid}`;
+  const schemaListId = `lb-schemas-${uid}`;
 
   // Populate the database + schema pickers once a project is chosen (identity auth).
   // Best-effort: an empty list just means no suggestions — the fields stay free-text.
@@ -104,12 +112,12 @@ export function LakebaseConnection({ value, onChange }: Props) {
           <div className="grid gap-2">
             <Label>Database (optional)</Label>
             <Input
-              list="lb-databases"
+              list={dbListId}
               placeholder="databricks_postgres"
               value={value.database}
               onChange={(e) => set({ database: e.target.value })}
             />
-            <datalist id="lb-databases">
+            <datalist id={dbListId}>
               {databases.map((d) => (
                 <option key={d} value={d} />
               ))}
@@ -118,12 +126,12 @@ export function LakebaseConnection({ value, onChange }: Props) {
           <div className="grid gap-2 sm:col-span-2">
             <Label>Default schema (search_path)</Label>
             <Input
-              list="lb-schemas"
+              list={schemaListId}
               placeholder="public"
               value={value.db_schema}
               onChange={(e) => set({ db_schema: e.target.value })}
             />
-            <datalist id="lb-schemas">
+            <datalist id={schemaListId}>
               {schemas.map((s) => (
                 <option key={s} value={s} />
               ))}
