@@ -537,7 +537,12 @@ def _ip_acl_suggestion(ws: WorkspaceClient, cause: Optional[str]) -> Optional[st
             + "\"ip_addresses\":[\"" + ip + "/32\"]}'"
         )
         create_cmd = f"databricks ip-access-lists create -p <profile> --json {json_body}"
-        list_cmd = "databricks ip-access-lists list -p <profile>"
+        # Return just the list_id for the stable-label entry, so the user can paste it
+        # straight into <list_id> below instead of eyeballing the full list output.
+        find_id_cmd = (
+            "databricks ip-access-lists list -p <profile> -o json | "
+            f"jq -r '.[] | select(.label==\"{label}\") | .list_id'"
+        )
         update_cmd = (
             f"databricks ip-access-lists update <list_id> -p <profile> --json {json_body}"
         )
@@ -546,7 +551,8 @@ def _ip_acl_suggestion(ws: WorkspaceClient, cause: Optional[str]) -> Optional[st
             "as an admin of that workspace:"
             f"\n\n• First time — add the IP:\n  {create_cmd}"
             "\n\n• If it already exists (the egress IP changed) — update that entry in "
-            f"place. Find its id with `{list_cmd}` (the `{label}` row), then:\n  {update_cmd}"
+            f"place. First get its id (the `{label}` row):\n  {find_id_cmd}\n  then paste "
+            f"that id in place of <list_id>:\n  {update_cmd}"
         )
         hint = f"whose host is {host}" if host else "pointing at this workspace"
         msg += (
