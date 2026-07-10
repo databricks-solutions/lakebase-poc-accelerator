@@ -14,6 +14,8 @@ import {
   Save,
   History,
   RefreshCw,
+  Users,
+  FolderOpen,
   ShieldCheck,
   Info,
   ChevronRight,
@@ -72,6 +74,10 @@ import {
   useArchiveLakebaseHistory,
   useListLakebaseHistory,
   useListLakebaseHistoryTables,
+  useSaveLakebaseQuerySet,
+  useListLakebaseQuerySets,
+  useDeleteLakebaseQuerySet,
+  type SavedQuerySetOut,
   useGetWorkspaceInfo,
   useListWarehouses,
   useGetProjectInfo,
@@ -895,11 +901,265 @@ function RunCostCard({
   );
 }
 
+// useState that persists to localStorage, so values (e.g. the authored query
+// mix) survive route navigation, browser restarts, and app redeploys. Private to
+// the browser/device; not shared across machines or users. For durable, shareable
+// query sets, use the Lakebase "Saved queries" feature.
+function usePersistentState<T>(
+  key: string,
+  initial: T,
+): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [state, setState] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(state));
+    } catch {
+      // ignore quota / serialization errors — persistence is best-effort
+    }
+  }, [key, state]);
+  return [state, setState];
+}
+
+// Saved query sets ("query library") stored in Lakebase under the SP, attributed
+// to the OBO user. Defaults to showing the user's own sets ("Mine"); a toggle adds
+// everyone's shared sets. Saving is upsert-by-name; users can only delete their own.
+function SavedQueriesBar({
+  conn,
+  engine,
+  queries,
+  onLoad,
+}: {
+  conn: ConnectionConfig;
+  engine: Engine;
+  queries: QueryRow[];
+  onLoad: (queries: QueryRow[]) => void;
+}) {
+  const [includeShared, setIncludeShared] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState("");
+  const [shareNew, setShareNew] = useState(false);
+  const [sets, setSets] = useState<SavedQuerySetOut[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+
+  const listSets = useListLakebaseQuerySets();
+  const saveSet = useSaveLakebaseQuerySet();
+  const deleteSet = useDeleteLakebaseQuerySet();
+
+  // Saved sets need a Lakebase connection (identity + a project, or dev OAuth).
+  const connReady = conn.auth_method === "oauth" ? !!conn.endpoint_host : !!conn.project;
+
+  const connBody = () => ({
+    auth_method: conn.auth_method,
+    project: conn.project || null,
+    database: conn.database || null,
+    db_schema: conn.db_schema || null,
+    endpoint_host: conn.endpoint_host || null,
+    access_token: conn.access_token || null,
+    postgres_user_name: conn.postgres_user_name || null,
+  });
+
+  const refresh = async (include = includeShared) => {
+    if (!connReady) return;
+    try {
+      const res = await listSets.mutateAsync({ ...connBody(), include_shared: include });
+      if (res.data.error) {
+        toast.error(res.data.error);
+        return;
+      }
+      setSets(res.data.sets ?? []);
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const selected = sets.find((s) => s.id === selectedId) ?? null;
+
+  const onLoadSelected = () => {
+    if (!selected) return;
+    const rows = (selected.queries ?? []) as unknown as QueryRow[];
+    onLoad(rows.map((q) => ({ identifier: q.identifier, content: q.content })));
+    toast.success(`Loaded "${selected.name}"`);
+  };
+
+  const onSave = async () => {
+    if (!name.trim()) {
+      toast.error("Enter a name for this query set.");
+      return;
+    }
+    try {
+      const res = await saveSet.mutateAsync({
+        ...connBody(),
+        name: name.trim(),
+        engine,
+        shared: shareNew,
+        queries: queries.map((q) => ({ identifier: q.identifier, content: q.content })),
+      });
+      if (!res.data.ok) {
+        toast.error(res.data.message || res.data.error || "Save failed.");
+        return;
+      }
+      toast.success(`Saved "${name.trim()}"${shareNew ? " (shared)" : ""}`);
+      setSaving(false);
+      setName("");
+      setShareNew(false);
+      await refresh();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const onDelete = async () => {
+    if (!selected || !selected.is_mine) return;
+    try {
+      const res = await deleteSet.mutateAsync({ ...connBody(), id: selected.id });
+      if (!res.data.ok) {
+        toast.error(res.data.error || "Delete failed.");
+        return;
+      }
+      toast.success(`Deleted "${selected.name}"`);
+      setSelectedId("");
+      await refresh();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  if (!connReady) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Select a Lakebase project above to save and load reusable query sets.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-1 text-sm font-medium">
+          <FolderOpen className="h-4 w-4" /> Saved queries
+        </span>
+        <Select
+          value={selectedId}
+          onValueChange={setSelectedId}
+          onOpenChange={(open) => open && sets.length === 0 && refresh()}
+        >
+          <SelectTrigger className="h-8 w-64">
+            <SelectValue placeholder={listSets.isPending ? "Loading…" : "Load a saved set…"} />
+          </SelectTrigger>
+          <SelectContent>
+            {sets.length === 0 && (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                No saved sets yet.
+              </div>
+            )}
+            {sets.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+                {s.shared ? " · shared" : ""}
+                {!s.is_mine ? ` · ${s.created_by ?? "someone"}` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="secondary" size="sm" disabled={!selected} onClick={onLoadSelected}>
+          Load
+        </Button>
+        {selected?.is_mine && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            disabled={deleteSet.isPending}
+            title="Delete this saved set"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <Select
+            value={includeShared ? "shared" : "mine"}
+            onValueChange={(v) => {
+              const next = v === "shared";
+              setIncludeShared(next);
+              refresh(next);
+            }}
+          >
+            <SelectTrigger className="h-8 w-44" title="Which saved sets to show">
+              <Users className="mr-1 h-4 w-4 opacity-70" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="mine">Mine only</SelectItem>
+              <SelectItem value="shared">Mine + shared</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={() => refresh()} disabled={listSets.isPending}>
+            <RefreshCw className={`h-4 w-4 ${listSets.isPending ? "animate-spin" : ""}`} />
+          </Button>
+          {!saving ? (
+            <Button variant="outline" size="sm" onClick={() => setSaving(true)}>
+              <Save className="mr-1 h-4 w-4" /> Save current
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {saving && (
+        <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+          <Input
+            className="h-8 max-w-xs"
+            placeholder="Name this query set"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={shareNew}
+              onChange={(e) => setShareNew(e.target.checked)}
+            />
+            Share with team
+          </label>
+          <Button size="sm" onClick={onSave} disabled={saveSet.isPending}>
+            {saveSet.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+            Save
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSaving(false);
+              setName("");
+              setShareNew(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Saving an existing name overwrites it. Shared sets are visible to all app users.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PsycopgTab() {
   const [conn, setConn] = useState<ConnectionConfig>(emptyConnection);
   const [concurrency, setConcurrency] = useState(10);
   const [totalExecutions, setTotalExecutions] = useState(100);
-  const [queries, setQueries] = useState<QueryRow[]>(SAMPLE_QUERIES);
+  const [queries, setQueries] = usePersistentState<QueryRow[]>(
+    "testing.psycopg.queries",
+    SAMPLE_QUERIES,
+  );
   const [report, setReport] = useState<TestReportOut | null>(null);
   const [baseline, setBaseline] = useState<TestReportOut | null>(null);
   const [optimize, setOptimize] = useState<OptimizeOut | null>(null);
@@ -1124,6 +1384,12 @@ function PsycopgTab() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <SavedQueriesBar
+            conn={conn}
+            engine="psycopg"
+            queries={queries}
+            onLoad={(loaded) => setQueries(loaded)}
+          />
           <QueryParamHelp />
           {queries.map((q, i) => (
             <div key={i} className="space-y-2 rounded-lg border p-3">
@@ -1833,7 +2099,10 @@ type PgbenchRunInfo = {
 function PgbenchTab() {
   const [conn, setConn] = useState<ConnectionConfig>(emptyConnection);
   const [config, setConfig] = useState<PgbenchConfigState>(PGBENCH_DEFAULT_CONFIG);
-  const [queries, setQueries] = useState<QueryRow[]>(SAMPLE_QUERIES);
+  const [queries, setQueries] = usePersistentState<QueryRow[]>(
+    "testing.pgbench.queries",
+    SAMPLE_QUERIES,
+  );
   const [runMode, setRunMode] = useState<"job" | "local">("job");
   const [submitted, setSubmitted] = useState<PgbenchRunInfo | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -2227,6 +2496,12 @@ function PgbenchTab() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <SavedQueriesBar
+            conn={conn}
+            engine="pgbench"
+            queries={queries}
+            onLoad={(loaded) => setQueries(loaded)}
+          />
           <p className="text-xs text-muted-foreground">
             Same unified query format as the psycopg tab. <code>-- WEIGHT:</code> sets each
             query's relative transaction weight — pgbench picks scripts in proportion to it over

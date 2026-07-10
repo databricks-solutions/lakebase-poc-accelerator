@@ -66,26 +66,28 @@ def parse_candidate_indexes(queries: list[tuple[str, str]]) -> list[IndexSuggest
     range and ORDER BY columns each get a single-column suggestion. De-duplicated by
     (table, columns).
     """
-    seen: set[tuple[str, tuple[str, ...]]] = set()
+    seen: set[tuple[str, tuple[str, ...], str]] = set()
     suggestions: list[IndexSuggestion] = []
 
-    def add(table: str, cols: list[str], rationale: str) -> None:
+    def add(table: str, cols: list[str], rationale: str, *, gin: bool = False) -> None:
         cols = [c for c in dict.fromkeys(cols)]  # de-dupe, keep order
         if not cols:
             return
-        key = (_bare(table), tuple(cols))
+        key = (_bare(table), tuple(cols), "gin" if gin else "btree")
         if key in seen:
             return
         seen.add(key)
-        name = _index_name(table, cols)
-        col_list = ", ".join(cols)
+        if gin:
+            # JSONB (and array) columns can't use a B-Tree; a GIN index with
+            # jsonb_path_ops backs the containment/path operators (@>, @?, @@).
+            name = _index_name(table, cols) + "_gin"
+            ddl = f"CREATE INDEX IF NOT EXISTS {name} ON {table} USING gin ({cols[0]} jsonb_path_ops);"
+        else:
+            name = _index_name(table, cols)
+            col_list = ", ".join(cols)
+            ddl = f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({col_list});"
         suggestions.append(
-            IndexSuggestion(
-                table=table,
-                columns=cols,
-                rationale=rationale,
-                ddl=f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({col_list});",
-            )
+            IndexSuggestion(table=table, columns=cols, rationale=rationale, ddl=ddl)
         )
 
     for _ident, raw in queries:
@@ -109,6 +111,20 @@ def parse_candidate_indexes(queries: list[tuple[str, str]]) -> list[IndexSuggest
         eq_cols = [c for c in eq_cols if c.lower() not in _SQL_NOISE]
         if eq_cols:
             add(table, eq_cols, "Equality/IN predicate(s) — point-lookup index.")
+
+        # JSONB containment / path predicates (col @> / @? / @@) → GIN index. These
+        # never match the equality/range branches (the operator isn't =/<>), so a
+        # Seq Scan filtering inside a jsonb column would otherwise get no suggestion.
+        for c in re.findall(rf'({_QUALIFIED})\s*@[>?@]', sql):
+            cb = _bare(c)
+            if cb.lower() not in _SQL_NOISE and not re.fullmatch(r'\d+', cb):
+                add(
+                    table,
+                    [cb],
+                    "JSONB containment/path predicate — GIN index (jsonb_path_ops) "
+                    "backs @>, @?, @@ instead of a full scan.",
+                    gin=True,
+                )
 
         # Range predicates → single-column each
         for c in re.findall(rf'({_QUALIFIED})\s*(?:<|>|<=|>=|between)', sql, re.IGNORECASE):

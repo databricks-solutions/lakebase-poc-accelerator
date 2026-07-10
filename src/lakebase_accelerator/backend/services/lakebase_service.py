@@ -89,6 +89,8 @@ def list_projects(ws: WorkspaceClient) -> list[ProjectInfo]:
                     state=str(state) if state is not None else None,
                 )
             )
+    # Sort by display name (case-insensitive) so the project picker is easy to scan.
+    projects.sort(key=lambda p: (p.name or "").casefold())
     return projects
 
 

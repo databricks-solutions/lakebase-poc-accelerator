@@ -228,3 +228,116 @@ def _safe_ddl(schema_name: str, table_name: str) -> str | None:
         return history.ddl(schema_name, table_name)
     except Exception:  # noqa: BLE001
         return None
+
+
+# --------------------------------------------------------------------------- #
+# Saved query sets ("query library") — reusable named query mixes, same SP-owned
+# store + created_by attribution as run history.
+# --------------------------------------------------------------------------- #
+class SavedQuerySaveIn(HistoryConnIn):
+    name: str
+    engine: str | None = None
+    shared: bool = False
+    queries: list[QueryIn] = Field(default_factory=list)
+
+
+class SavedQueryListIn(HistoryConnIn):
+    include_shared: bool = False
+
+
+class SavedQueryDeleteIn(HistoryConnIn):
+    id: str
+
+
+class SavedQuerySetOut(BaseModel):
+    id: str
+    name: str
+    engine: str | None = None
+    shared: bool = False
+    created_by: str | None = None
+    is_mine: bool = False
+    created_at: str | None = None
+    updated_at: str | None = None
+    queries: list[dict] = Field(default_factory=list)
+
+
+class SavedQuerySaveOut(BaseModel):
+    ok: bool
+    id: str | None = None
+    message: str | None = None
+    grant_sql: str | None = None
+    error: str | None = None
+
+
+class SavedQueryListOut(BaseModel):
+    sets: list[SavedQuerySetOut] = Field(default_factory=list)
+    error: str | None = None
+
+
+class SavedQueryDeleteOut(BaseModel):
+    ok: bool
+    deleted: int = 0
+    error: str | None = None
+
+
+@router.post("/library/lakebase/save", response_model=SavedQuerySaveOut, operation_id="saveLakebaseQuerySet")
+def save_lakebase_query_set(req: SavedQuerySaveIn, request: Request, ws: EffectiveClient) -> SavedQuerySaveOut:
+    """Save (upsert by name) the current query mix under the OBO user, into the SP-owned table."""
+    if not req.name.strip():
+        return SavedQuerySaveOut(ok=False, error="A name is required.")
+    if not req.queries:
+        return SavedQuerySaveOut(ok=False, error="No queries to save.")
+    try:
+        creds = _sp_creds(req, request)
+    except Exception as e:  # noqa: BLE001
+        return SavedQuerySaveOut(ok=False, error=str(e))
+    try:
+        ensured = history.ensure_saved_queries_table(creds, req.schema_name)
+        if not ensured.get("ok"):
+            return SavedQuerySaveOut(
+                ok=False, message=ensured.get("message"), grant_sql=ensured.get("grant_sql")
+            )
+        set_id = history.save_query_set(
+            creds,
+            req.schema_name,
+            name=req.name,
+            engine=req.engine,
+            queries=[q.model_dump() for q in req.queries],
+            shared=req.shared,
+            created_by=_current_user(ws),
+        )
+        return SavedQuerySaveOut(ok=True, id=set_id)
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"save query set failed: {e}")
+        return SavedQuerySaveOut(ok=False, error=str(e))
+
+
+@router.post("/library/lakebase/list", response_model=SavedQueryListOut, operation_id="listLakebaseQuerySets")
+def list_lakebase_query_sets(req: SavedQueryListIn, request: Request, ws: EffectiveClient) -> SavedQueryListOut:
+    """List saved query sets visible to the OBO user: their own, plus shared when requested."""
+    try:
+        creds = _sp_creds(req, request)
+        sets = history.list_query_sets(
+            creds,
+            req.schema_name,
+            current_user=_current_user(ws),
+            include_shared=req.include_shared,
+        )
+        return SavedQueryListOut(sets=[SavedQuerySetOut(**s) for s in sets])
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"list query sets failed: {e}")
+        return SavedQueryListOut(error=str(e))
+
+
+@router.post("/library/lakebase/delete", response_model=SavedQueryDeleteOut, operation_id="deleteLakebaseQuerySet")
+def delete_lakebase_query_set(req: SavedQueryDeleteIn, request: Request, ws: EffectiveClient) -> SavedQueryDeleteOut:
+    """Delete one of the OBO user's own saved sets (never someone else's shared set)."""
+    try:
+        creds = _sp_creds(req, request)
+        deleted = history.delete_query_set(
+            creds, req.schema_name, set_id=req.id, created_by=_current_user(ws)
+        )
+        return SavedQueryDeleteOut(ok=True, deleted=deleted)
+    except Exception as e:  # noqa: BLE001
+        logger.info(f"delete query set failed: {e}")
+        return SavedQueryDeleteOut(ok=False, error=str(e))
