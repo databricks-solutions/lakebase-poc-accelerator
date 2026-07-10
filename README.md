@@ -15,6 +15,27 @@ deploys Lakebase; this app proves it's fast and tells you how to make it faster.
 
 ---
 
+## 📑 Table of contents
+
+- [🚀 Getting started (using the deployed app)](#-getting-started-using-the-deployed-app)
+  - [The end-to-end flow: Deploy → Test → Optimize](#the-end-to-end-flow-deploy--test--optimize)
+- [📥 Installing & deploying to a Databricks workspace](#-installing--deploying-to-a-databricks-workspace)
+  - [1. Prerequisites](#1-prerequisites)
+  - [2. Get the code & install required packages](#2-get-the-code--install-required-packages)
+  - [3. Authenticate to the target workspace](#3-authenticate-to-the-target-workspace)
+  - [4. Deploy the app](#4-deploy-the-app)
+  - [5. Grant the app permission to run pgbench (one-time)](#5-grant-the-app-permission-to-run-pgbench-one-time)
+- [🧭 Capabilities](#-capabilities)
+  - [Deployment — size & sync](#deployment--size--sync)
+  - [Concurrency Testing — psycopg & pgbench](#concurrency-testing--psycopg--pgbench)
+  - [Optimize — indexes & live findings](#optimize--indexes--live-findings)
+  - [Cost — actual spend](#cost--actual-spend)
+  - [Run history & permissions](#run-history--permissions)
+  - [Best Practices & Docs](#best-practices--docs)
+- [🔐 Authentication](#-authentication)
+
+---
+
 ## 🚀 Getting started (using the deployed app)
 
 1. **Open the app.** Your admin deploys it as a Databricks App and shares the URL
@@ -124,6 +145,8 @@ Databricks dialog.
 
 ![Deployment page](docs/images/deployment.png)
 
+![Bulk sync — sync multiple Delta tables into Lakebase at once (snapshot, triggered, or continuous)](docs/images/deployment-bulk-sync.png)
+
 ### Concurrency Testing — psycopg & pgbench
 Run your query mix against Lakebase at a **target concurrency level**, and get
 throughput (TPS), success rate, and latency percentiles (p50/p95/p99).
@@ -190,6 +213,11 @@ optimized)** pair — to one of two destinations, chosen at runtime:
 - **Lakebase table** — shared, durable history written into the connected project.
   Opt-in and consent-gated.
 
+Saved runs loaded from **browser storage** — private to your browser, survives refreshes
+and app redeploys:
+
+![Run history — saved psycopg runs loaded from browser storage](docs/images/run-history.png)
+
 **This app is standalone** — it is not attached to any Lakebase project, so it can test
 many projects. For the Lakebase destination it connects as its **service principal** and
 is held to **least privilege**: the SP is confined to a single dedicated schema it *owns*
@@ -219,6 +247,11 @@ CREATE SCHEMA IF NOT EXISTS accelerator_history
 Runs are attributed to the actual user via `created_by`. No setup is needed for the
 browser destination. The SP does **not** need a project-level permission (Settings →
 Permissions) to connect — access is controlled entirely by the OAuth Postgres role above.
+
+Saved runs loaded from the **Lakebase table** — shared, durable history written into the
+connected project and attributed per user:
+
+![Run history — saved psycopg runs loaded from the connected Lakebase database](docs/images/saved-history-from-db.png)
 
 ### Best Practices & Docs
 Curated guidance for running OLTP / reverse-ETL workloads on Lakebase (the Optimize tab
