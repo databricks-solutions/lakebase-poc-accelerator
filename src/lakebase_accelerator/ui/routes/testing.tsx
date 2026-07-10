@@ -24,6 +24,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   ScanSearch,
+  Copy,
+  Check,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/page-header";
@@ -729,6 +731,52 @@ function TestingPage() {
   );
 }
 
+// A single runnable CLI command, rendered as a distinct monospace box with a
+// copy button so it's unmistakably a command (not prose) and easy to grab.
+function CommandLine({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = () => {
+    navigator.clipboard?.writeText(command);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="relative my-1.5">
+      <pre className="overflow-x-auto rounded bg-foreground/10 p-2 pr-9 font-mono text-xs leading-relaxed text-foreground dark:bg-foreground/15">
+        {command}
+      </pre>
+      <button
+        type="button"
+        onClick={onCopy}
+        aria-label={copied ? "Copied" : "Copy command"}
+        className="absolute right-1 top-1 rounded p-1 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
+// Renders a failure message where some lines are runnable CLI commands. Command
+// lines (those starting with `databricks`) become copyable code boxes; everything
+// else stays as prose, so the instruction/command split is obvious at a glance.
+function ErrorDetail({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="min-w-0 flex-1">
+      {lines.map((line, i) =>
+        /^\s*databricks\s/.test(line) ? (
+          <CommandLine key={i} command={line.trim()} />
+        ) : (
+          <p key={i} className="whitespace-pre-wrap break-words">
+            {line || " "}
+          </p>
+        ),
+      )}
+    </div>
+  );
+}
+
 // Client-side backstop so a psycopg run that never returns (endpoint cold-start
 // stall, proxy timeout with no response, a query that never completes) surfaces as
 // a visible failure instead of an infinite "Running…" spinner. The whole batch is
@@ -1355,10 +1403,8 @@ function PsycopgTab() {
               <AlertTriangle className="h-4 w-4" /> Run did not succeed
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="whitespace-pre-wrap break-words text-sm text-red-600 dark:text-red-400">
-              {runError}
-            </p>
+          <CardContent className="text-sm text-red-600 dark:text-red-400">
+            <ErrorDetail text={runError} />
           </CardContent>
         </Card>
       )}
@@ -2415,7 +2461,7 @@ function PgbenchTab() {
       {submitError && (
         <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="whitespace-pre-wrap break-words">{submitError}</span>
+          <ErrorDetail text={submitError} />
         </div>
       )}
 
@@ -2458,7 +2504,7 @@ function PgbenchTab() {
             {status?.status === "failed" && status?.error && (
               <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span className="whitespace-pre-wrap break-words">{status.error}</span>
+                <ErrorDetail text={status.error} />
               </div>
             )}
 
