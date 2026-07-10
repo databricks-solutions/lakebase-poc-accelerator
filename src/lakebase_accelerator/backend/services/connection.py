@@ -207,14 +207,25 @@ class ConnectionPool:
         successful = 0
         failed = 0
         latencies: list[float] = []
+        # Keep the first failure's message so the UI can show *why* a run failed
+        # instead of just a 0% success rate (otherwise failures are silent).
+        sample_error: str | None = None
         for r in results:
             if isinstance(r, BaseException):
                 failed += 1
+                if sample_error is None:
+                    sample_error = f"{type(r).__name__}: {r}"
             elif r.get("success"):
                 successful += 1
                 latencies.append(r["duration_ms"])
             else:
                 failed += 1
+                if sample_error is None:
+                    etype = r.get("error_type")
+                    emsg = r.get("error_message") or "query failed"
+                    qid = r.get("query_identifier")
+                    prefix = f"[{qid}] " if qid else ""
+                    sample_error = f"{prefix}{etype + ': ' if etype else ''}{emsg}"
 
         n = len(results)
         success_rate = successful / n if n else 0.0
@@ -231,6 +242,7 @@ class ConnectionPool:
             "successful_queries": successful,
             "failed_queries": failed,
             "success_rate": success_rate,
+            "sample_error": sample_error,
             "average_execution_time_ms": avg,
             "p50_execution_time_ms": pct(50, latencies),
             "p95_execution_time_ms": pct(95, latencies),

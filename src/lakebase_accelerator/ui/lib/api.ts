@@ -432,6 +432,7 @@ export interface TestReportOut {
     p95_execution_time_ms: number;
     p99_execution_time_ms: number;
     per_query?: QueryStat[];
+    sample_error?: string | null;
     success_rate: number;
     successful_queries: number;
     throughput_queries_per_second: number;

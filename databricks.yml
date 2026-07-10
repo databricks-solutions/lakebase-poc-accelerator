@@ -23,9 +23,12 @@ resources:
       user_api_scopes:
         - postgres        # Lakebase (w.postgres.*) + credential generation
         - sql             # SQL warehouse access (if used)
-      # Note: this workspace's Apps API rejects the `unity-catalog` scope (its
-      # allowlist is narrower than the OAuth server's), so the CDF/sync-requirement
-      # check degrades gracefully when UC metadata can't be read on the user's behalf.
+      # Note: this workspace's Apps API rejects the `unity-catalog` AND `all-apis`
+      # scopes (its allowlist is narrower than the OAuth server's). The CDF/sync-
+      # requirement check degrades gracefully when UC metadata can't be read on the
+      # user's behalf, and the synced-table STATUS read runs under the app service
+      # principal (see routers/deployment.py) since some workspaces enforce that
+      # read against all-apis, which the forwarded user token can't carry here.
 
 targets:
   dev:

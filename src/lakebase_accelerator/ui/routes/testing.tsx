@@ -1241,6 +1241,25 @@ function PsycopgTab() {
                 <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
               </TabsList>
               <TabsContent value="metrics" className="mt-4">
+                {report.total_queries_executed > 0 && report.successful_queries === 0 && (
+                  <div className="mb-4 space-y-2 rounded-md border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span>
+                        <span className="font-medium">0% success — every query failed.</span> The
+                        run completed but no query returned a result, so the throughput/latency
+                        numbers below aren't meaningful. Fix the error below and re-run — or click{" "}
+                        <span className="font-medium">Explain</span> (with ANALYZE on) above to run
+                        one query and inspect its full plan.
+                      </span>
+                    </div>
+                    {report.sample_error && (
+                      <pre className="overflow-x-auto rounded bg-red-500/10 p-2 text-xs leading-relaxed whitespace-pre-wrap break-words">
+                        {report.sample_error}
+                      </pre>
+                    )}
+                  </div>
+                )}
                 <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
                   {metric("Total queries", String(report.total_queries_executed))}
                   {metric(

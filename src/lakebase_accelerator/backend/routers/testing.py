@@ -65,6 +65,9 @@ class TestReportOut(BaseModel):
     successful_queries: int
     failed_queries: int
     success_rate: float
+    # First failure's message when queries fail, so the UI can explain a 0% run
+    # instead of failing silently. None when nothing failed.
+    sample_error: str | None = None
     average_execution_time_ms: float
     p50_execution_time_ms: float
     p95_execution_time_ms: float

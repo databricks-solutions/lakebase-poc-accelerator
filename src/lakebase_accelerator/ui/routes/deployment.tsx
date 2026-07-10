@@ -114,7 +114,7 @@ const emptyRow: SyncRow = {
   target_uc_name: "",
   primary_key_columns: "",
   scheduling_policy: "SNAPSHOT",
-  database: "",
+  database: "databricks_postgres",
   branch: "",
   storage_catalog: "",
   storage_schema: "",
@@ -665,7 +665,7 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                 <div className="grid gap-2">
                   <LabelWithTip
                     label="Target UC name (Lakebase)"
-                    tip="Three-part name <catalog>.<schema>.<table>. Use the UC catalog registered to your Lakebase Postgres database (the 'database catalog') — then leave Database blank and it's inferred."
+                    tip="Three-part name <catalog>.<schema>.<table>. Use the UC catalog registered to your Lakebase Postgres database (the 'database catalog'), or a standard UC catalog with the Postgres database named alongside."
                   />
                   <Input
                     placeholder="lakebase_catalog.public.store_sales"
@@ -675,11 +675,11 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                 </div>
                 <div className="grid gap-2">
                   <LabelWithTip
-                    label="Database (optional)"
-                    tip="Leave BLANK when the target catalog is your Lakebase database catalog (the database is inferred). REQUIRED when targeting a standard UC catalog — name the Postgres database, e.g. databricks_postgres."
+                    label="Postgres database"
+                    tip="The Postgres database to sync into. Defaults to databricks_postgres — change only if your Lakebase database has a different name. (If you clear it and the target is a Lakebase database catalog, the platform infers it; a standard UC catalog requires it set.)"
                   />
                   <Input
-                    placeholder="blank = inferred from database catalog"
+                    placeholder="databricks_postgres"
                     value={row.database}
                     onChange={(e) => update(i, { database: e.target.value })}
                   />
@@ -898,6 +898,16 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                     Check sync status
                   </Button>
                   <InfoTip text="Reads the synced table's Lakeflow pipeline state and last completed sync time. Poll this after creating (snapshot/triggered finish; continuous stays online)." />
+                  {host && row.target_uc_name && exploreUrl(host, row.target_uc_name) && (
+                    <a
+                      href={exploreUrl(host, row.target_uc_name)!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      Monitor in Catalog Explorer <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
                 </div>
 
                 {row.status && (
@@ -905,9 +915,21 @@ function SyncSection({ projectLabel }: { projectLabel: string }) {
                     {row.status.error || !row.status.exists ? (
                       <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span className="whitespace-pre-wrap break-words">
-                          {row.status.error ?? "Synced table not found yet — it may still be provisioning."}
-                        </span>
+                        <div className="space-y-1.5">
+                          <span className="whitespace-pre-wrap break-words">
+                            {row.status.error ?? "Synced table not found yet — it may still be provisioning."}
+                          </span>
+                          {host && exploreUrl(host, row.target_uc_name) && (
+                            <a
+                              href={exploreUrl(host, row.target_uc_name)!}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 text-primary hover:underline"
+                            >
+                              Monitor the sync in Catalog Explorer <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-1.5">
