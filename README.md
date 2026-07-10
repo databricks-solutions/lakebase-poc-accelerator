@@ -8,7 +8,7 @@ and index-optimized** Lakebase database — without leaving the browser.
 The native Databricks UI already creates and manages Lakebase. This app adds everything
 *around* deployment that the platform doesn't: workload → compute sizing, concurrency
 testing (psycopg **and** pgbench), before/after index optimization with live database
-findings, run-history persistence, and actual-spend reporting. In short: **the native UI
+findings, and run-history persistence. In short: **the native UI
 deploys Lakebase; this app proves it's fast and tells you how to make it faster.**
 
 > 👩‍💻 Want to run it locally, change the code, or contribute? See **[CONTRIBUTING.md](./CONTRIBUTING.md)**.
@@ -29,7 +29,6 @@ deploys Lakebase; this app proves it's fast and tells you how to make it faster.
   - [Deployment — size & sync](#deployment--size--sync)
   - [Concurrency Testing — psycopg & pgbench](#concurrency-testing--psycopg--pgbench)
   - [Optimize — indexes & live findings](#optimize--indexes--live-findings)
-  - [Cost — actual spend](#cost--actual-spend)
   - [Run history & permissions](#run-history--permissions)
   - [Best Practices & Docs](#best-practices--docs)
 - [🔐 Authentication](#-authentication)
@@ -195,13 +194,6 @@ Apply the indexes and re-run to compare the EXPLAIN plans **before vs. after**.
 ![Index suggestions — ready-to-run CREATE INDEX statements derived from the query mix](docs/images/optimization-suggestion.png)
 
 ![Optimize — index suggestions, live findings, and before/after EXPLAIN plans](docs/images/optimization-result.png)
-
-### Cost — actual spend
-See real Lakebase spend from `system.billing.usage` — daily compute and storage cost for
-a project. (Load-generator compute — the pgbench job / this app — is excluded; that's
-client-side cost, not Lakebase.)
-
-![Cost page](docs/images/cost.png)
 
 ### Run history & permissions
 The psycopg tab can save each test run — including the **before/after (baseline →

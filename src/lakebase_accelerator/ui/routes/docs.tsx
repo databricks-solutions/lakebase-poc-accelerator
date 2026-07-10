@@ -220,22 +220,6 @@ CREATE SCHEMA IF NOT EXISTS accelerator_history
 
         <Card>
           <CardHeader>
-            <CardTitle>Cost: actual spend</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              The Cost page shows real Lakebase spend from{" "}
-              <code>system.billing.usage</code> — daily compute and storage cost for a project.
-            </p>
-            <p className="text-xs">
-              Load-generator compute — the pgbench job and this app — is excluded; that is
-              client-side cost, not Lakebase.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
             <CardTitle>Best Practices</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
