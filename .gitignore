@@ -38,3 +38,7 @@ node_modules/
 
 # UI dist folder
 src/lakebase_accelerator/__dist__/
+
+# internal testing artifacts (not tracked)
+internal-testing/
+materials/

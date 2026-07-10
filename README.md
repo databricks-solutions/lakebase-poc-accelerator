@@ -156,10 +156,22 @@ WHERE ss_ticket_number = :ticket;
 
 ![Concurrency Testing page](docs/images/testing.png)
 
+Each run reports throughput, success rate, and p50/p95/p99 latency — for both engines:
+
+![psycopg results — throughput, success rate, and latency percentiles](docs/images/psycopg-results.png)
+
+![pgbench results — native PostgreSQL load run as a Databricks job](docs/images/pgbench-results.png)
+
 ### Optimize — indexes & live findings
 From a test run, get ready-to-run `CREATE INDEX` statements derived from your queries,
 plus **live database findings** — sequential scans, cache-hit ratio, and unused indexes.
 Apply the indexes and re-run to compare the EXPLAIN plans **before vs. after**.
+
+![Query analysis — EXPLAIN plans flag sequential scans and rows discarded by a filter](docs/images/query-analysis.png)
+
+![Index suggestions — ready-to-run CREATE INDEX statements derived from the query mix](docs/images/optimization-suggestion.png)
+
+![Optimize — index suggestions, live findings, and before/after EXPLAIN plans](docs/images/optimization-result.png)
 
 ### Cost — actual spend
 See real Lakebase spend from `system.billing.usage` — daily compute and storage cost for

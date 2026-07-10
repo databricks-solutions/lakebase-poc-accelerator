@@ -8,6 +8,7 @@ billable resources, so they are built and verified deliberately).
 
 from __future__ import annotations
 
+from fastapi import Request
 from pydantic import BaseModel, Field
 
 from ..core import create_router, logger
@@ -317,9 +318,24 @@ class SyncStatusOut(BaseModel):
     response_model=SyncStatusOut,
     operation_id="getSyncedTableStatus",
 )
-def get_synced_table_status(req: SyncStatusIn, ws: EffectiveClient) -> SyncStatusOut:
-    """Read a synced table's live replication status (pipeline id, state, last sync)."""
+def get_synced_table_status(
+    req: SyncStatusIn, request: Request, ws: EffectiveClient
+) -> SyncStatusOut:
+    """Read a synced table's live replication status (pipeline id, state, last sync).
+
+    Reads under the OBO user first. Some workspaces (e.g. Azure) enforce this
+    ``w.postgres.get_synced_table`` read against the ``all-apis`` scope, which the
+    forwarded user token can't carry (the Apps allowlist rejects ``all-apis``). In
+    that case we retry under the app service principal, whose M2M token holds the
+    broader scope. This is a read-only status check, so identity attribution doesn't
+    matter here.
+    """
     r = deployment.get_synced_table_status(ws, req.target_uc_name)
+    if not r.ok and r.error and "all-apis" in r.error:
+        sp = getattr(request.app.state, "workspace_client", None)
+        if sp is not None and sp is not ws:
+            logger.info("sync-status: OBO token lacks all-apis scope; retrying as app SP")
+            r = deployment.get_synced_table_status(sp, req.target_uc_name)
     return SyncStatusOut(
         ok=r.ok, name=r.name, exists=r.exists, detailed_state=r.detailed_state,
         kind=r.kind, pipeline_id=r.pipeline_id, last_sync_time=r.last_sync_time,

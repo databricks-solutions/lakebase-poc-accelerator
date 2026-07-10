@@ -350,6 +350,69 @@ export interface RunCostReconcileOut {
     note: string;
     queries_per_dollar?: number | null;
 }
+export interface SavedQueryDeleteIn {
+    access_token?: string | null;
+    auth_method?: "identity" | "oauth";
+    database?: string | null;
+    endpoint_host?: string | null;
+    id: string;
+    postgres_user_name?: string | null;
+    project?: string | null;
+    schema_name?: string;
+    table_name?: string;
+}
+export interface SavedQueryDeleteOut {
+    deleted?: number;
+    error?: string | null;
+    ok: boolean;
+}
+export interface SavedQueryListIn {
+    access_token?: string | null;
+    auth_method?: "identity" | "oauth";
+    database?: string | null;
+    endpoint_host?: string | null;
+    include_shared?: boolean;
+    postgres_user_name?: string | null;
+    project?: string | null;
+    schema_name?: string;
+    table_name?: string;
+}
+export interface SavedQueryListOut {
+    error?: string | null;
+    sets?: SavedQuerySetOut[];
+}
+export interface SavedQuerySaveIn {
+    access_token?: string | null;
+    auth_method?: "identity" | "oauth";
+    database?: string | null;
+    endpoint_host?: string | null;
+    engine?: string | null;
+    name: string;
+    postgres_user_name?: string | null;
+    project?: string | null;
+    queries?: QueryIn[];
+    schema_name?: string;
+    shared?: boolean;
+    table_name?: string;
+}
+export interface SavedQuerySaveOut {
+    error?: string | null;
+    grant_sql?: string | null;
+    id?: string | null;
+    message?: string | null;
+    ok: boolean;
+}
+export interface SavedQuerySetOut {
+    created_at?: string | null;
+    created_by?: string | null;
+    engine?: string | null;
+    id: string;
+    is_mine?: boolean;
+    name: string;
+    queries?: Record<string, unknown>[];
+    shared?: boolean;
+    updated_at?: string | null;
+}
 export interface SchemaListOut {
     error?: string | null;
     schemas: string[];
@@ -432,6 +495,7 @@ export interface TestReportOut {
     p95_execution_time_ms: number;
     p99_execution_time_ms: number;
     per_query?: QueryStat[];
+    sample_error?: string | null;
     success_rate: number;
     successful_queries: number;
     throughput_queries_per_second: number;
@@ -1440,6 +1504,114 @@ export function useGetTokenScopesSuspense<TData = {
         queryKey: getTokenScopesKey(),
         queryFn: ()=>getTokenScopes(),
         ...options?.query
+    });
+}
+export const deleteLakebaseQuerySet = async (data: SavedQueryDeleteIn, options?: RequestInit): Promise<{
+    data: SavedQueryDeleteOut;
+}> =>{
+    const res = await fetch("/api/library/lakebase/delete", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useDeleteLakebaseQuerySet(options?: {
+    mutation?: UseMutationOptions<{
+        data: SavedQueryDeleteOut;
+    }, ApiError, SavedQueryDeleteIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>deleteLakebaseQuerySet(data),
+        ...options?.mutation
+    });
+}
+export const listLakebaseQuerySets = async (data: SavedQueryListIn, options?: RequestInit): Promise<{
+    data: SavedQueryListOut;
+}> =>{
+    const res = await fetch("/api/library/lakebase/list", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useListLakebaseQuerySets(options?: {
+    mutation?: UseMutationOptions<{
+        data: SavedQueryListOut;
+    }, ApiError, SavedQueryListIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>listLakebaseQuerySets(data),
+        ...options?.mutation
+    });
+}
+export const saveLakebaseQuerySet = async (data: SavedQuerySaveIn, options?: RequestInit): Promise<{
+    data: SavedQuerySaveOut;
+}> =>{
+    const res = await fetch("/api/library/lakebase/save", {
+        ...options,
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...options?.headers
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const body = await res.text();
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(body);
+        } catch  {
+            parsed = body;
+        }
+        throw new ApiError(res.status, res.statusText, parsed);
+    }
+    return {
+        data: await res.json()
+    };
+};
+export function useSaveLakebaseQuerySet(options?: {
+    mutation?: UseMutationOptions<{
+        data: SavedQuerySaveOut;
+    }, ApiError, SavedQuerySaveIn>;
+}) {
+    return useMutation({
+        mutationFn: (data)=>saveLakebaseQuerySet(data),
+        ...options?.mutation
     });
 }
 export const optimizeAnalyze = async (data: OptimizeIn, options?: RequestInit): Promise<{

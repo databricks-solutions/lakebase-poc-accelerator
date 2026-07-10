@@ -22,6 +22,8 @@ from psycopg.types.json import Json
 from .lakebase_service import PgCredentials
 
 DEFAULT_TABLE = "_accelerator_run_history"
+# Saved reusable query mixes ("query library"), stored in the same SP-owned schema.
+SAVED_QUERIES_TABLE = "_accelerator_saved_queries"
 # Least-privilege default: a dedicated schema the app service principal OWNS, so it
 # can manage its history table but has no access to the project's other data.
 DEFAULT_SCHEMA = "accelerator_history"
@@ -323,3 +325,156 @@ def list_runs(creds: PgCredentials, schema: str, table: str = DEFAULT_TABLE, lim
             }
         )
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Saved query sets ("query library") — reusable named query mixes.
+#
+# Same SP-owned store as run history: written/read under the app service
+# principal, with the author recorded in ``created_by``. Visibility is enforced
+# by the app (a ``created_by`` filter, optionally including ``shared`` rows) — it
+# is an attribution/display scope, not a Postgres security boundary, since the SP
+# can read the whole table.
+# --------------------------------------------------------------------------- #
+def saved_queries_ddl(schema: str) -> str:
+    """CREATE TABLE for the saved-query-sets table (shown to the user as consent)."""
+    qualified = _qualified(schema, SAVED_QUERIES_TABLE)
+    return (
+        f"CREATE TABLE IF NOT EXISTS {qualified} (\n"
+        "  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n"
+        "  name        text NOT NULL,\n"
+        "  engine      text,\n"
+        "  queries     jsonb NOT NULL,\n"
+        "  shared      boolean NOT NULL DEFAULT false,\n"
+        "  created_at  timestamptz NOT NULL DEFAULT now(),\n"
+        "  updated_at  timestamptz NOT NULL DEFAULT now(),\n"
+        "  created_by  text,\n"
+        "  UNIQUE (created_by, name)\n"
+        ");"
+    )
+
+
+def ensure_saved_queries_table(creds: PgCredentials, schema: str) -> dict[str, Any]:
+    """Create the saved-query-sets table if absent, checking SP privileges first.
+
+    Returns ``{ok, message?, grant_sql?}`` mirroring :func:`ensure_table`. The table
+    lives in the SP's owned schema; the same least-privilege gaps (missing schema,
+    can't create in schema) surface a ``grant_sql`` a project owner runs to fix it.
+    """
+    schema = _validate_schema(schema)
+    qualified = f"{schema}.{SAVED_QUERIES_TABLE}"
+    with _connect(creds, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute("SELECT current_user")
+        sp_role = cur.fetchone()[0]
+
+        cur.execute("SELECT to_regnamespace(%s)", (schema,))
+        if cur.fetchone()[0] is None:
+            return {
+                "ok": False,
+                "message": (
+                    f'Schema "{schema}" does not exist. A project owner must create it '
+                    f"and make {sp_role} its owner (see SQL below)."
+                ),
+                "grant_sql": provisioning_sql(sp_role, schema, creds.database, include_role=False),
+            }
+
+        cur.execute("SELECT to_regclass(%s)", (qualified,))
+        if cur.fetchone()[0] is None:
+            cur.execute("SELECT has_schema_privilege(current_user, %s, 'CREATE')", (schema,))
+            if not cur.fetchone()[0]:
+                return {
+                    "ok": False,
+                    "message": (
+                        f'{sp_role} cannot create objects in schema "{schema}" (it does not '
+                        f"own it). Ask a project owner to make the SP the schema owner."
+                    ),
+                    "grant_sql": f'ALTER SCHEMA {schema} OWNER TO "{sp_role}";',
+                }
+            cur.execute(saved_queries_ddl(schema))
+    return {"ok": True}
+
+
+def save_query_set(
+    creds: PgCredentials,
+    schema: str,
+    *,
+    name: str,
+    engine: Optional[str],
+    queries: list[dict[str, Any]],
+    shared: bool,
+    created_by: Optional[str],
+) -> str:
+    """Upsert a named query set for this author (keyed on ``(created_by, name)``);
+    returns the row id. Saving the same name again overwrites it in place."""
+    qualified = _qualified(schema, SAVED_QUERIES_TABLE)
+    with _connect(creds, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            f"INSERT INTO {qualified} (name, engine, queries, shared, created_by) "  # noqa: S608
+            "VALUES (%s, %s, %s, %s, %s) "
+            "ON CONFLICT (created_by, name) DO UPDATE SET "
+            "queries = EXCLUDED.queries, engine = EXCLUDED.engine, "
+            "shared = EXCLUDED.shared, updated_at = now() "
+            "RETURNING id",
+            (name.strip(), engine, Json(queries or []), bool(shared), created_by),
+        )
+        return str(cur.fetchone()[0])
+
+
+def list_query_sets(
+    creds: PgCredentials,
+    schema: str,
+    *,
+    current_user: Optional[str],
+    include_shared: bool,
+) -> list[dict[str, Any]]:
+    """Return saved query sets visible to ``current_user``: always their own, plus
+    everyone's ``shared`` sets when ``include_shared`` is True. Newest first."""
+    qualified = _qualified(schema, SAVED_QUERIES_TABLE)
+    with _connect(creds) as conn, conn.cursor() as cur:
+        cur.execute("SELECT to_regclass(%s)", (qualified,))
+        if cur.fetchone()[0] is None:
+            return []
+        if include_shared:
+            where = "created_by IS NOT DISTINCT FROM %s OR shared = true"
+        else:
+            where = "created_by IS NOT DISTINCT FROM %s"
+        cur.execute(
+            f"SELECT id, name, engine, queries, shared, created_by, created_at, updated_at "  # noqa: S608
+            f"FROM {qualified} WHERE {where} ORDER BY updated_at DESC LIMIT 500",
+            (current_user,),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "id": str(r[0]),
+            "name": r[1],
+            "engine": r[2],
+            "queries": r[3] or [],
+            "shared": bool(r[4]),
+            "created_by": r[5],
+            "created_at": r[6].isoformat() if r[6] else None,
+            "updated_at": r[7].isoformat() if r[7] else None,
+            "is_mine": r[5] is not None and r[5] == current_user,
+        }
+        for r in rows
+    ]
+
+
+def delete_query_set(
+    creds: PgCredentials, schema: str, *, set_id: str, created_by: Optional[str]
+) -> int:
+    """Delete one of the caller's own saved sets by id; returns rows deleted.
+
+    Scoped to ``created_by`` so a user can only delete their own sets, never
+    someone else's shared set."""
+    set_uuid = _uuid_or_none(set_id)
+    if set_uuid is None:
+        return 0
+    qualified = _qualified(schema, SAVED_QUERIES_TABLE)
+    with _connect(creds, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute(
+            f"DELETE FROM {qualified} WHERE id = %s::uuid "  # noqa: S608
+            "AND created_by IS NOT DISTINCT FROM %s",
+            (set_uuid, created_by),
+        )
+        return cur.rowcount
