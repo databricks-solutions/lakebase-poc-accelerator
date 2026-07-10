@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Plus,
@@ -62,7 +63,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  useRunPsycopgTest,
+  runPsycopgTest,
+  type PsycopgTestIn,
   useOptimizeAnalyze,
   useApplyIndexes,
   useSubmitPgbenchJob,
@@ -901,6 +903,12 @@ function RunCostCard({
   );
 }
 
+// Client-side backstop so a psycopg run that never returns (endpoint cold-start
+// stall, proxy timeout with no response, a query that never completes) surfaces as
+// a visible failure instead of an infinite "Running…" spinner. The whole batch is
+// one request; beyond this, use the pgbench job for heavier/longer load.
+const PSYCOPG_RUN_TIMEOUT_MS = 300_000; // 5 min
+
 // useState that persists to localStorage, so values (e.g. the authored query
 // mix) survive route navigation, browser restarts, and app redeploys. Private to
 // the browser/device; not shared across machines or users. For durable, shareable
@@ -1163,10 +1171,23 @@ function PsycopgTab() {
   const [report, setReport] = useState<TestReportOut | null>(null);
   const [baseline, setBaseline] = useState<TestReportOut | null>(null);
   const [optimize, setOptimize] = useState<OptimizeOut | null>(null);
+  // Persistent failure banner for a run that errored or didn't complete (a toast
+  // alone is ephemeral and easy to miss on a long run).
+  const [runError, setRunError] = useState<string | null>(null);
   // Wall-clock window of the last run, for billing reconciliation in the cost card.
   const [runWindow, setRunWindow] = useState<{ start: string; end: string } | null>(null);
 
-  const runTest = useRunPsycopgTest();
+  // Local mutation (instead of the generated hook) so we can attach an AbortSignal
+  // and a hard timeout — the generated hook doesn't forward request options.
+  const runTest = useMutation({
+    mutationFn: (data: PsycopgTestIn) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), PSYCOPG_RUN_TIMEOUT_MS);
+      return runPsycopgTest(data, { signal: controller.signal }).finally(() =>
+        clearTimeout(timer),
+      );
+    },
+  });
   const runOptimize = useOptimizeAnalyze();
   const applyIdx = useApplyIndexes();
   const explain = useExplainQueries();
@@ -1238,11 +1259,13 @@ function PsycopgTab() {
   };
 
   const onRun = async () => {
+    setRunError(null);
     try {
       const data = await runOnce();
       setReport(data);
       setBaseline(null); // fresh run — start a new before/after lineage
       if (data?.error) {
+        setRunError(data.error);
         toast.error(data.error);
       } else {
         runIdRef.current = newRunId();
@@ -1250,7 +1273,15 @@ function PsycopgTab() {
         toast.success("Test complete");
       }
     } catch (e) {
-      toast.error(String(e));
+      const aborted = e instanceof Error && e.name === "AbortError";
+      const msg = aborted
+        ? `Run did not finish within ${PSYCOPG_RUN_TIMEOUT_MS / 1000}s and was stopped. ` +
+          "The endpoint may have been resuming from idle, or a query is doing a full " +
+          "scan and is too slow — reduce Total executions/concurrency, add the suggested " +
+          "index (run Optimize), or use the pgbench job for heavier load."
+        : `Run failed: ${String(e)}`;
+      setRunError(msg);
+      toast.error(aborted ? "Run stopped (timeout)" : "Run failed");
     }
   };
 
@@ -1491,6 +1522,21 @@ function PsycopgTab() {
               when it finishes — higher concurrency and query counts take longer.
             </p>
             {monitoringHint(host)}
+          </CardContent>
+        </Card>
+      )}
+
+      {runError && !runTest.isPending && (
+        <Card className="border-red-500/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <AlertTriangle className="h-4 w-4" /> Run did not succeed
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap break-words text-sm text-red-600 dark:text-red-400">
+              {runError}
+            </p>
           </CardContent>
         </Card>
       )}
