@@ -167,6 +167,10 @@ From a test run, get ready-to-run `CREATE INDEX` statements derived from your qu
 plus **live database findings** — sequential scans, cache-hit ratio, and unused indexes.
 Apply the indexes and re-run to compare the EXPLAIN plans **before vs. after**.
 
+![Query analysis — EXPLAIN plans flag sequential scans and rows discarded by a filter](docs/images/query-analysis.png)
+
+![Index suggestions — ready-to-run CREATE INDEX statements derived from the query mix](docs/images/optimization-suggestion.png)
+
 ![Optimize — index suggestions, live findings, and before/after EXPLAIN plans](docs/images/optimization-result.png)
 
 ### Cost — actual spend
